@@ -1,0 +1,9 @@
+• Building app with entrypoint test_bundle.dart for iOS simulator (debug)...
+	Building kr.pins for simulator (ios)...
+	Running pod install...                                           2,527ms
+	** TEST BUILD FAILED **
+	
+✗ Failed to build app with entrypoint test_bundle.dart for iOS simulator (xcodebuild exited with code 65) (56.1s)
+Error: xcodebuild exited with code 65
+See the logs above to learn what happened. Also consider running with --verbose. If the logs still aren't useful, then it's a bug - please report it.
+Error: xcodebuild exited with code 65

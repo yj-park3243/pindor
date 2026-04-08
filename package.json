@@ -1,0 +1,18 @@
+{
+  "name": "pindor",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "cd app && flutter run -t lib/main.dart -d 'match'",
+    "s2": "cd app && flutter run -t lib/main.dart -d 'kids'",
+    "start:app": "cd app && flutter run",
+    "start:server": "cd server && pm2 start ecosystem.config.cjs",
+    "start:admin": "cd admin && npm run dev",
+    "start:all": "cd server && pm2 start ecosystem.config.cjs && cd ../admin && npm run dev & cd ../app && flutter run",
+    "stop:server": "cd server && pm2 stop all",
+    "clean": "cd app && flutter clean && flutter pub get",
+    "d": "cd app && ./deploy.sh",
+    "da": "cd app && ./deploy.sh android",
+    "di": "cd app && ./deploy.sh ios"
+  }
+}

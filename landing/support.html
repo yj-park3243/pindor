@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>고객지원 — 핀돌</title>
+  <meta name="description" content="핀돌 고객지원 페이지입니다. 자주 묻는 질문과 문의 방법을 안내합니다." />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --blue: #1A73E8;
+      --blue-dark: #1558b0;
+      --blue-light: #4a9ef5;
+      --green: #34A853;
+      --green-light: #5cbf78;
+      --dark: #0d1117;
+      --dark2: #161b22;
+      --dark3: #21262d;
+      --surface: #f8fafc;
+      --surface2: #eef2f7;
+      --text: #1a1a2e;
+      --text-muted: #6b7280;
+      --text-light: #9ca3af;
+      --white: #ffffff;
+      --radius: 16px;
+      --radius-sm: 8px;
+      --shadow: 0 4px 24px rgba(0,0,0,0.12);
+      --shadow-lg: 0 16px 64px rgba(0,0,0,0.2);
+      --transition: all 0.35s cubic-bezier(0.4,0,0.2,1);
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo',
+                   'Noto Sans KR', sans-serif;
+      background: var(--dark);
+      color: var(--white);
+      overflow-x: hidden;
+    }
+    a { text-decoration: none; color: inherit; }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--dark); }
+    ::-webkit-scrollbar-thumb { background: var(--blue); border-radius: 3px; }
+
+    /* NAVBAR */
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      padding: 0 clamp(16px, 4vw, 64px);
+      height: 64px;
+      display: flex; align-items: center; justify-content: space-between;
+      background: rgba(13, 17, 23, 0.92);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .nav-brand {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 22px; font-weight: 800; letter-spacing: -0.5px;
+    }
+    .nav-logo {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--blue), var(--blue-light), var(--green));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; font-weight: 900; color: white;
+      box-shadow: 0 0 16px rgba(26,115,232,0.5);
+    }
+    .nav-home {
+      font-size: 14px; font-weight: 500; color: rgba(255,255,255,0.6);
+      padding: 8px 20px;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 24px;
+      transition: var(--transition);
+    }
+    .nav-home:hover {
+      color: white;
+      border-color: rgba(255,255,255,0.3);
+      background: rgba(255,255,255,0.06);
+    }
+
+    /* CONTENT */
+    .page-wrap {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 108px 24px 80px;
+    }
+    .page-header {
+      margin-bottom: 56px;
+      text-align: center;
+    }
+    .page-tag {
+      display: inline-block; padding: 5px 14px;
+      background: rgba(26,115,232,0.15); border: 1px solid rgba(26,115,232,0.3);
+      border-radius: 20px; font-size: 11px; font-weight: 600;
+      color: var(--blue-light); letter-spacing: 1.5px; text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    .page-title {
+      font-size: clamp(28px, 4vw, 44px);
+      font-weight: 800;
+      letter-spacing: -1px;
+      line-height: 1.2;
+      color: white;
+    }
+    .page-subtitle {
+      margin-top: 12px;
+      font-size: 16px;
+      color: rgba(255,255,255,0.45);
+      line-height: 1.7;
+    }
+
+    /* CONTACT CARD */
+    .contact-section {
+      margin-bottom: 56px;
+    }
+    .section-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--blue-light);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+    .contact-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 16px;
+    }
+    .contact-card {
+      background: var(--dark2);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius);
+      padding: 24px;
+      transition: border-color 0.25s, background 0.25s;
+    }
+    .contact-card:hover {
+      border-color: rgba(26,115,232,0.3);
+      background: rgba(26,115,232,0.04);
+    }
+    .contact-icon {
+      font-size: 28px;
+      margin-bottom: 12px;
+    }
+    .contact-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.5);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+    .contact-value {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--blue-light);
+    }
+    .contact-note {
+      font-size: 12px;
+      color: rgba(255,255,255,0.3);
+      margin-top: 6px;
+      line-height: 1.5;
+    }
+
+    /* FAQ */
+    .faq-section {
+      margin-bottom: 56px;
+    }
+    .faq-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .faq-item {
+      background: var(--dark2);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius);
+      overflow: hidden;
+      transition: border-color 0.25s;
+    }
+    .faq-item:hover {
+      border-color: rgba(26,115,232,0.25);
+    }
+    .faq-item.open {
+      border-color: rgba(26,115,232,0.3);
+    }
+    .faq-question {
+      width: 100%;
+      background: none;
+      border: none;
+      color: white;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 600;
+      text-align: left;
+      padding: 20px 24px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      transition: color 0.2s;
+    }
+    .faq-question:hover { color: var(--blue-light); }
+    .faq-item.open .faq-question { color: var(--blue-light); }
+    .faq-chevron {
+      flex-shrink: 0;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.06);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      transition: transform 0.3s, background 0.25s;
+      color: rgba(255,255,255,0.5);
+    }
+    .faq-item.open .faq-chevron {
+      transform: rotate(180deg);
+      background: rgba(26,115,232,0.2);
+      color: var(--blue-light);
+    }
+    .faq-answer {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.35s cubic-bezier(0.4,0,0.2,1), padding 0.2s;
+    }
+    .faq-item.open .faq-answer {
+      max-height: 500px;
+    }
+    .faq-answer-inner {
+      padding: 0 24px 20px;
+      font-size: 14px;
+      color: rgba(255,255,255,0.62);
+      line-height: 1.85;
+      border-top: 1px solid rgba(255,255,255,0.05);
+      padding-top: 16px;
+    }
+    .faq-answer-inner ul {
+      padding-left: 18px;
+      margin-top: 8px;
+    }
+    .faq-answer-inner ul li {
+      margin-bottom: 6px;
+    }
+    .faq-answer-inner ul li::marker {
+      color: var(--blue-light);
+    }
+    .faq-answer-inner a {
+      color: var(--blue-light);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    /* CTA BANNER */
+    .cta-banner {
+      background: linear-gradient(135deg, rgba(26,115,232,0.15), rgba(52,168,83,0.08));
+      border: 1px solid rgba(26,115,232,0.2);
+      border-radius: var(--radius);
+      padding: 36px 32px;
+      text-align: center;
+    }
+    .cta-banner-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: white;
+      margin-bottom: 8px;
+    }
+    .cta-banner-desc {
+      font-size: 14px;
+      color: rgba(255,255,255,0.5);
+      margin-bottom: 20px;
+      line-height: 1.6;
+    }
+    .cta-email-link {
+      display: inline-block;
+      padding: 12px 28px;
+      background: var(--blue);
+      color: white;
+      border-radius: 24px;
+      font-size: 15px;
+      font-weight: 600;
+      transition: var(--transition);
+      box-shadow: 0 0 20px rgba(26,115,232,0.35);
+    }
+    .cta-email-link:hover {
+      background: var(--blue-dark);
+      box-shadow: 0 0 30px rgba(26,115,232,0.55);
+      transform: translateY(-1px);
+    }
+
+    /* FOOTER */
+    footer {
+      background: #080c10;
+      padding: 40px clamp(16px, 5vw, 100px);
+      border-top: 1px solid rgba(255,255,255,0.05);
+    }
+    .footer-inner {
+      max-width: 1100px; margin: 0 auto;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 20px;
+    }
+    .footer-brand { display: flex; align-items: center; gap: 10px; }
+    .footer-brand-text { font-size: 18px; font-weight: 800; color: rgba(255,255,255,0.6); }
+    .footer-links { display: flex; gap: 24px; flex-wrap: wrap; }
+    .footer-links a {
+      font-size: 13px; color: rgba(255,255,255,0.4);
+      transition: color 0.2s;
+    }
+    .footer-links a:hover { color: rgba(255,255,255,0.7); }
+    .footer-copy { font-size: 12px; color: rgba(255,255,255,0.25); }
+
+    @media (max-width: 768px) {
+      .page-wrap { padding: 88px 16px 60px; }
+      .contact-grid { grid-template-columns: 1fr 1fr; }
+      .cta-banner { padding: 28px 20px; }
+      .footer-inner { flex-direction: column; align-items: flex-start; }
+    }
+    @media (max-width: 480px) {
+      .contact-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAVBAR -->
+  <nav class="navbar">
+    <a href="index.html" class="nav-brand">
+      <div class="nav-logo">P</div>
+      핀돌
+    </a>
+    <a href="index.html" class="nav-home">홈으로</a>
+  </nav>
+
+  <!-- CONTENT -->
+  <main class="page-wrap">
+
+    <div class="page-header">
+      <div class="page-tag">Support</div>
+      <h1 class="page-title">고객지원</h1>
+      <p class="page-subtitle">궁금한 점이 있으신가요? 아래에서 빠르게 답을 찾아보세요.</p>
+    </div>
+
+    <!-- 문의 방법 -->
+    <div class="contact-section">
+      <div class="section-label">문의 방법</div>
+      <div class="contact-grid">
+        <div class="contact-card">
+          <div class="contact-icon">&#9993;</div>
+          <div class="contact-label">이메일 문의</div>
+          <div class="contact-value">support@pins.kr</div>
+          <div class="contact-note">24시간 접수, 영업일 기준 1-2일 내 답변</div>
+        </div>
+        <div class="contact-card">
+          <div class="contact-icon">&#128337;</div>
+          <div class="contact-label">운영 시간</div>
+          <div class="contact-value">평일 10:00 – 18:00</div>
+          <div class="contact-note">주말 및 공휴일 휴무<br>문의는 언제든지 접수 가능</div>
+        </div>
+        <div class="contact-card">
+          <div class="contact-icon">&#128241;</div>
+          <div class="contact-label">앱 내 문의</div>
+          <div class="contact-value">설정 &gt; 고객지원</div>
+          <div class="contact-note">계정 정보와 함께 빠른 처리</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FAQ -->
+    <div class="faq-section">
+      <div class="section-label">자주 묻는 질문</div>
+      <div class="faq-list" id="faqList">
+
+        <div class="faq-item">
+          <button class="faq-question">
+            <span>매칭은 어떻게 이루어지나요?</span>
+            <span class="faq-chevron">&#8964;</span>
+          </button>
+          <div class="faq-answer">
+            <div class="faq-answer-inner">
+              핀돌는 위치 기반 매칭 시스템을 사용합니다. 원하는 종목의 핀을 생성하거나, 근처에 있는 다른 회원의 핀에 참여 신청을 보내면 됩니다.
+              <ul>
+                <li>앱 지도에서 내 근처 핀을 확인합니다.</li>
+                <li>마음에 드는 핀에 참여 요청을 보냅니다.</li>
+                <li>상대방이 수락하면 매칭이 성사되고 채팅이 열립니다.</li>
+                <li>시간과 장소를 협의하여 경기를 진행합니다.</li>
+                <li>경기 후 결과를 앱에 입력하면 점수가 반영됩니다.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-question">
+            <span>핀(PIN)이 뭔가요?</span>
+            <span class="faq-chevron">&#8964;</span>
+          </button>
+          <div class="faq-answer">
+            <div class="faq-answer-inner">
+              핀(PIN)은 핀돌 서비스의 핵심 기능으로, 특정 위치에 꽂는 "스포츠 매칭 요청" 단위입니다.
+              <ul>
+                <li><strong>내가 만든 핀:</strong> "이 근처에서 테니스 상대를 찾고 있어요"라고 알리는 것</li>
+                <li><strong>남의 핀 참여:</strong> 지도에서 핀을 발견하고 참여 요청을 보내는 것</li>
+                <li><strong>오픈 핀:</strong> 누구나 참여할 수 있는 공개 모임형 핀</li>
+              </ul>
+              핀을 통해 일대일 대결은 물론 다양한 스포츠 모임을 만들 수 있습니다.
+            </div>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-question">
+            <span>점수는 어떻게 계산되나요?</span>
+            <span class="faq-chevron">&#8964;</span>
+          </button>
+          <div class="faq-answer">
+            <div class="faq-answer-inner">
+              핀돌는 체스에서 사용하는 <strong>ELO 알고리즘</strong>을 기반으로 점수를 산정합니다.
+              <ul>
+                <li><strong>승리 시:</strong> 상대방의 점수가 높을수록 더 많은 점수를 획득합니다.</li>
+                <li><strong>패배 시:</strong> 상대방의 점수가 낮을수록 더 많은 점수를 잃습니다.</li>
+                <li><strong>노쇼 시:</strong> 매칭 후 무단 불참 시 점수가 감점됩니다.</li>
+                <li><strong>티어:</strong> 점수 구간에 따라 브론즈 → 실버 → 골드 → 플래티넘 → 다이아 → 마스터 → 챌린저 순으로 티어가 결정됩니다.</li>
+              </ul>
+              초기 점수는 1000점으로 시작하며, 매칭을 쌓아갈수록 실력을 반영한 점수로 수렴합니다.
+            </div>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-question">
+            <span>팀은 어떻게 만드나요?</span>
+            <span class="faq-chevron">&#8964;</span>
+          </button>
+          <div class="faq-answer">
+            <div class="faq-answer-inner">
+              팀 기능은 앱 하단 메뉴의 "팀" 탭에서 이용할 수 있습니다.
+              <ul>
+                <li>앱에서 "팀 만들기"를 선택합니다.</li>
+                <li>팀 이름, 종목, 소개, 팀 로고를 설정합니다.</li>
+                <li>팀원을 닉네임으로 검색하여 초대합니다.</li>
+                <li>팀 매칭 핀을 생성하면 팀 단위로 상대팀을 찾을 수 있습니다.</li>
+              </ul>
+              팀을 생성한 회원이 자동으로 팀장이 되며, 팀원 관리 및 매칭 요청 권한을 갖습니다.
+            </div>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-question">
+            <span>불쾌한 사용자를 신고하고 싶어요</span>
+            <span class="faq-chevron">&#8964;</span>
+          </button>
+          <div class="faq-answer">
+            <div class="faq-answer-inner">
+              신고는 해당 회원 프로필 또는 채팅창 상단 메뉴에서 바로 할 수 있습니다.
+              <ul>
+                <li>신고 대상 회원의 프로필을 방문합니다.</li>
+                <li>우상단 더보기(···) 메뉴를 선택합니다.</li>
+                <li>"신고하기"를 선택하고 신고 사유를 선택합니다.</li>
+                <li>접수된 신고는 운영팀이 검토 후 제재 여부를 결정합니다.</li>
+              </ul>
+              허위 신고 시에는 신고자가 오히려 제재를 받을 수 있습니다. 신고 처리 결과는 개별 안내되지 않을 수 있습니다. 긴급하거나 중대한 사안은 <a href="mailto:support@pins.kr">support@pins.kr</a>로 직접 문의해 주세요.
+            </div>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-question">
+            <span>계정을 삭제하고 싶어요</span>
+            <span class="faq-chevron">&#8964;</span>
+          </button>
+          <div class="faq-answer">
+            <div class="faq-answer-inner">
+              계정 삭제(탈퇴)는 앱 내에서 직접 진행할 수 있습니다.
+              <ul>
+                <li>앱 하단 "내 정보" 탭 → 설정 → "계정 관리"를 선택합니다.</li>
+                <li>"탈퇴하기"를 선택하고 안내에 따라 진행합니다.</li>
+                <li>탈퇴 후 30일 이내에 모든 개인정보가 파기됩니다.</li>
+                <li>탈퇴 후에는 동일 소셜 계정으로 재가입이 가능하나, 기존 데이터는 복구되지 않습니다.</li>
+              </ul>
+              앱 이용이 어려운 경우 <a href="mailto:support@pins.kr">support@pins.kr</a>로 탈퇴를 요청하실 수 있습니다. 처리까지 영업일 기준 3일 이내 소요됩니다.
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- CTA -->
+    <div class="cta-banner">
+      <div class="cta-banner-title">원하는 답변을 찾지 못하셨나요?</div>
+      <div class="cta-banner-desc">이메일로 문의해 주시면 영업일 기준 1-2일 이내에 답변 드리겠습니다.</div>
+      <a href="mailto:support@pins.kr" class="cta-email-link">support@pins.kr 문의하기</a>
+    </div>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="nav-logo">P</div>
+        <span class="footer-brand-text">핀돌</span>
+      </div>
+      <div class="footer-links">
+        <a href="terms.html">이용약관</a>
+        <a href="privacy.html">개인정보처리방침</a>
+        <a href="support.html">고객지원</a>
+      </div>
+      <div class="footer-copy">© 2026 핀돌. All rights reserved.</div>
+    </div>
+  </footer>
+
+  <script>
+    // FAQ accordion
+    const faqItems = document.querySelectorAll('.faq-item');
+    faqItems.forEach(item => {
+      const btn = item.querySelector('.faq-question');
+      btn.addEventListener('click', () => {
+        const isOpen = item.classList.contains('open');
+        // Close all
+        faqItems.forEach(el => el.classList.remove('open'));
+        // Toggle current
+        if (!isOpen) item.classList.add('open');
+      });
+    });
+  </script>
+
+</body>
+</html>

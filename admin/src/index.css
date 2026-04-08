@@ -1,0 +1,45 @@
+/* 전역 스타일 */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: #f5f5f5;
+}
+
+/* Leaflet 지도 z-index 조정 (Ant Design 모달 하위) */
+.leaflet-pane {
+  z-index: 1;
+}
+.leaflet-top,
+.leaflet-bottom {
+  z-index: 2;
+}
+
+/* 스크롤바 스타일 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f0f0f0;
+}
+::-webkit-scrollbar-thumb {
+  background: #d0d0d0;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #aaa;
+}
+
+/* Ant Design 테이블 행 hover */
+.ant-table-tbody > tr:hover > td {
+  background: #e6f4ff !important;
+}
+
+/* Pro 컴포넌트 스타일 재정의 */
+.ant-pro-table-search {
+  display: none;
+}

@@ -1,0 +1,173 @@
+export enum UserStatus {
+  ACTIVE = 'ACTIVE',
+  SUSPENDED = 'SUSPENDED',
+  WITHDRAWN = 'WITHDRAWN',
+}
+
+export enum SocialProvider {
+  KAKAO = 'KAKAO',
+  GOOGLE = 'GOOGLE',
+  APPLE = 'APPLE',
+  EMAIL = 'EMAIL',
+}
+
+export enum SportType {
+  GOLF = 'GOLF',
+  BILLIARDS = 'BILLIARDS',
+  TENNIS = 'TENNIS',
+  TABLE_TENNIS = 'TABLE_TENNIS',
+  BADMINTON = 'BADMINTON',
+  BOWLING = 'BOWLING',
+  SOCCER = 'SOCCER',
+  BASKETBALL = 'BASKETBALL',
+  BASEBALL = 'BASEBALL',
+}
+
+export enum Tier {
+  IRON = 'IRON',
+  BRONZE = 'BRONZE',
+  SILVER = 'SILVER',
+  GOLD = 'GOLD',
+  PLATINUM = 'PLATINUM',
+  MASTER = 'MASTER',
+  GRANDMASTER = 'GRANDMASTER',
+}
+
+export enum RequestType {
+  SCHEDULED = 'SCHEDULED',
+  INSTANT = 'INSTANT',
+  CASUAL = 'CASUAL',
+}
+
+export enum TimeSlot {
+  DAWN = 'DAWN',
+  MORNING = 'MORNING',
+  AFTERNOON = 'AFTERNOON',
+  EVENING = 'EVENING',
+  ANY = 'ANY',
+}
+
+export enum MatchRequestStatus {
+  WAITING = 'WAITING',
+  MATCHED = 'MATCHED',
+  CANCELLED = 'CANCELLED',
+  EXPIRED = 'EXPIRED',
+}
+
+export enum MatchStatus {
+  PENDING_ACCEPT = 'PENDING_ACCEPT',
+  CHAT = 'CHAT',
+  CONFIRMED = 'CONFIRMED',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
+  DISPUTED = 'DISPUTED',
+}
+
+export enum GameResultStatus {
+  PENDING = 'PENDING',
+  PROOF_UPLOADED = 'PROOF_UPLOADED',
+  VERIFIED = 'VERIFIED',
+  DISPUTED = 'DISPUTED',
+  VOIDED = 'VOIDED',
+}
+
+export enum ScoreChangeType {
+  GAME_WIN = 'GAME_WIN',
+  GAME_LOSS = 'GAME_LOSS',
+  GAME_DRAW = 'GAME_DRAW',
+  INITIAL = 'INITIAL',
+  ADJUSTMENT = 'ADJUSTMENT',
+  SEASON_RESET = 'SEASON_RESET',
+  NO_SHOW_PENALTY = 'NO_SHOW_PENALTY',
+  NO_SHOW_COMPENSATION = 'NO_SHOW_COMPENSATION',
+}
+
+export enum PinLevel {
+  DONG = 'DONG',
+  GU = 'GU',
+  CITY = 'CITY',
+  PROVINCE = 'PROVINCE',
+}
+
+export enum MessageType {
+  TEXT = 'TEXT',
+  IMAGE = 'IMAGE',
+  SYSTEM = 'SYSTEM',
+  SCHEDULE_PROPOSAL = 'SCHEDULE_PROPOSAL',
+}
+
+export enum RoomType {
+  MATCH = 'MATCH',
+  SUPPORT = 'SUPPORT',
+  TEAM_MATCH = 'TEAM_MATCH',
+  TEAM_INTERNAL = 'TEAM_INTERNAL',
+}
+
+export enum RoomStatus {
+  ACTIVE = 'ACTIVE',
+  ARCHIVED = 'ARCHIVED',
+  BLOCKED = 'BLOCKED',
+}
+
+export enum PostCategory {
+  GENERAL = 'GENERAL',
+  MATCH_SEEK = 'MATCH_SEEK',
+  REVIEW = 'REVIEW',
+  NOTICE = 'NOTICE',
+}
+
+export enum ReportTargetType {
+  USER = 'USER',
+  POST = 'POST',
+  COMMENT = 'COMMENT',
+  GAME_RESULT = 'GAME_RESULT',
+  CHAT = 'CHAT',
+}
+
+export enum ReportStatus {
+  PENDING = 'PENDING',
+  REVIEWED = 'REVIEWED',
+  RESOLVED = 'RESOLVED',
+  DISMISSED = 'DISMISSED',
+}
+
+export enum DevicePlatform {
+  ANDROID = 'ANDROID',
+  IOS = 'IOS',
+}
+
+export enum ImageType {
+  SCORECARD = 'SCORECARD',
+  RECEIPT = 'RECEIPT',
+  OTHER = 'OTHER',
+}
+
+export enum AdminRole {
+  SUPER_ADMIN = 'SUPER_ADMIN',
+  ADMIN = 'ADMIN',
+  MODERATOR = 'MODERATOR',
+}
+
+export enum TeamRole {
+  CAPTAIN = 'CAPTAIN',
+  VICE_CAPTAIN = 'VICE_CAPTAIN',
+  MEMBER = 'MEMBER',
+}
+
+export enum TeamStatus {
+  ACTIVE = 'ACTIVE',
+  INACTIVE = 'INACTIVE',
+  DISBANDED = 'DISBANDED',
+}
+
+export enum TeamMemberStatus {
+  ACTIVE = 'ACTIVE',
+  INACTIVE = 'INACTIVE',
+  BANNED = 'BANNED',
+}
+
+export enum TeamPostCategory {
+  NOTICE = 'NOTICE',
+  SCHEDULE = 'SCHEDULE',
+  FREE = 'FREE',
+}

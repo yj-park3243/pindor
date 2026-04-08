@@ -1,0 +1,13 @@
+{
+  "name": "pindor-app",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "flutter run",
+    "start:ios": "flutter run -d iPhone",
+    "start:android": "flutter run -d emulator",
+    "build:apk": "flutter build apk --release",
+    "build:ios": "flutter build ios --release",
+    "clean": "flutter clean && flutter pub get"
+  }
+}

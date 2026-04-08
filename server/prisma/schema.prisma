@@ -1,0 +1,967 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis]
+}
+
+// ─────────────────────────────────────
+// Enums
+// ─────────────────────────────────────
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  WITHDRAWN
+}
+
+enum SocialProvider {
+  KAKAO
+  APPLE
+  GOOGLE
+}
+
+enum SportType {
+  GOLF
+  BILLIARDS
+  TENNIS
+  TABLE_TENNIS
+}
+
+enum Tier {
+  GRANDMASTER
+  MASTER
+  PLATINUM
+  GOLD
+  SILVER
+  BRONZE
+  IRON
+}
+
+enum RequestType {
+  SCHEDULED
+  INSTANT
+}
+
+enum TimeSlot {
+  MORNING
+  AFTERNOON
+  EVENING
+  ANY
+}
+
+enum MatchRequestStatus {
+  WAITING
+  MATCHED
+  CANCELLED
+  EXPIRED
+}
+
+enum MatchStatus {
+  PENDING_ACCEPT  // 양쪽 수락 대기
+  CHAT
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  DISPUTED
+}
+
+enum GameResultStatus {
+  PENDING
+  PROOF_UPLOADED
+  VERIFIED
+  DISPUTED
+  VOIDED
+}
+
+enum ScoreChangeType {
+  GAME_WIN
+  GAME_LOSS
+  GAME_DRAW
+  INITIAL
+  ADJUSTMENT
+  SEASON_RESET
+}
+
+enum PinLevel {
+  DONG
+  GU
+  CITY
+  PROVINCE
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  SYSTEM
+  SCHEDULE_PROPOSAL
+}
+
+enum RoomType {
+  MATCH
+  SUPPORT
+  TEAM_MATCH
+  TEAM_INTERNAL
+}
+
+enum RoomStatus {
+  ACTIVE
+  ARCHIVED
+  BLOCKED
+}
+
+enum PostCategory {
+  GENERAL
+  MATCH_SEEK
+  REVIEW
+  NOTICE
+}
+
+enum ReportTargetType {
+  USER
+  POST
+  COMMENT
+  GAME_RESULT
+  CHAT
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWED
+  RESOLVED
+  DISMISSED
+}
+
+enum DevicePlatform {
+  ANDROID
+  IOS
+}
+
+enum ImageType {
+  SCORECARD
+  RECEIPT
+  OTHER
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+  MODERATOR
+}
+
+enum TeamRole {
+  CAPTAIN
+  VICE_CAPTAIN
+  MEMBER
+}
+
+enum TeamStatus {
+  ACTIVE
+  INACTIVE
+  DISBANDED
+}
+
+enum TeamMemberStatus {
+  ACTIVE
+  INACTIVE
+  BANNED
+}
+
+enum TeamPostCategory {
+  NOTICE
+  SCHEDULE
+  FREE
+}
+
+// ─────────────────────────────────────
+// Users & Auth
+// ─────────────────────────────────────
+
+model User {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email           String?   @unique @db.VarChar(255)
+  nickname        String    @unique @db.VarChar(20)
+  profileImageUrl String?   @map("profile_image_url") @db.Text
+  phone           String?   @db.VarChar(20)
+  gender          String?   @db.VarChar(10) // MALE, FEMALE, OTHER
+  birthDate       DateTime? @map("birth_date") @db.Date
+  rejectionCount  Int       @default(0) @map("rejection_count")
+  rejectionCooldownUntil DateTime? @map("rejection_cooldown_until") @db.Timestamptz
+  status          UserStatus @default(ACTIVE)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  lastLoginAt     DateTime? @map("last_login_at") @db.Timestamptz
+
+  // Relations
+  socialAccounts       SocialAccount[]
+  location             UserLocation?
+  sportsProfiles       SportsProfile[]
+  matchRequests        MatchRequest[]
+  cancelledMatches     Match[]            @relation("CancelledBy")
+  sentMessages         Message[]
+  posts                Post[]
+  comments             Comment[]
+  notifications        Notification[]
+  deviceTokens         DeviceToken[]
+  notificationSettings NotificationSettings?
+  reports              Report[]           @relation("Reporter")
+  resolvedReports      Report[]           @relation("ResolvedBy")
+  uploadedProofs       GameResultProof[]  @relation("UploadedBy")
+  reviewedProofs       GameResultProof[]  @relation("ReviewedBy")
+  resultConfirmations  ResultConfirmation[]
+  userPins             UserPin[]
+  adminProfile         AdminProfile?
+  teamMembers          TeamMember[]
+  teamMatchRequests    TeamMatchRequest[]
+  teamChatRoomMembers  TeamChatRoomMember[]
+  teamChatMessages     TeamChatMessage[]
+  teamPosts            TeamPost[]
+  teamPostComments     TeamPostComment[]
+  matchAcceptances     MatchAcceptance[]
+
+  @@index([email])
+  @@index([nickname])
+  @@index([status])
+  @@map("users")
+}
+
+model SocialAccount {
+  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String         @map("user_id") @db.Uuid
+  provider     SocialProvider
+  providerId   String         @map("provider_id") @db.VarChar(255)
+  accessToken  String?        @map("access_token") @db.Text
+  refreshToken String?        @map("refresh_token") @db.Text
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerId])
+  @@index([userId])
+  @@map("social_accounts")
+}
+
+model UserLocation {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String   @unique @map("user_id") @db.Uuid
+  /// PostGIS GEOGRAPHY(POINT,4326) — 현재 위치
+  currentPoint   Unsupported("geography(Point, 4326)")?  @map("current_point")
+  /// PostGIS GEOGRAPHY(POINT,4326) — 활동 거점
+  homePoint      Unsupported("geography(Point, 4326)")?  @map("home_point")
+  homeAddress    String?  @map("home_address") @db.VarChar(255)
+  matchRadiusKm  Float    @default(10.0) @map("match_radius_km")
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_locations")
+}
+
+// ─────────────────────────────────────
+// Sports Profiles & Scores
+// ─────────────────────────────────────
+
+model SportsProfile {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  sportType    SportType @map("sport_type")
+  displayName  String?   @map("display_name") @db.VarChar(50)
+  gHandicap    Decimal?  @map("g_handicap") @db.Decimal(4, 1)
+  initialScore Int       @default(1000) @map("initial_score")
+  currentScore Int       @default(1000) @map("current_score")
+  tier         Tier      @default(BRONZE)
+  isVerified   Boolean   @default(false) @map("is_verified")
+  gamesPlayed  Int       @default(0) @map("games_played")
+  wins         Int       @default(0)
+  losses       Int       @default(0)
+  draws        Int       @default(0)
+  extraData    Json      @default("{}") @map("extra_data")
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  matchRequests         MatchRequest[]
+  requesterMatches      Match[]          @relation("RequesterProfile")
+  opponentMatches       Match[]          @relation("OpponentProfile")
+  winnerGames           Game[]
+  scoreHistories        ScoreHistory[]
+  rankingEntries        RankingEntry[]
+
+  @@unique([userId, sportType])
+  @@index([userId])
+  @@index([sportType])
+  @@index([currentScore])
+  @@index([tier])
+  @@map("sports_profiles")
+}
+
+model ScoreHistory {
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sportsProfileId  String          @map("sports_profile_id") @db.Uuid
+  gameId           String?         @map("game_id") @db.Uuid
+  changeType       ScoreChangeType @map("change_type")
+  scoreBefore      Int             @map("score_before")
+  scoreChange      Int             @map("score_change")
+  scoreAfter       Int             @map("score_after")
+  opponentScore    Int?            @map("opponent_score")
+  kFactor          Int?            @map("k_factor")
+  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz
+
+  sportsProfile SportsProfile @relation(fields: [sportsProfileId], references: [id])
+  game          Game?         @relation(fields: [gameId], references: [id])
+
+  @@index([sportsProfileId, createdAt(sort: Desc)])
+  @@index([gameId])
+  @@map("score_histories")
+}
+
+// ─────────────────────────────────────
+// Pins (지역 핀)
+// ─────────────────────────────────────
+
+model Pin {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   @db.VarChar(100)
+  slug        String   @unique @db.VarChar(100)
+  /// PostGIS GEOGRAPHY(POINT,4326)
+  center      Unsupported("geography(Point, 4326)")
+  /// PostGIS GEOGRAPHY(POLYGON,4326)
+  boundary    Unsupported("geography(Polygon, 4326)")?
+  level       PinLevel
+  parentPinId String?  @map("parent_pin_id") @db.Uuid
+  regionCode  String?  @map("region_code") @db.VarChar(10)
+  isActive    Boolean  @default(true) @map("is_active")
+  userCount   Int      @default(0) @map("user_count")
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  parentPin    Pin?           @relation("PinHierarchy", fields: [parentPinId], references: [id])
+  childPins    Pin[]          @relation("PinHierarchy")
+  userPins     UserPin[]
+  rankingEntries RankingEntry[]
+  posts        Post[]
+  teams        Team[]
+  matchRequests MatchRequest[]
+  matches      Match[]
+
+  @@index([parentPinId])
+  @@index([level])
+  @@map("pins")
+}
+
+model UserPin {
+  id       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId   String   @map("user_id") @db.Uuid
+  pinId    String   @map("pin_id") @db.Uuid
+  isPrimary Boolean @default(false) @map("is_primary")
+  joinedAt DateTime @default(now()) @map("joined_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pin  Pin  @relation(fields: [pinId], references: [id])
+
+  @@unique([userId, pinId])
+  @@index([userId])
+  @@index([pinId])
+  @@map("user_pins")
+}
+
+// ─────────────────────────────────────
+// Matching
+// ─────────────────────────────────────
+
+model MatchRequest {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  requesterId       String             @map("requester_id") @db.Uuid
+  sportsProfileId   String             @map("sports_profile_id") @db.Uuid
+  pinId             String             @map("pin_id") @db.Uuid
+  sportType         SportType          @map("sport_type")
+  requestType       RequestType        @default(SCHEDULED) @map("request_type")
+  desiredDate       DateTime?          @map("desired_date") @db.Date
+  desiredTimeSlot   TimeSlot?          @map("desired_time_slot")
+  /// PostGIS GEOGRAPHY(POINT,4326) — optional, for backward compat
+  locationPoint     Unsupported("geography(Point, 4326)")? @map("location_point")
+  locationName      String?            @map("location_name") @db.VarChar(255)
+  minOpponentScore  Int                @default(800) @map("min_opponent_score")
+  maxOpponentScore  Int                @default(1200) @map("max_opponent_score")
+  genderPreference  String             @default("ANY") @map("gender_preference") @db.VarChar(10) // SAME, ANY
+  minAge            Int?               @map("min_age")
+  maxAge            Int?               @map("max_age")
+  message           String?            @db.Text
+  status            MatchRequestStatus @default(WAITING)
+  expiresAt         DateTime           @map("expires_at") @db.Timestamptz
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+
+  requester     User          @relation(fields: [requesterId], references: [id])
+  sportsProfile SportsProfile @relation(fields: [sportsProfileId], references: [id])
+  pin           Pin           @relation(fields: [pinId], references: [id])
+  match         Match?
+
+  @@index([requesterId])
+  @@index([status, sportType])
+  @@index([pinId, sportType, status])
+  @@index([expiresAt])
+  @@map("match_requests")
+}
+
+model Match {
+  id                  String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  matchRequestId      String?     @unique @map("match_request_id") @db.Uuid
+  requesterProfileId  String      @map("requester_profile_id") @db.Uuid
+  opponentProfileId   String      @map("opponent_profile_id") @db.Uuid
+  pinId               String?     @map("pin_id") @db.Uuid
+  sportType           SportType   @map("sport_type")
+  scheduledDate       DateTime?   @map("scheduled_date") @db.Date
+  scheduledTime       DateTime?   @map("scheduled_time") @db.Time
+  venueName           String?     @map("venue_name") @db.VarChar(255)
+  /// PostGIS GEOGRAPHY(POINT,4326)
+  venueLocation       Unsupported("geography(Point, 4326)")? @map("venue_location")
+  status              MatchStatus @default(CHAT)
+  chatRoomId          String?     @unique @map("chat_room_id") @db.Uuid
+  confirmedAt         DateTime?   @map("confirmed_at") @db.Timestamptz
+  completedAt         DateTime?   @map("completed_at") @db.Timestamptz
+  cancelledBy         String?     @map("cancelled_by") @db.Uuid
+  cancelReason        String?     @map("cancel_reason") @db.Text
+  createdAt           DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+
+  matchRequest      MatchRequest?  @relation(fields: [matchRequestId], references: [id])
+  requesterProfile  SportsProfile  @relation("RequesterProfile", fields: [requesterProfileId], references: [id])
+  opponentProfile   SportsProfile  @relation("OpponentProfile", fields: [opponentProfileId], references: [id])
+  pin               Pin?           @relation(fields: [pinId], references: [id])
+  cancelledByUser   User?          @relation("CancelledBy", fields: [cancelledBy], references: [id])
+  chatRoom          ChatRoom?      @relation(fields: [chatRoomId], references: [id])
+  game              Game?
+  acceptances       MatchAcceptance[]
+
+  @@index([requesterProfileId])
+  @@index([opponentProfileId])
+  @@index([pinId])
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
+  @@map("matches")
+}
+
+model MatchAcceptance {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  matchId     String    @map("match_id") @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  accepted    Boolean?  // null=대기, true=수락, false=거절
+  respondedAt DateTime? @map("responded_at") @db.Timestamptz
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  match Match @relation(fields: [matchId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@unique([matchId, userId])
+  @@index([matchId])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("match_acceptances")
+}
+
+// ─────────────────────────────────────
+// Games & Results
+// ─────────────────────────────────────
+
+model Game {
+  id                   String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  matchId              String          @unique @map("match_id") @db.Uuid
+  sportType            SportType       @map("sport_type")
+  venueName            String?         @map("venue_name") @db.VarChar(255)
+  /// PostGIS GEOGRAPHY(POINT,4326)
+  venueLocation        Unsupported("geography(Point, 4326)")? @map("venue_location")
+  playedAt             DateTime?       @map("played_at") @db.Timestamptz
+  scoreData            Json            @default("{}") @map("score_data")
+  resultStatus         GameResultStatus @default(PENDING) @map("result_status")
+  winnerProfileId      String?         @map("winner_profile_id") @db.Uuid
+  requesterScore       Int?            @map("requester_score")
+  opponentScore        Int?            @map("opponent_score")
+  resultInputDeadline  DateTime?       @map("result_input_deadline") @db.Timestamptz
+  verifiedAt           DateTime?       @map("verified_at") @db.Timestamptz
+  createdAt            DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+
+  match              Match              @relation(fields: [matchId], references: [id])
+  winnerProfile      SportsProfile?     @relation(fields: [winnerProfileId], references: [id])
+  proofs             GameResultProof[]
+  confirmations      ResultConfirmation[]
+  scoreHistories     ScoreHistory[]
+
+  @@index([matchId])
+  @@index([resultStatus])
+  @@index([winnerProfileId])
+  @@map("games")
+}
+
+model GameResultProof {
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gameId      String     @map("game_id") @db.Uuid
+  uploadedBy  String     @map("uploaded_by") @db.Uuid
+  imageUrl    String     @map("image_url") @db.Text
+  imageType   ImageType? @map("image_type")
+  ocrData     Json?      @map("ocr_data")
+  isApproved  Boolean?   @map("is_approved")
+  reviewedBy  String?    @map("reviewed_by") @db.Uuid
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz
+
+  game       Game @relation(fields: [gameId], references: [id])
+  uploader   User @relation("UploadedBy", fields: [uploadedBy], references: [id])
+  reviewer   User? @relation("ReviewedBy", fields: [reviewedBy], references: [id])
+
+  @@index([gameId])
+  @@map("game_result_proofs")
+}
+
+model ResultConfirmation {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gameId      String   @map("game_id") @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  isConfirmed Boolean  @map("is_confirmed")
+  comment     String?  @db.Text
+  confirmedAt DateTime @default(now()) @map("confirmed_at") @db.Timestamptz
+
+  game Game @relation(fields: [gameId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([gameId, userId])
+  @@map("result_confirmations")
+}
+
+// ─────────────────────────────────────
+// Chat
+// ─────────────────────────────────────
+
+model ChatRoom {
+  id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  matchId       String?    @unique @map("match_id") @db.Uuid
+  roomType      RoomType   @default(MATCH) @map("room_type")
+  status        RoomStatus @default(ACTIVE)
+  lastMessageAt DateTime?  @map("last_message_at") @db.Timestamptz
+  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz
+
+  match    Match?    @relation
+  messages Message[]
+
+  @@map("chat_rooms")
+}
+
+model Message {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  chatRoomId  String      @map("chat_room_id") @db.Uuid
+  senderId    String      @map("sender_id") @db.Uuid
+  messageType MessageType @default(TEXT) @map("message_type")
+  content     String?     @db.Text
+  imageUrl    String?     @map("image_url") @db.Text
+  extraData   Json        @default("{}") @map("extra_data")
+  isDeleted   Boolean     @default(false) @map("is_deleted")
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz
+
+  chatRoom ChatRoom @relation(fields: [chatRoomId], references: [id])
+  sender   User     @relation(fields: [senderId], references: [id])
+
+  @@index([chatRoomId, createdAt(sort: Desc)])
+  @@index([senderId])
+  @@map("messages")
+}
+
+// ─────────────────────────────────────
+// Rankings
+// ─────────────────────────────────────
+
+model RankingEntry {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pinId           String    @map("pin_id") @db.Uuid
+  sportsProfileId String    @map("sports_profile_id") @db.Uuid
+  sportType       SportType @map("sport_type")
+  rank            Int
+  score           Int
+  tier            Tier
+  gamesPlayed     Int       @default(0) @map("games_played")
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  pin          Pin           @relation(fields: [pinId], references: [id])
+  sportsProfile SportsProfile @relation(fields: [sportsProfileId], references: [id])
+
+  @@unique([pinId, sportsProfileId, sportType])
+  @@index([pinId, sportType, rank])
+  @@index([sportsProfileId])
+  @@map("ranking_entries")
+}
+
+// ─────────────────────────────────────
+// Community (Posts & Comments)
+// ─────────────────────────────────────
+
+model Post {
+  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pinId        String       @map("pin_id") @db.Uuid
+  authorId     String       @map("author_id") @db.Uuid
+  title        String       @db.VarChar(100)
+  content      String       @db.Text
+  category     PostCategory @default(GENERAL)
+  viewCount    Int          @default(0) @map("view_count")
+  likeCount    Int          @default(0) @map("like_count")
+  commentCount Int          @default(0) @map("comment_count")
+  isDeleted    Boolean      @default(false) @map("is_deleted")
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz
+
+  pin      Pin        @relation(fields: [pinId], references: [id])
+  author   User       @relation(fields: [authorId], references: [id])
+  images   PostImage[]
+  comments Comment[]
+  likes    PostLike[]
+
+  @@index([pinId, createdAt(sort: Desc)])
+  @@index([authorId])
+  @@map("posts")
+}
+
+model PostImage {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  postId    String   @map("post_id") @db.Uuid
+  imageUrl  String   @map("image_url") @db.Text
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@map("post_images")
+}
+
+model PostLike {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  postId    String   @map("post_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@map("post_likes")
+}
+
+model Comment {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  postId    String   @map("post_id") @db.Uuid
+  authorId  String   @map("author_id") @db.Uuid
+  parentId  String?  @map("parent_id") @db.Uuid
+  content   String   @db.Text
+  isDeleted Boolean  @default(false) @map("is_deleted")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  post     Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author   User      @relation(fields: [authorId], references: [id])
+  parent   Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  replies  Comment[] @relation("CommentReplies")
+
+  @@index([postId, createdAt])
+  @@index([parentId])
+  @@map("comments")
+}
+
+// ─────────────────────────────────────
+// Notifications
+// ─────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  type      String   @db.VarChar(50)
+  title     String   @db.VarChar(255)
+  body      String?  @db.Text
+  data      Json     @default("{}")
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+model DeviceToken {
+  id        String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String         @map("user_id") @db.Uuid
+  token     String         @unique @db.VarChar(512)
+  platform  DevicePlatform
+  isActive  Boolean        @default(true) @map("is_active")
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+  @@map("device_tokens")
+}
+
+model NotificationSettings {
+  userId               String   @id @map("user_id") @db.Uuid
+  chatMessage          Boolean  @default(true) @map("chat_message")
+  matchFound           Boolean  @default(true) @map("match_found")
+  matchRequest         Boolean  @default(true) @map("match_request")
+  gameResult           Boolean  @default(true) @map("game_result")
+  scoreChange          Boolean  @default(true) @map("score_change")
+  communityReply       Boolean  @default(true) @map("community_reply")
+  doNotDisturbStart    DateTime? @map("do_not_disturb_start") @db.Time
+  doNotDisturbEnd      DateTime? @map("do_not_disturb_end") @db.Time
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_settings")
+}
+
+// ─────────────────────────────────────
+// Reports
+// ─────────────────────────────────────
+
+model Report {
+  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reporterId  String           @map("reporter_id") @db.Uuid
+  targetType  ReportTargetType @map("target_type")
+  targetId    String           @map("target_id") @db.Uuid
+  reason      String           @db.VarChar(50)
+  description String?          @db.Text
+  status      ReportStatus     @default(PENDING)
+  resolvedBy  String?          @map("resolved_by") @db.Uuid
+  resolvedAt  DateTime?        @map("resolved_at") @db.Timestamptz
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz
+
+  reporter   User  @relation("Reporter", fields: [reporterId], references: [id])
+  resolver   User? @relation("ResolvedBy", fields: [resolvedBy], references: [id])
+
+  @@index([targetType, targetId])
+  @@index([status, createdAt])
+  @@map("reports")
+}
+
+// ─────────────────────────────────────
+// Admin
+// ─────────────────────────────────────
+
+model AdminProfile {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @unique @map("user_id") @db.Uuid
+  role      AdminRole
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("admin_profiles")
+}
+
+// ─────────────────────────────────────
+// Teams (팀 시스템)
+// ─────────────────────────────────────
+
+model Team {
+  id              String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String     @db.VarChar(50)
+  slug            String     @unique @db.VarChar(50)
+  sportType       SportType  @map("sport_type")
+  logoUrl         String?    @map("logo_url") @db.Text
+  description     String?    @db.Text
+  homePinId       String?    @map("home_pin_id") @db.Uuid
+  homePoint       Unsupported("geography(Point, 4326)")? @map("home_point")
+  activityRegion  String?    @map("activity_region") @db.VarChar(100)
+  minMembers      Int        @default(3) @map("min_members")
+  maxMembers      Int        @default(11) @map("max_members")
+  currentMembers  Int        @default(0) @map("current_members")
+  wins            Int        @default(0)
+  losses          Int        @default(0)
+  draws           Int        @default(0)
+  teamScore       Int        @default(1000) @map("team_score")
+  isRecruiting    Boolean    @default(true) @map("is_recruiting")
+  status          TeamStatus @default(ACTIVE)
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+
+  homePin         Pin?       @relation(fields: [homePinId], references: [id])
+  members         TeamMember[]
+  matchRequests   TeamMatchRequest[]
+  homeMatches     TeamMatch[] @relation("HomeTeam")
+  awayMatches     TeamMatch[] @relation("AwayTeam")
+  wonMatches      TeamMatch[] @relation("WinnerTeam")
+  chatRoomMembers TeamChatRoomMember[]
+  posts           TeamPost[]
+
+  @@index([sportType])
+  @@index([status])
+  @@index([isRecruiting])
+  @@map("teams")
+}
+
+model TeamMember {
+  id        String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  teamId    String           @map("team_id") @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  role      TeamRole         @default(MEMBER)
+  position  String?          @db.VarChar(50)
+  joinedAt  DateTime         @default(now()) @map("joined_at") @db.Timestamptz
+  status    TeamMemberStatus @default(ACTIVE)
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([teamId, userId])
+  @@index([teamId])
+  @@index([userId])
+  @@map("team_members")
+}
+
+model TeamMatchRequest {
+  id              String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  requesterTeamId String     @map("requester_team_id") @db.Uuid
+  requestedBy     String     @map("requested_by") @db.Uuid
+  sportType       SportType  @map("sport_type")
+  desiredDate     DateTime?  @map("desired_date") @db.Date
+  desiredTimeSlot TimeSlot?  @map("desired_time_slot")
+  locationPoint   Unsupported("geography(Point, 4326)")? @map("location_point")
+  locationName    String?    @map("location_name") @db.VarChar(255)
+  radiusKm        Float      @default(20.0) @map("radius_km")
+  message         String?    @db.Text
+  status          MatchRequestStatus @default(WAITING)
+  expiresAt       DateTime   @map("expires_at") @db.Timestamptz
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz
+
+  requesterTeam   Team @relation(fields: [requesterTeamId], references: [id])
+  requestedByUser User @relation(fields: [requestedBy], references: [id])
+  teamMatch       TeamMatch?
+
+  @@index([requesterTeamId])
+  @@index([status, sportType])
+  @@map("team_match_requests")
+}
+
+model TeamMatch {
+  id                 String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  teamMatchRequestId String?    @unique @map("team_match_request_id") @db.Uuid
+  homeTeamId         String     @map("home_team_id") @db.Uuid
+  awayTeamId         String     @map("away_team_id") @db.Uuid
+  sportType          SportType  @map("sport_type")
+  scheduledDate      DateTime?  @map("scheduled_date") @db.Date
+  scheduledTime      DateTime?  @map("scheduled_time") @db.Time
+  venueName          String?    @map("venue_name") @db.VarChar(255)
+  venueLocation      Unsupported("geography(Point, 4326)")? @map("venue_location")
+  status             MatchStatus @default(CHAT)
+  chatRoomId         String?    @unique @map("chat_room_id") @db.Uuid
+  homeScore          Int?       @map("home_score")
+  awayScore          Int?       @map("away_score")
+  winnerTeamId       String?    @map("winner_team_id") @db.Uuid
+  resultStatus       GameResultStatus @default(PENDING) @map("result_status")
+  confirmedAt        DateTime?  @map("confirmed_at") @db.Timestamptz
+  completedAt        DateTime?  @map("completed_at") @db.Timestamptz
+  createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+
+  teamMatchRequest TeamMatchRequest? @relation(fields: [teamMatchRequestId], references: [id])
+  homeTeam         Team   @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeam         Team   @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  winnerTeam       Team?  @relation("WinnerTeam", fields: [winnerTeamId], references: [id])
+  chatRoom         TeamChatRoom?
+
+  @@index([homeTeamId])
+  @@index([awayTeamId])
+  @@index([status])
+  @@map("team_matches")
+}
+
+model TeamChatRoom {
+  id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  teamMatchId   String?    @unique @map("team_match_id") @db.Uuid
+  teamId        String?    @map("team_id") @db.Uuid
+  roomType      RoomType   @default(TEAM_MATCH) @map("room_type")
+  status        RoomStatus @default(ACTIVE)
+  lastMessageAt DateTime?  @map("last_message_at") @db.Timestamptz
+  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz
+
+  teamMatch TeamMatch? @relation(fields: [teamMatchId], references: [id])
+  members   TeamChatRoomMember[]
+  messages  TeamChatMessage[]
+
+  @@map("team_chat_rooms")
+}
+
+model TeamChatRoomMember {
+  id       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  roomId   String   @map("room_id") @db.Uuid
+  userId   String   @map("user_id") @db.Uuid
+  teamId   String   @map("team_id") @db.Uuid
+  joinedAt DateTime @default(now()) @map("joined_at") @db.Timestamptz
+
+  room TeamChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User         @relation(fields: [userId], references: [id])
+  team Team         @relation(fields: [teamId], references: [id])
+
+  @@unique([roomId, userId])
+  @@index([roomId])
+  @@index([userId])
+  @@map("team_chat_room_members")
+}
+
+model TeamChatMessage {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  chatRoomId  String      @map("chat_room_id") @db.Uuid
+  senderId    String      @map("sender_id") @db.Uuid
+  messageType MessageType @default(TEXT) @map("message_type")
+  content     String?     @db.Text
+  imageUrl    String?     @map("image_url") @db.Text
+  isDeleted   Boolean     @default(false) @map("is_deleted")
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz
+
+  chatRoom TeamChatRoom @relation(fields: [chatRoomId], references: [id])
+  sender   User         @relation(fields: [senderId], references: [id])
+
+  @@index([chatRoomId, createdAt(sort: Desc)])
+  @@map("team_chat_messages")
+}
+
+model TeamPost {
+  id        String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  teamId    String           @map("team_id") @db.Uuid
+  authorId  String           @map("author_id") @db.Uuid
+  category  TeamPostCategory @default(FREE)
+  title     String           @db.VarChar(100)
+  content   String           @db.Text
+  isPinned  Boolean          @default(false) @map("is_pinned")
+  viewCount Int              @default(0) @map("view_count")
+  isDeleted Boolean          @default(false) @map("is_deleted")
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+
+  team     Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  author   User             @relation(fields: [authorId], references: [id])
+  comments TeamPostComment[]
+
+  @@index([teamId, createdAt(sort: Desc)])
+  @@map("team_posts")
+}
+
+model TeamPostComment {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  postId    String   @map("post_id") @db.Uuid
+  authorId  String   @map("author_id") @db.Uuid
+  parentId  String?  @map("parent_id") @db.Uuid
+  content   String   @db.Text
+  isDeleted Boolean  @default(false) @map("is_deleted")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  post    TeamPost         @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author  User             @relation(fields: [authorId], references: [id])
+  parent  TeamPostComment? @relation("TeamCommentReplies", fields: [parentId], references: [id])
+  replies TeamPostComment[] @relation("TeamCommentReplies")
+
+  @@index([postId, createdAt])
+  @@map("team_post_comments")
+}

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- FCM 알림 색상 (앱 테마 기본 색상) -->
+    <color name="notification_color">#1A73E8</color>
+    <!-- 스플래시 배경색 (핀돌 다크네이비) -->
+    <color name="splash_bg">#0A1628</color>
+</resources>

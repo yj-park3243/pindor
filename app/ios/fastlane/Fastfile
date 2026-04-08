@@ -1,0 +1,32 @@
+default_platform(:ios)
+
+APP_DIR = File.expand_path("../..", __dir__)
+
+platform :ios do
+  desc "TestFlight 배포"
+  lane :deploy do
+    # App Store Connect API 인증
+    api_key = app_store_connect_api_key(
+      key_id: ENV["ASC_KEY_ID"],
+      issuer_id: ENV["ASC_ISSUER_ID"],
+      key_filepath: ENV["ASC_KEY_PATH"],
+    )
+
+    # Flutter 빌드 (유저 쉘 환경에서 실행)
+    sh("zsh", "-lc", "cd '#{APP_DIR}' && flutter build ipa --release --dart-define=ENVIRONMENT=production")
+
+    # IPA 파일 찾기
+    ipa_path = Dir[File.join(APP_DIR, "build/ios/ipa/*.ipa")].first
+    UI.user_error!("IPA 파일을 찾을 수 없습니다") unless ipa_path
+
+    # TestFlight 업로드
+    upload_to_testflight(
+      api_key: api_key,
+      ipa: ipa_path,
+      skip_waiting_for_build_processing: true,
+      uses_non_exempt_encryption: false,
+    )
+
+    UI.success("TestFlight 업로드 완료!")
+  end
+end

@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>서비스 이용약관 — 핀돌</title>
+  <meta name="description" content="핀돌 서비스 이용약관입니다." />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --blue: #1A73E8;
+      --blue-dark: #1558b0;
+      --blue-light: #4a9ef5;
+      --green: #34A853;
+      --green-light: #5cbf78;
+      --dark: #0d1117;
+      --dark2: #161b22;
+      --dark3: #21262d;
+      --surface: #f8fafc;
+      --surface2: #eef2f7;
+      --text: #1a1a2e;
+      --text-muted: #6b7280;
+      --text-light: #9ca3af;
+      --white: #ffffff;
+      --radius: 16px;
+      --radius-sm: 8px;
+      --shadow: 0 4px 24px rgba(0,0,0,0.12);
+      --shadow-lg: 0 16px 64px rgba(0,0,0,0.2);
+      --transition: all 0.35s cubic-bezier(0.4,0,0.2,1);
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo',
+                   'Noto Sans KR', sans-serif;
+      background: var(--dark);
+      color: var(--white);
+      overflow-x: hidden;
+    }
+    a { text-decoration: none; color: inherit; }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--dark); }
+    ::-webkit-scrollbar-thumb { background: var(--blue); border-radius: 3px; }
+
+    /* NAVBAR */
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      padding: 0 clamp(16px, 4vw, 64px);
+      height: 64px;
+      display: flex; align-items: center; justify-content: space-between;
+      background: rgba(13, 17, 23, 0.92);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .nav-brand {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 22px; font-weight: 800; letter-spacing: -0.5px;
+    }
+    .nav-logo {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--blue), var(--blue-light), var(--green));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; font-weight: 900; color: white;
+      box-shadow: 0 0 16px rgba(26,115,232,0.5);
+    }
+    .nav-home {
+      font-size: 14px; font-weight: 500; color: rgba(255,255,255,0.6);
+      padding: 8px 20px;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 24px;
+      transition: var(--transition);
+    }
+    .nav-home:hover {
+      color: white;
+      border-color: rgba(255,255,255,0.3);
+      background: rgba(255,255,255,0.06);
+    }
+
+    /* TOC */
+    .toc {
+      background: var(--dark2);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius);
+      padding: 24px 28px;
+      margin-bottom: 48px;
+    }
+    .toc-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--blue-light);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+    .toc-list {
+      list-style: none;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 6px;
+    }
+    .toc-list li a {
+      font-size: 13px;
+      color: rgba(255,255,255,0.5);
+      transition: color 0.2s;
+      display: block;
+      padding: 3px 0;
+    }
+    .toc-list li a:hover {
+      color: rgba(255,255,255,0.85);
+    }
+
+    /* CONTENT */
+    .page-wrap {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 108px 24px 80px;
+    }
+    .page-header {
+      margin-bottom: 48px;
+      padding-bottom: 32px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .page-tag {
+      display: inline-block; padding: 5px 14px;
+      background: rgba(26,115,232,0.15); border: 1px solid rgba(26,115,232,0.3);
+      border-radius: 20px; font-size: 11px; font-weight: 600;
+      color: var(--blue-light); letter-spacing: 1.5px; text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    .page-title {
+      font-size: clamp(26px, 4vw, 40px);
+      font-weight: 800;
+      letter-spacing: -1px;
+      line-height: 1.2;
+      color: white;
+    }
+    .page-meta {
+      margin-top: 12px;
+      font-size: 13px;
+      color: rgba(255,255,255,0.35);
+      line-height: 1.8;
+    }
+
+    /* SECTIONS */
+    .section {
+      margin-bottom: 52px;
+      scroll-margin-top: 80px;
+    }
+    .section-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: white;
+      margin-bottom: 16px;
+      padding-left: 14px;
+      border-left: 3px solid var(--blue);
+      line-height: 1.4;
+    }
+    .section-body {
+      font-size: 15px;
+      color: rgba(255,255,255,0.72);
+      line-height: 1.9;
+    }
+    .section-body p {
+      margin-bottom: 12px;
+    }
+    .section-body p:last-child {
+      margin-bottom: 0;
+    }
+    .section-body ul, .section-body ol {
+      padding-left: 22px;
+      margin: 10px 0 12px;
+    }
+    .section-body ul li, .section-body ol li {
+      margin-bottom: 8px;
+      line-height: 1.7;
+    }
+    .section-body ul li::marker { color: var(--blue-light); }
+    .section-body ol li::marker { color: var(--blue-light); font-weight: 600; }
+    .section-body strong {
+      color: rgba(255,255,255,0.9);
+      font-weight: 600;
+    }
+
+    /* SUB SECTIONS */
+    .sub-section {
+      margin-top: 20px;
+      padding: 16px 20px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: var(--radius-sm);
+    }
+    .sub-section-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.8);
+      margin-bottom: 10px;
+    }
+
+    /* NOTICE BOX */
+    .notice-box {
+      background: rgba(26,115,232,0.08);
+      border: 1px solid rgba(26,115,232,0.2);
+      border-radius: var(--radius-sm);
+      padding: 14px 18px;
+      margin: 12px 0;
+      font-size: 14px;
+      color: rgba(255,255,255,0.65);
+      line-height: 1.7;
+    }
+
+    /* DIVIDER */
+    .section-divider {
+      border: none;
+      border-top: 1px solid rgba(255,255,255,0.05);
+      margin-bottom: 52px;
+    }
+
+    /* FOOTER */
+    footer {
+      background: #080c10;
+      padding: 40px clamp(16px, 5vw, 100px);
+      border-top: 1px solid rgba(255,255,255,0.05);
+    }
+    .footer-inner {
+      max-width: 1100px; margin: 0 auto;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 20px;
+    }
+    .footer-brand { display: flex; align-items: center; gap: 10px; }
+    .footer-brand-text { font-size: 18px; font-weight: 800; color: rgba(255,255,255,0.6); }
+    .footer-links { display: flex; gap: 24px; flex-wrap: wrap; }
+    .footer-links a {
+      font-size: 13px; color: rgba(255,255,255,0.4);
+      transition: color 0.2s;
+    }
+    .footer-links a:hover { color: rgba(255,255,255,0.7); }
+    .footer-copy { font-size: 12px; color: rgba(255,255,255,0.25); }
+
+    @media (max-width: 768px) {
+      .page-wrap { padding: 88px 16px 60px; }
+      .toc-list { grid-template-columns: 1fr; }
+      .footer-inner { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAVBAR -->
+  <nav class="navbar">
+    <a href="index.html" class="nav-brand">
+      <div class="nav-logo">P</div>
+      핀돌
+    </a>
+    <a href="index.html" class="nav-home">홈으로</a>
+  </nav>
+
+  <!-- CONTENT -->
+  <main class="page-wrap">
+
+    <div class="page-header">
+      <div class="page-tag">Legal</div>
+      <h1 class="page-title">서비스 이용약관</h1>
+      <div class="page-meta">
+        시행일: 2026년 4월 1일<br>
+        서비스명: 핀돌 &nbsp;|&nbsp; 운영: [운영자명] &nbsp;|&nbsp; 문의: support@pins.kr
+      </div>
+    </div>
+
+    <!-- 목차 -->
+    <div class="toc">
+      <div class="toc-title">목차</div>
+      <ul class="toc-list">
+        <li><a href="#article1">제1조 목적</a></li>
+        <li><a href="#article2">제2조 정의</a></li>
+        <li><a href="#article3">제3조 약관의 효력 및 변경</a></li>
+        <li><a href="#article4">제4조 서비스 이용 계약</a></li>
+        <li><a href="#article5">제5조 회원 정보</a></li>
+        <li><a href="#article6">제6조 서비스 내용</a></li>
+        <li><a href="#article7">제7조 서비스 이용 제한</a></li>
+        <li><a href="#article8">제8조 게시물 관리</a></li>
+        <li><a href="#article9">제9조 매칭 및 게임 결과</a></li>
+        <li><a href="#article10">제10조 점수 및 랭킹</a></li>
+        <li><a href="#article11">제11조 팀 운영 규칙</a></li>
+        <li><a href="#article12">제12조 개인정보 보호</a></li>
+        <li><a href="#article13">제13조 면책 조항</a></li>
+        <li><a href="#article14">제14조 분쟁 해결</a></li>
+        <li><a href="#article15">제15조 기타</a></li>
+      </ul>
+    </div>
+
+    <!-- 제1조 -->
+    <div class="section" id="article1">
+      <h2 class="section-title">제1조 목적</h2>
+      <div class="section-body">
+        <p>본 약관은 핀돌(이하 "회사")가 제공하는 위치 기반 스포츠 매칭 서비스 "핀돌"(이하 "서비스")의 이용 조건 및 절차, 회사와 이용자 간의 권리·의무 및 책임 사항, 기타 필요한 사항을 규정함을 목적으로 합니다.</p>
+      </div>
+    </div>
+    <hr class="section-divider">
+
+    <!-- 제2조 -->
+    <div class="section" id="article2">
+      <h2 class="section-title">제2조 정의</h2>
+      <div class="section-body">
+        <p>본 약관에서 사용하는 용어의 정의는 다음과 같습니다.</p>
+        <ol>
+          <li><strong>"서비스"</strong>란 회사가 제공하는 위치 기반 스포츠 매칭 플랫폼 핀돌 및 관련 제반 서비스를 말합니다.</li>
+          <li><strong>"회원"</strong>이란 본 약관에 동의하고 서비스에 가입하여 서비스를 이용하는 자를 말합니다.</li>
+          <li><strong>"핀(PIN)"</strong>이란 회원이 특정 위치에 생성하는 스포츠 매칭 요청 또는 커뮤니티 활동 단위를 말합니다.</li>
+          <li><strong>"매칭"</strong>이란 핀을 통해 스포츠 대결 상대 또는 파트너를 찾고, 실제 경기 또는 활동을 진행하는 과정을 말합니다.</li>
+          <li><strong>"팀"</strong>이란 회원들이 공동의 스포츠 목적을 위해 결성한 그룹을 말합니다.</li>
+          <li><strong>"랭킹"</strong>이란 매칭 결과에 기반하여 산정되는 회원 또는 팀의 실력 지표를 말합니다.</li>
+          <li><strong>"채팅"</strong>이란 서비스 내에서 회원 간 실시간으로 메시지를 주고받는 기능을 말합니다.</li>
+          <li><strong>"게시물"</strong>이란 회원이 서비스 내에 작성·등록한 텍스트, 이미지, 영상 등 일체의 콘텐츠를 말합니다.</li>
+        </ol>
+      </div>
+    </div>
+    <hr class="section-divider">
+
+    <!-- 제3조 -->
+    <div class="section" id="article3">
+      <h2 class="section-title">제3조 약관의 효력 및 변경</h2>
+      <div class="section-body">
+        <ol>
+          <li>본 약관은 서비스 화면에 게시하거나 기타 방법으로 공지함으로써 효력이 발생합니다.</li>
+          <li>회사는 합리적인 사유가 있는 경우 관련 법령에 위배되지 않는 범위 내에서 본 약관을 개정할 수 있습니다.</li>
+          <li>약관을 개정하는 경우, 시행일 7일 전부터 앱 내 공지 또는 이메일을 통해 개정 내용을 고지합니다. 다만, 이용자에게 불리한 변경의 경우 시행일 30일 전부터 고지합니다.</li>
+          <li>회원이 변경된 약관에 동의하지 않는 경우 서비스 이용을 중단하고 탈퇴할 수 있습니다. 변경된 약관의 시행일 이후에도 서비스를 계속 이용하는 경우 변경 약관에 동의한 것으로 간주합니다.</li>
+        </ol>
+      </div>
+    </div>
+    <hr class="section-divider">
+
+    <!-- 제4조 -->
+    <div class="section" id="article4">
+      <h2 class="section-title">제4조 서비스 이용 계약</h2>
+      <div class="section-body">
+        <ol>
+          <li>서비스 이용 계약은 이용자가 본 약관에 동의하고 회원 가입을 완료함으로써 성립합니다.</li>
+          <li>회원 가입은 이메일 또는 카카오·구글·애플 소셜 계정을 통해 진행할 수 있습니다.</li>
+          <li>다음에 해당하는 경우 가입 신청을 거부하거나 사후에 이용 계약을 해지할 수 있습니다.
+            <ul>
+              <li>만 14세 미만인 경우</li>
+              <li>이전에 약관 위반으로 이용 정지 또는 강제 탈퇴된 경우</li>
+              <li>허위 정보를 제공하거나 타인 명의를 도용한 경우</li>
+              <li>기타 관련 법령에 위배되는 경우</li>
+            </ul>
+          </li>
+          <li>1인 1계정 원칙을 적용합니다. 중복 계정 운영이 확인되는 경우 계정이 정지될 수 있습니다.</li>
+        </ol>
+      </div>
+    </div>
+    <hr class="section-divider">
+
+    <!-- 제5조 -->
+    <div class="section" id="article5">
+      <h2 class="section-title">제5조 회원 정보</h2>
+      <div class="section-body">
+        <ol>
+          <li>회원은 서비스 내 설정을 통해 닉네임, 프로필 사진 등 회원 정보를 수정할 수 있습니다.</li>
+          <li>닉네임은 타인에게 혼동을 주거나 욕설·비하 표현을 포함하는 경우 사용이 제한될 수 있습니다.</li>
+          <li>회원은 본인의 계정 정보(로그인 자격 증명 등)를 안전하게 관리할 의무가 있으며, 타인에게 양도하거나 대여하여서는 안 됩니다.</li>
+          <li>계정이 도용된 사실을 인지한 경우 즉시 회사에 신고하여야 하며, 신고 전 발생한 불이익에 대해 회사는 책임을 지지 않습니다.</li>
+          <li>회원 탈퇴는 앱 내 설정 메뉴를 통해 언제든지 신청할 수 있습니다.</li>
+        </ol>
+      </div>
+    </div>
+    <hr class="section-divider">
+
+    <!-- 제6조 -->
+    <div class="section" id="article6">
+      <h2 class="section-title">제6조 서비스 내용</h2>
+      <div class="section-body">
+        <p>핀돌는 다음과 같은 주요 서비스를 제공합니다.</p>
+
+        <div class="sub-section">
+          <div class="sub-section-title">1. 위치 기반 스포츠 매칭</div>
+          <p>GPS를 기반으로 근처 스포츠 매칭 상대 또는 파트너를 탐색하고, 1:1 또는 팀 단위 매칭을 진행할 수 있습니다. 지원 종목: 축구, 농구, 테니스, 배드민턴, 탁구, 볼링, 당구, 러닝, 수영 등.</p>
+        </div>
+
+        <div class="sub-section">
+          <div class="sub-section-title">2. 핀(PIN) 커뮤니티</div>
+          <p>특정 위치에 핀을 생성하여 매칭 요청을 게시하거나, 다른 회원의 핀에 참여할 수 있습니다. 핀을 통해 지역 스포츠 커뮤니티를 형성할 수 있습니다.</p>
+        </div>
+
+        <div class="sub-section">
+          <div class="sub-section-title">3. 팀 기능</div>
+          <p>팀을 생성하여 팀원을 모집하고, 팀 단위 매칭 및 대전을 진행할 수 있습니다. 팀 전적 및 랭킹이 별도로 관리됩니다.</p>
+        </div>
+
+        <div class="sub-section">
+          <div class="sub-section-title">4. 실시간 채팅</div>
+          <p>매칭된 상대 또는 팀원과 실시간으로 채팅을 나눌 수 있습니다. 채팅 내용은 서비스 운영 정책에 따라 모니터링될 수 있습니다.</p>
+        </div>
+
+        <div class="sub-section">
+          <div class="sub-section-title">5. 랭킹 시스템</div>
+          <p>ELO 기반 알고리즘으로 매칭 결과에 따라 점수가 산정되며, 개인 및 팀 랭킹이 관리됩니다. 랭킹은 티어(브론즈~챌린저)로 구분됩니다.</p>
+        </div>
+
+        <p style="margin-top: 16px;">서비스의 내용은 회사의 정책에 따라 변경될 수 있으며, 변경 시 사전 공지합니다.</p>
+      </div>
+    </div>
+    <hr class="section-divider">
+
+    <!-- 제7조 -->
+    <div class="section" id="article7">
+      <h2 class="section-title">제7조 서비스 이용 제한</h2>
+      <div class="section-body">
+        <p>다음 행위는 엄격히 금지되며, 위반 시 경고, 이용 정지, 영구 정지 등의 제재를 받을 수 있습니다.</p>
+        <ol>
+          <li><strong>비매너 행위:</strong> 욕설, 폭언, 인신공격, 혐오 발언, 성희롱 등 타인에게 불쾌감을 주는 행위</li>
+          <li><strong>노쇼(No-Show):</strong> 매칭 확정 후 정당한 이유 없이 무단으로 불참하는 행위. 반복 시 매칭 기능 이용 제한 및 랭킹 점수 감점</li>
+          <li><strong>랭크 조작:</strong> 허위 경기 결과 입력, 승패 담합, 다중 계정 활용 등 랭킹 시스템을 부정하게 이용하는 행위</li>
+          <li><strong>불법 행위:</strong> 타인의 개인정보 수집·유포, 저작권 침해, 사기, 스팸 등 법령을 위반하는 행위</li>
+          <li><strong>서비스 방해:</strong> 서버에 과부하를 주거나 비정상적인 방법으로 서비스를 이용하는 행위</li>
+          <li><strong>광고·영리 행위:</strong> 회사의 사전 동의 없이 서비스 내에서 영리 목적의 광고 또는 홍보 활동</li>
+          <li><strong>부적절한 콘텐츠:</strong> 음란물, 불법 정보, 개인정보가 포함된 게시물 등록</li>
+        </ol>
+
+        <div class="notice-box">
+          이용 제한 처분에 이의가 있는 경우, 처분 통보를 받은 날로부터 7일 이내에 support@pins.kr을 통해 이의를 제기할 수 있습니다.
+        </div>
+      </div>
+    </div>
+    <hr class="section-divider">
+
+    <!-- 제8조 -->
+    <div class="section" id="article8">
+      <h2 class="section-title">제8조 게시물 관리</h2>
+      <div class="section-body">
+        <ol>
+          <li>회원이 서비스 내에 게시한 게시물의 저작권은 해당 회원에게 귀속됩니다.</li>
+          <li>회원은 서비스 내 게시물 등록 시, 회사가 서비스 홍보 및 운영 목적으로 해당 게시물을 사용할 수 있도록 비독점적 라이선스를 회사에 부여하는 것에 동의합니다.</li>
+          <li>회사는 다음에 해당하는 게시물을 사전 통보 없이 삭제하거나 비공개 처리할 수 있습니다.
+            <ul>
+              <li>타인의 명예를 훼손하거나 사생활을 침해하는 내용</li>
+              <li>음란하거나 청소년에게 유해한 내용</li>
+              <li>불법 정보 또는 범죄 관련 내용</li>
+              <li>제7조에 해당하는 금지 행위를 포함한 내용</li>
+              <li>기타 관련 법령 또는 본 약관을 위반하는 내용</li>
+            </ul>
+          </li>
+          <li>회원 탈퇴 시, 해당 회원의 게시물은 삭제되지 않을 수 있으며, 닉네임은 "(탈퇴한 회원)"으로 표시될 수 있습니다.</li>
+        </ol>
+      </div>
+    </div>
+    <hr class="section-divider">
+
+    <!-- 제9조 -->
+    <div class="section" id="article9">
+      <h2 class="section-title">제9조 매칭 및 게임 결과</h2>
+      <div class="section-body">
+        <ol>
+          <li>매칭은 양 당사자의 합의에 의해 성립되며, 매칭 확정 후에는 양측이 성실히 임할 의무가 있습니다.</li>
+          <li>게임 결과는 매칭 참여자 양측이 앱 내에서 확인·입력하는 방식으로 기록됩니다.</li>
+          <li>게임 결과 입력 시 양측의 입력이 불일치하는 경우, 회사가 정한 절차에 따라 처리됩니다.</li>
+          <li>허위 결과를 입력한 경우 제7조에 따른 제재를 받을 수 있습니다.</li>
+          <li>매칭 상대방이 노쇼 또는 결과 입력 거부 시, 해당 상대방은 불이익을 받을 수 있으며 이의 신청(support@pins.kr)을 통해 도움을 요청할 수 있습니다.</li>
+        </ol>
+      </div>
+    </div>
+    <hr class="section-divider">
+
+    <!-- 제10조 -->
+    <div class="section" id="article10">
+      <h2 class="section-title">제10조 점수 및 랭킹</h2>
+      <div class="section-body">
+        <ol>
+          <li>점수는 ELO 알고리즘을 기반으로 매칭 결과에 따라 증감됩니다. 상대방의 랭킹 차이에 따라 획득·차감 점수가 달라질 수 있습니다.</li>
+          <li>노쇼(무단 불참) 확인 시, 해당 회원의 점수가 감점됩니다.</li>
+          <li>랭크 조작 행위 확인 시, 점수를 초기화하거나 이용을 정지할 수 있습니다.</li>
+          <li>티어는 점수 구간에 따라 브론즈, 실버, 골드, 플래티넘, 다이아몬드, 마스터, 챌린저로 구분되며, 각 티어의 점수 기준은 서비스 내에서 확인할 수 있습니다.</li>
+          <li>시즌제를 운영할 경우, 시즌 종료 시 점수가 부분 초기화(소프트 리셋)될 수 있으며, 이는 사전에 공지합니다.</li>
+          <li>회사의 기술적 오류로 인해 점수가 잘못 산정된 경우, 회사는 이를 정정할 수 있습니다.</li>
+        </ol>
+      </div>
+    </div>
+    <hr class="section-divider">
+
+    <!-- 제11조 -->
+    <div class="section" id="article11">
+      <h2 class="section-title">제11조 팀 운영 규칙</h2>
+      <div class="section-body">
+        <ol>
+          <li>팀은 회원이라면 누구나 생성할 수 있으며, 팀을 생성한 회원은 자동으로 팀장이 됩니다.</li>
+          <li>팀장은 팀원 초대, 팀원 강퇴, 팀 정보 수정, 팀 해산 등의 권한을 갖습니다.</li>
+          <li>팀원이 서비스 이용 약관을 위반하는 경우, 팀장은 해당 팀원을 강퇴할 수 있습니다.</li>
+          <li>팀 해산 시 팀의 전적 및 랭킹 기록은 삭제됩니다.</li>
+          <li>팀 내에서도 제7조의 금지 행위가 적용되며, 팀 전체가 조직적으로 금지 행위를 행한 경우 팀 자체가 제재를 받을 수 있습니다.</li>
+          <li>팀장이 장기간 활동이 없는 경우, 활동 기간이 가장 긴 팀원에게 팀장 권한이 자동 이전될 수 있습니다.</li>
+        </ol>
+      </div>
+    </div>
+    <hr class="section-divider">
+
+    <!-- 제12조 -->
+    <div class="section" id="article12">
+      <h2 class="section-title">제12조 개인정보 보호</h2>
+      <div class="section-body">
+        <p>회사는 이용자의 개인정보를 보호하기 위하여 개인정보 보호법 등 관련 법령을 준수합니다. 개인정보의 수집, 이용, 보관, 파기 등에 관한 자세한 내용은 별도의 <a href="privacy.html" style="color: var(--blue-light);">개인정보처리방침</a>에 따릅니다.</p>
+      </div>
+    </div>
+    <hr class="section-divider">
+
+    <!-- 제13조 -->
+    <div class="section" id="article13">
+      <h2 class="section-title">제13조 면책 조항</h2>
+      <div class="section-body">
+        <ol>
+          <li>회사는 천재지변, 전쟁, 정전, 서비스 설비의 장애 또는 서비스 이용의 폭주 등으로 인하여 서비스를 일시적으로 중단하는 경우 이에 대한 책임이 면제됩니다.</li>
+          <li>회사는 회원의 귀책 사유로 인한 서비스 이용 장애 및 손해에 대해 책임을 지지 않습니다.</li>
+          <li>회사는 서비스를 통한 매칭으로 발생하는 오프라인 실제 경기·활동 중 발생하는 신체적 부상, 재산 손해 등에 대해 책임을 지지 않습니다. 이용자는 스포츠 활동 시 본인의 건강 상태를 확인하고 자기 책임 하에 참여하여야 합니다.</li>
+          <li>회사는 회원이 서비스 내에서 게시한 정보, 의견, 자료 등의 정확성에 대해 보증하지 않습니다.</li>
+          <li>회사는 회원 간 분쟁에 대해 개입할 의무가 없으며, 분쟁으로 인한 손해를 배상할 책임이 없습니다.</li>
+        </ol>
+      </div>
+    </div>
+    <hr class="section-divider">
+
+    <!-- 제14조 -->
+    <div class="section" id="article14">
+      <h2 class="section-title">제14조 분쟁 해결</h2>
+      <div class="section-body">
+        <ol>
+          <li>서비스 이용과 관련하여 분쟁이 발생한 경우, 회사와 이용자는 원만한 해결을 위해 성실히 협의합니다.</li>
+          <li>협의가 이루어지지 않는 경우, 개인정보 분쟁조정위원회 또는 법원에 분쟁 해결을 신청할 수 있습니다.</li>
+          <li>서비스 이용과 관련하여 소송이 제기되는 경우, 관할 법원은 민사소송법에 따른 법원으로 합니다.</li>
+          <li>본 약관과 관련된 모든 사항은 대한민국 법률을 준거법으로 합니다.</li>
+        </ol>
+      </div>
+    </div>
+    <hr class="section-divider">
+
+    <!-- 제15조 -->
+    <div class="section" id="article15">
+      <h2 class="section-title">제15조 기타</h2>
+      <div class="section-body">
+        <ol>
+          <li>본 약관에서 정하지 아니한 사항과 본 약관의 해석에 관하여는 대한민국의 관련 법령 및 관습에 따릅니다.</li>
+          <li>회사가 제공하는 개별 서비스에 대한 별도의 이용 약관 또는 정책이 있는 경우, 해당 약관 및 정책이 본 약관에 우선하여 적용됩니다.</li>
+          <li>본 약관의 일부 조항이 관련 법령에 의하여 무효화되더라도, 나머지 조항의 효력에는 영향을 미치지 않습니다.</li>
+          <li>서비스에 관한 문의는 support@pins.kr 또는 앱 내 고객 지원 메뉴를 통해 할 수 있습니다.</li>
+        </ol>
+
+        <div class="notice-box" style="margin-top: 20px;">
+          본 약관은 2026년 4월 1일부터 시행됩니다.
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="nav-logo">P</div>
+        <span class="footer-brand-text">핀돌</span>
+      </div>
+      <div class="footer-links">
+        <a href="terms.html">이용약관</a>
+        <a href="privacy.html">개인정보처리방침</a>
+        <a href="support.html">고객지원</a>
+      </div>
+      <div class="footer-copy">© 2026 핀돌. All rights reserved.</div>
+    </div>
+  </footer>
+
+</body>
+</html>

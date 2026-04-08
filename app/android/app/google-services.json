@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "391322938059",
+    "project_id": "pins-488a8",
+    "storage_bucket": "pins-488a8.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:391322938059:android:aba8a85507c3e820f4494e",
+        "android_client_info": {
+          "package_name": "kr.pins.spots"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "391322938059-9dvosholo0nf9au1f74o6s6lcmrlekju.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "kr.pins.spots",
+            "certificate_hash": "cb47dd413a8642dc3455e9b0658aa5884392ec8a"
+          }
+        },
+        {
+          "client_id": "391322938059-j3gi1bn14sn1n27bl0b0div8nu2mp0ks.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAfZRLwpdvOFx_EhIefvt2T3TX05ZC8X2w"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "391322938059-j3gi1bn14sn1n27bl0b0div8nu2mp0ks.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "391322938059-h5n7uclqj4b04taqst68bga15e2gt7dh.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "kr.pins"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,70 @@
+# ─── OS ───
+.DS_Store
+Thumbs.db
+
+# ─── Claude Code ───
+.claude/
+
+# ─── IDE ───
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# ─── Secrets / Keys ───
+*.pem
+*.p8
+*.p12
+*.jks
+*.keystore
+.env
+.env.*
+!.env.example
+etc/
+
+# ─── Node.js (server / admin / landing) ───
+node_modules/
+dist/
+*.log
+
+# ─── Flutter / Dart (app) ───
+app/.dart_tool/
+app/.flutter-plugins-dependencies
+app/.pub-cache/
+app/.pub/
+app/build/
+app/coverage/
+app/**/doc/api/
+app/**/ios/Flutter/.last_build_id
+app/app.*.symbols
+app/app.*.map.json
+app/android/app/debug
+app/android/app/profile
+app/android/app/release
+app/ios/Pods/
+app/ios/.symlinks/
+app/ios/Flutter/Flutter.framework
+app/ios/Flutter/Flutter.podspec
+app/android/.gradle/
+app/android/local.properties
+
+# ─── Admin (React/Vite) ───
+admin/node_modules/
+admin/dist/
+
+# ─── Landing ───
+landing/node_modules/
+landing/dist/
+
+# ─── E2E tests ───
+e2e-tests/node_modules/
+e2e-tests/test-results/
+e2e-tests/playwright-report/
+
+# ─── Test client ───
+test-client/node_modules/
+
+# ─── Temp / build artifacts ───
+temp/
+*.tgz

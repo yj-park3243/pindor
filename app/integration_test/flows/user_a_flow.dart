@@ -1,0 +1,445 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:integration_test/integration_test.dart';
+
+import '../helpers/api_helper.dart';
+import '../helpers/test_config.dart';
+
+/// User A 플로우 — 실제 UI 조작 + 매 단계 스크린샷
+///
+/// 흐름:
+///   1. 앱 시작 → 현재 화면 파악 (로그인 or 홈)
+///   2. 로그인 화면이면 → 이메일로 회원가입 진행
+///   3. 온보딩: 프로필 설정 → 스포츠 프로필 → 위치 설정 → 핀 설정
+///   4. 홈 화면 확인
+///   5. API로 매칭 요청 생성 (핀 선택이 UI로 어려우므로 API 활용)
+///   6. 매칭 성사 대기 → 수락
+///   7. 경기 확정 → 결과 입력
+///   8. 계정 정리
+Future<void> runUserAFlow(
+  WidgetTester tester,
+  IntegrationTestWidgetsFlutterBinding binding,
+  ApiHelper api,
+) async {
+  debugPrint('[UserA] ===== User A 플로우 시작 =====');
+
+  // 스크린샷 헬퍼 — 이름은 영문/숫자/언더스코어만 사용
+  Future<void> screenshot(String name) async {
+    try {
+      await binding.takeScreenshot('userA_$name');
+      debugPrint('[UserA] Screenshot: userA_$name');
+    } catch (e) {
+      debugPrint('[UserA] Screenshot 실패 ($name): $e');
+    }
+  }
+
+  await screenshot('01_app_start');
+
+  // ── 1. 현재 화면 파악 ──────────────────────────────────────────
+  // SecureStorage에 토큰이 있으면 홈으로 바로 진입할 수 있음
+  // 로그인 화면 여부: '이메일로 시작하기' 버튼 존재 확인
+  final isLoginScreen = find.text('이메일로 시작하기').evaluate().isNotEmpty;
+
+  String tokenA;
+  final ts = DateTime.now().millisecondsSinceEpoch;
+
+  if (isLoginScreen) {
+    debugPrint('[UserA] 로그인 화면 감지 → 회원가입 진행');
+
+    // ── 2. 이메일로 시작하기 탭 ────────────────────────────────
+    await tester.tap(find.text('이메일로 시작하기'));
+    await tester.pumpAndSettle(const Duration(seconds: 2));
+    await screenshot('02_email_auth_sheet');
+
+    // ── 3. 회원가입 모드로 전환 ────────────────────────────────
+    // 바텀시트가 로그인 모드로 시작 → '회원가입' 링크 텍스트 탭
+    final signupLink = find.text('회원가입');
+    if (signupLink.evaluate().isNotEmpty) {
+      await tester.tap(signupLink.last);
+      await tester.pumpAndSettle();
+      await screenshot('03_signup_mode');
+    }
+
+    // ── 4. 닉네임 입력 (회원가입 모드에서 첫 번째 필드) ────────
+    final emailA = 'test_a_$ts@spots.test';
+    final nicknameA = 'E2E유저A$ts';
+
+    // 닉네임 필드 (회원가입 모드: 닉네임→이메일→비밀번호 순서)
+    final textFields = find.byType(TextFormField);
+    expect(textFields, findsWidgets, reason: '텍스트 필드가 존재해야 합니다');
+
+    final fieldCount = textFields.evaluate().length;
+    debugPrint('[UserA] TextFormField 개수: $fieldCount');
+
+    if (fieldCount >= 3) {
+      // 회원가입 모드: 닉네임(0) → 이메일(1) → 비밀번호(2)
+      await tester.enterText(textFields.at(0), nicknameA);
+      await tester.pump();
+      await tester.enterText(textFields.at(1), emailA);
+      await tester.pump();
+      await tester.enterText(textFields.at(2), TestConfig.userAPassword);
+      await tester.pump();
+    } else if (fieldCount >= 2) {
+      // 혹시 닉네임 없이 이메일(0) → 비밀번호(1)만 있는 경우
+      await tester.enterText(textFields.at(0), emailA);
+      await tester.pump();
+      await tester.enterText(textFields.at(1), TestConfig.userAPassword);
+      await tester.pump();
+    }
+
+    await screenshot('04_signup_filled');
+
+    // ── 5. 회원가입 버튼 탭 ────────────────────────────────────
+    // 제출 버튼은 ElevatedButton (텍스트: '회원가입' 또는 '로그인')
+    final submitBtn = find.text('회원가입');
+    if (submitBtn.evaluate().isNotEmpty) {
+      await tester.tap(submitBtn.first);
+    } else {
+      await tester.tap(find.text('로그인'));
+    }
+    await tester.pumpAndSettle(const Duration(seconds: 8));
+    await screenshot('05_after_signup');
+
+    // API로 토큰 획득 (UI 가입이 성공했다면 로그인으로 토큰 얻기)
+    try {
+      tokenA = await api.login(emailA, TestConfig.userAPassword);
+      debugPrint('[UserA] UI 회원가입 성공 → 로그인 토큰 획득');
+    } catch (_) {
+      // UI 가입 실패 시 API 직접 가입
+      debugPrint('[UserA] UI 가입 결과 불명확 → API 회원가입 fallback');
+      final fallbackEmail = 'test_a_fb_$ts@spots.test';
+      tokenA = await api.register(fallbackEmail, TestConfig.userAPassword);
+    }
+  } else {
+    // 홈으로 바로 진입한 경우 → API로 별도 계정 생성
+    debugPrint('[UserA] 홈 화면 감지 → API로 별도 테스트 계정 생성');
+    await screenshot('02_home_already_logged_in');
+
+    final emailA = 'test_a_$ts@spots.test';
+    tokenA = await api.register(emailA, TestConfig.userAPassword);
+    debugPrint('[UserA] API 계정 생성: $emailA');
+  }
+
+  // ── 6. 온보딩 화면 처리 ────────────────────────────────────────
+  // 프로필 설정 화면 감지
+  await _handleOnboarding(tester, screenshot, ts);
+
+  // ── 7. 홈 화면 확인 ─────────────────────────────────────────────
+  await tester.pumpAndSettle(const Duration(seconds: 3));
+  await screenshot('10_home_screen');
+  debugPrint('[UserA] 홈 화면 도달');
+
+  // ── 8. API로 스포츠 프로필 + 위치 설정 (UI 설정이 완료됐을 수도 있으므로 try) ──
+  try {
+    await api.createSportsProfile(
+      tokenA,
+      sportType: TestConfig.testSportType,
+      displayName: TestConfig.userADisplayName,
+      gHandicap: 30.0, // 초기 점수 ~950 (1200 범위 내)
+    );
+    debugPrint('[UserA] 스포츠 프로필 생성 완료');
+  } catch (e) {
+    debugPrint('[UserA] 스포츠 프로필 생성 스킵 (이미 존재): $e');
+  }
+
+  try {
+    await api.setLocation(
+      tokenA,
+      latitude: TestConfig.testLatitude,
+      longitude: TestConfig.testLongitude,
+      address: TestConfig.testAddress,
+    );
+    debugPrint('[UserA] 위치 설정 완료');
+  } catch (e) {
+    debugPrint('[UserA] 위치 설정 스킵: $e');
+  }
+
+  // ── 9. 핀 목록 조회 → 첫 번째 핀 선택 ──────────────────────────
+  debugPrint('[UserA] 핀 목록 조회');
+  final pins = await api.getAllPins(tokenA);
+  if (pins.isEmpty) {
+    throw Exception('[UserA] 핀이 없습니다. 서버에 핀 데이터를 먼저 추가해주세요.');
+  }
+  final pinId = pins.first['id'] as String;
+  debugPrint('[UserA] 핀 선택: $pinId (${pins.first['name']})');
+
+  // ── 10. 매칭 요청 생성 (API) ────────────────────────────────────
+  debugPrint('[UserA] 매칭 요청 생성');
+  final matchRequest = await api.createMatchRequest(
+    tokenA,
+    sportType: TestConfig.testSportType,
+    pinId: pinId,
+    message: 'E2E 테스트 매칭입니다',
+  );
+  final matchRequestId = matchRequest['id'] as String;
+  debugPrint('[UserA] 매칭 요청 생성 완료: $matchRequestId');
+
+  await screenshot('11_match_requested');
+
+  // ── 11. 매칭 성사 대기 ──────────────────────────────────────────
+  debugPrint('[UserA] 매칭 성사 대기 (폴링)');
+  final pendingMatch = await api.pollUntil<Map<String, dynamic>>(
+    fetcher: () async {
+      final matches = await api.getMyMatches(tokenA);
+      final found = matches.where((m) {
+        final status = m['status'] as String? ?? '';
+        return ['PENDING_ACCEPT', 'CHAT', 'CONFIRMED'].contains(status);
+      }).toList();
+      if (found.isEmpty) throw Exception('아직 매칭 성사 안 됨');
+      return found.first;
+    },
+    condition: (m) {
+      final status = m['status'] as String? ?? '';
+      return ['PENDING_ACCEPT', 'CHAT', 'CONFIRMED'].contains(status);
+    },
+    maxAttempts: TestConfig.maxPollAttempts,
+  );
+
+  final matchId = pendingMatch['id'] as String;
+  debugPrint('[UserA] 매칭 성사: $matchId (상태: ${pendingMatch['status']})');
+
+  // 앱 UI 갱신 (홈 화면 새로고침)
+  await tester.pump(const Duration(seconds: 2));
+  await screenshot('12_match_found');
+
+  // ── 12. 수락 ────────────────────────────────────────────────────
+  if (pendingMatch['status'] == 'PENDING_ACCEPT') {
+    debugPrint('[UserA] 매칭 수락');
+    await api.acceptMatch(tokenA, matchId);
+    debugPrint('[UserA] 수락 완료');
+  }
+
+  // CHAT 상태 대기
+  final acceptedMatch = await api.pollUntil<Map<String, dynamic>>(
+    fetcher: () => api.getMatchDetail(tokenA, matchId),
+    condition: (m) {
+      final status = m['status'] as String? ?? '';
+      return ['CHAT', 'CONFIRMED', 'COMPLETED'].contains(status);
+    },
+  );
+  debugPrint('[UserA] 매칭 CHAT 상태: ${acceptedMatch['status']}');
+
+  await screenshot('13_match_accepted');
+
+  // ── 13. 채팅 메시지 전송 (API) ──────────────────────────────────
+  final chatRoomId = acceptedMatch['chatRoomId'] as String?;
+  if (chatRoomId != null) {
+    await api.sendMessage(
+      tokenA,
+      chatRoomId,
+      content: TestConfig.userAChatMessage,
+    );
+    debugPrint('[UserA] 메시지 전송: "${TestConfig.userAChatMessage}"');
+    await tester.pump(const Duration(seconds: 1));
+    await screenshot('14_chat_sent');
+  }
+
+  // ── 14. 경기 확정 (API) ─────────────────────────────────────────
+  debugPrint('[UserA] 경기 확정');
+  try {
+    final confirmedMatch = await api.confirmMatch(
+      tokenA,
+      matchId,
+      scheduledDate: TestConfig.testScheduledDate,
+      scheduledTime: TestConfig.testScheduledTime,
+      venueName: TestConfig.testVenueName,
+      venueLatitude: TestConfig.testVenueLatitude,
+      venueLongitude: TestConfig.testVenueLongitude,
+    );
+    debugPrint('[UserA] 경기 확정 완료: ${confirmedMatch['status']}');
+  } catch (e) {
+    debugPrint('[UserA] 경기 확정 스킵 (이미 확정됨 또는 권한 없음): $e');
+  }
+
+  await screenshot('15_match_confirmed');
+
+  // ── 15. 게임 ID 획득 대기 ───────────────────────────────────────
+  debugPrint('[UserA] 게임 생성 대기');
+  final scheduledMatch = await api.pollUntil<Map<String, dynamic>>(
+    fetcher: () => api.getMatchDetail(tokenA, matchId),
+    condition: (m) {
+      final gameId = m['gameId'] as String?;
+      return gameId != null && gameId.isNotEmpty;
+    },
+  );
+  final gameId = scheduledMatch['gameId'] as String;
+  debugPrint('[UserA] 게임 ID: $gameId');
+
+  // ── 16. 경기 결과 입력 (API) ────────────────────────────────────
+  debugPrint('[UserA] 경기 결과 입력 (A: ${TestConfig.userAScore}, B: ${TestConfig.userBScore})');
+  final myInfo = await api.getMe(tokenA);
+  final myUserId = myInfo['id'] as String;
+
+  await api.submitGameResult(
+    tokenA,
+    gameId,
+    myScore: TestConfig.userAScore,
+    opponentScore: TestConfig.userBScore,
+    winnerId: myUserId,
+  );
+  debugPrint('[UserA] 결과 입력 완료');
+
+  await screenshot('16_result_submitted');
+
+  // ── 17. User B의 결과 확인 대기 ─────────────────────────────────
+  debugPrint('[UserA] User B 결과 확인 대기');
+  await api.pollUntil<Map<String, dynamic>>(
+    fetcher: () => api.getGameDetail(tokenA, gameId),
+    condition: (game) {
+      final status =
+          game['resultStatus'] as String? ?? game['status'] as String? ?? '';
+      return ['VERIFIED', 'COMPLETED'].contains(status);
+    },
+  );
+  debugPrint('[UserA] 결과 확인 완료');
+
+  await tester.pump(const Duration(seconds: 1));
+  await screenshot('17_flow_complete');
+
+  // ── 18. Cleanup ─────────────────────────────────────────────────
+  debugPrint('[UserA] 테스트 계정 정리');
+  try {
+    await api.deleteUser(tokenA);
+    debugPrint('[UserA] 계정 삭제 완료');
+  } catch (e) {
+    debugPrint('[UserA] 계정 삭제 실패 (수동 정리 필요): $e');
+  }
+
+  debugPrint('[UserA] ===== User A 플로우 완료 =====');
+}
+
+/// 온보딩 화면 처리 헬퍼
+///
+/// 신규 가입 후 프로필 설정 → 스포츠 프로필 → 위치 설정 → 핀 설정 순으로 진행.
+/// 각 화면을 감지하고 "다음" / "완료" 버튼을 탭합니다.
+Future<void> _handleOnboarding(
+  WidgetTester tester,
+  Future<void> Function(String) screenshot,
+  int ts,
+) async {
+  // 프로필 설정 화면 (닉네임 자동 생성 + 중복확인 + 다음)
+  await tester.pumpAndSettle(const Duration(seconds: 4));
+
+  if (find.text('프로필을 설정해주세요').evaluate().isNotEmpty) {
+    debugPrint('[UserA] 온보딩: 프로필 설정 화면');
+    await screenshot('06_profile_setup');
+
+    // 닉네임은 자동 생성되어 있으므로 중복 확인 버튼 탭
+    await tester.pumpAndSettle(const Duration(seconds: 3));
+
+    final checkBtn = find.text('중복 확인');
+    if (checkBtn.evaluate().isNotEmpty) {
+      await tester.tap(checkBtn);
+      await tester.pumpAndSettle(const Duration(seconds: 3));
+    }
+
+    await screenshot('07_nickname_checked');
+
+    // 다음 버튼 탭
+    final nextBtn = find.text('다음');
+    if (nextBtn.evaluate().isNotEmpty) {
+      await tester.tap(nextBtn.first);
+      await tester.pumpAndSettle(const Duration(seconds: 3));
+    }
+
+    await screenshot('08_after_profile');
+  }
+
+  // 스포츠 프로필 화면
+  if (find.text('어떤 스포츠를').evaluate().isNotEmpty ||
+      find.text('스포츠 프로필').evaluate().isNotEmpty) {
+    debugPrint('[UserA] 온보딩: 스포츠 프로필 화면');
+    await screenshot('09_sport_profile');
+
+    // 골프 카드 선택 (이미 기본 선택됨)
+    final golfCard = find.text('골프');
+    if (golfCard.evaluate().isNotEmpty) {
+      await tester.tap(golfCard.first);
+      await tester.pumpAndSettle();
+    }
+
+    // 프로필 이름 입력
+    final displayNameField = find.byType(TextField);
+    if (displayNameField.evaluate().isNotEmpty) {
+      // 골프존 G핸디 필드와 프로필 이름 필드가 함께 있으므로 첫 번째 TextField 탐색
+      // '예: 주말 골퍼' 힌트가 있는 필드에 입력
+      final hintField =
+          find.widgetWithText(TextField, '예: 주말 골퍼').evaluate().isNotEmpty
+              ? find.widgetWithText(TextField, '예: 주말 골퍼')
+              : displayNameField.first;
+      await tester.enterText(hintField, TestConfig.userADisplayName);
+      await tester.pump();
+    }
+
+    // 다음 버튼 탭
+    final nextBtn = find.text('다음');
+    if (nextBtn.evaluate().isNotEmpty) {
+      await tester.tap(nextBtn.first);
+      await tester.pumpAndSettle(const Duration(seconds: 3));
+    }
+
+    await screenshot('09b_after_sport');
+  }
+
+  // 위치 설정 화면 (네이버 맵 포함)
+  if (find.text('활동 지역을 설정해주세요').evaluate().isNotEmpty ||
+      find.text('활동 지역 설정').evaluate().isNotEmpty) {
+    debugPrint('[UserA] 온보딩: 위치 설정 화면 (맵 로딩 대기)');
+    // 맵 로딩 시간 충분히 대기
+    await tester.pumpAndSettle(const Duration(seconds: 6));
+    await screenshot('09c_location_setup');
+
+    // '위치 설정 완료' 버튼 탭
+    final locationDoneBtn = find.text('위치 설정 완료');
+    if (locationDoneBtn.evaluate().isNotEmpty) {
+      await tester.tap(locationDoneBtn);
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+    }
+
+    await screenshot('09d_after_location');
+  }
+
+  // 핀 & 종목 설정 화면
+  if (find.text('자주 가는 핀을 선택하세요').evaluate().isNotEmpty ||
+      find.text('자주 가는 핀 설정').evaluate().isNotEmpty) {
+    debugPrint('[UserA] 온보딩: 핀 설정 화면 (맵 로딩 대기)');
+    // 맵 + 핀 로딩 대기
+    await tester.pumpAndSettle(const Duration(seconds: 8));
+    await screenshot('09e_pin_setup');
+
+    // '시작하기' 버튼 — 핀이 선택되지 않으면 비활성화됨.
+    // 핀을 직접 탭하기 어려우므로: 버튼이 활성화될 때까지 대기하거나,
+    // 버튼이 활성화 안 되면 이 화면은 API로 대체 처리 후 홈으로 이동.
+    final startBtn = find.text('시작하기');
+    if (startBtn.evaluate().isNotEmpty) {
+      // 버튼 활성화 상태 확인
+      final widget = tester.widget<ElevatedButton>(
+        find.widgetWithText(ElevatedButton, '시작하기'),
+      );
+      if (widget.onPressed != null) {
+        await tester.tap(startBtn);
+        await tester.pumpAndSettle(const Duration(seconds: 5));
+      } else {
+        debugPrint('[UserA] 핀 미선택 → 시작하기 버튼 비활성화. 홈으로 강제 이동은 불가, 핀 탭 시도 생략.');
+        // 핀 선택이 필요하므로 지도 중앙 탭 시도 (핀이 있을 가능성)
+        final mapCenter = tester.getCenter(find.byType(Stack).first);
+        await tester.tapAt(mapCenter);
+        await tester.pumpAndSettle(const Duration(seconds: 3));
+        await screenshot('09f_pin_tap_attempt');
+
+        final startBtnAfterTap = find.text('시작하기');
+        if (startBtnAfterTap.evaluate().isNotEmpty) {
+          final widgetAfter = tester.widget<ElevatedButton>(
+            find.widgetWithText(ElevatedButton, '시작하기'),
+          );
+          if (widgetAfter.onPressed != null) {
+            await tester.tap(startBtnAfterTap);
+            await tester.pumpAndSettle(const Duration(seconds: 5));
+          }
+        }
+      }
+    }
+
+    await screenshot('09g_after_pin');
+  }
+}

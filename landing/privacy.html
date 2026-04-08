@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>개인정보처리방침 — 핀돌</title>
+  <meta name="description" content="핀돌 서비스의 개인정보처리방침입니다." />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --blue: #1A73E8;
+      --blue-dark: #1558b0;
+      --blue-light: #4a9ef5;
+      --green: #34A853;
+      --green-light: #5cbf78;
+      --dark: #0d1117;
+      --dark2: #161b22;
+      --dark3: #21262d;
+      --surface: #f8fafc;
+      --surface2: #eef2f7;
+      --text: #1a1a2e;
+      --text-muted: #6b7280;
+      --text-light: #9ca3af;
+      --white: #ffffff;
+      --radius: 16px;
+      --radius-sm: 8px;
+      --shadow: 0 4px 24px rgba(0,0,0,0.12);
+      --shadow-lg: 0 16px 64px rgba(0,0,0,0.2);
+      --transition: all 0.35s cubic-bezier(0.4,0,0.2,1);
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo',
+                   'Noto Sans KR', sans-serif;
+      background: var(--dark);
+      color: var(--white);
+      overflow-x: hidden;
+    }
+    a { text-decoration: none; color: inherit; }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--dark); }
+    ::-webkit-scrollbar-thumb { background: var(--blue); border-radius: 3px; }
+
+    /* NAVBAR */
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      padding: 0 clamp(16px, 4vw, 64px);
+      height: 64px;
+      display: flex; align-items: center; justify-content: space-between;
+      background: rgba(13, 17, 23, 0.92);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .nav-brand {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 22px; font-weight: 800; letter-spacing: -0.5px;
+    }
+    .nav-logo {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--blue), var(--blue-light), var(--green));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; font-weight: 900; color: white;
+      box-shadow: 0 0 16px rgba(26,115,232,0.5);
+    }
+    .nav-home {
+      font-size: 14px; font-weight: 500; color: rgba(255,255,255,0.6);
+      padding: 8px 20px;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 24px;
+      transition: var(--transition);
+    }
+    .nav-home:hover {
+      color: white;
+      border-color: rgba(255,255,255,0.3);
+      background: rgba(255,255,255,0.06);
+    }
+
+    /* CONTENT */
+    .page-wrap {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 108px 24px 80px;
+    }
+    .page-header {
+      margin-bottom: 48px;
+      padding-bottom: 32px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .page-tag {
+      display: inline-block; padding: 5px 14px;
+      background: rgba(26,115,232,0.15); border: 1px solid rgba(26,115,232,0.3);
+      border-radius: 20px; font-size: 11px; font-weight: 600;
+      color: var(--blue-light); letter-spacing: 1.5px; text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    .page-title {
+      font-size: clamp(26px, 4vw, 40px);
+      font-weight: 800;
+      letter-spacing: -1px;
+      line-height: 1.2;
+      color: white;
+    }
+    .page-meta {
+      margin-top: 12px;
+      font-size: 13px;
+      color: rgba(255,255,255,0.35);
+      line-height: 1.8;
+    }
+
+    /* SECTIONS */
+    .section {
+      margin-bottom: 48px;
+    }
+    .section-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: white;
+      margin-bottom: 16px;
+      padding-left: 14px;
+      border-left: 3px solid var(--blue);
+      line-height: 1.4;
+    }
+    .section-body {
+      font-size: 15px;
+      color: rgba(255,255,255,0.72);
+      line-height: 1.9;
+    }
+    .section-body p {
+      margin-bottom: 12px;
+    }
+    .section-body p:last-child {
+      margin-bottom: 0;
+    }
+    .section-body ul {
+      padding-left: 20px;
+      margin: 10px 0;
+    }
+    .section-body ul li {
+      margin-bottom: 8px;
+      line-height: 1.7;
+    }
+    .section-body ul li::marker {
+      color: var(--blue-light);
+    }
+    .section-body strong {
+      color: rgba(255,255,255,0.9);
+      font-weight: 600;
+    }
+
+    /* INFO TABLE */
+    .info-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 14px;
+    }
+    .info-table th {
+      background: rgba(26,115,232,0.12);
+      color: var(--blue-light);
+      font-weight: 600;
+      padding: 12px 16px;
+      text-align: left;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .info-table td {
+      padding: 12px 16px;
+      border: 1px solid rgba(255,255,255,0.06);
+      color: rgba(255,255,255,0.72);
+      line-height: 1.6;
+      vertical-align: top;
+    }
+    .info-table tr:nth-child(even) td {
+      background: rgba(255,255,255,0.02);
+    }
+
+    /* NOTICE BOX */
+    .notice-box {
+      background: rgba(26,115,232,0.08);
+      border: 1px solid rgba(26,115,232,0.2);
+      border-radius: var(--radius-sm);
+      padding: 16px 20px;
+      margin: 16px 0;
+      font-size: 14px;
+      color: rgba(255,255,255,0.65);
+      line-height: 1.7;
+    }
+    .notice-box.warning {
+      background: rgba(255,193,7,0.06);
+      border-color: rgba(255,193,7,0.2);
+    }
+
+    /* FOOTER */
+    footer {
+      background: #080c10;
+      padding: 40px clamp(16px, 5vw, 100px);
+      border-top: 1px solid rgba(255,255,255,0.05);
+    }
+    .footer-inner {
+      max-width: 1100px; margin: 0 auto;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 20px;
+    }
+    .footer-brand { display: flex; align-items: center; gap: 10px; }
+    .footer-brand-text { font-size: 18px; font-weight: 800; color: rgba(255,255,255,0.6); }
+    .footer-links { display: flex; gap: 24px; flex-wrap: wrap; }
+    .footer-links a {
+      font-size: 13px; color: rgba(255,255,255,0.4);
+      transition: color 0.2s;
+    }
+    .footer-links a:hover { color: rgba(255,255,255,0.7); }
+    .footer-copy { font-size: 12px; color: rgba(255,255,255,0.25); }
+
+    @media (max-width: 768px) {
+      .page-wrap { padding: 88px 16px 60px; }
+      .info-table { font-size: 13px; }
+      .info-table th, .info-table td { padding: 10px 12px; }
+      .footer-inner { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAVBAR -->
+  <nav class="navbar">
+    <a href="index.html" class="nav-brand">
+      <div class="nav-logo">P</div>
+      핀돌
+    </a>
+    <a href="index.html" class="nav-home">홈으로</a>
+  </nav>
+
+  <!-- CONTENT -->
+  <main class="page-wrap">
+
+    <div class="page-header">
+      <div class="page-tag">Legal</div>
+      <h1 class="page-title">개인정보처리방침</h1>
+      <div class="page-meta">
+        시행일: 2026년 4월 1일<br>
+        서비스명: 핀돌 &nbsp;|&nbsp; 운영: [운영자명]
+      </div>
+    </div>
+
+    <div class="notice-box">
+      핀돌(이하 "회사" 또는 "서비스")는 이용자의 개인정보를 소중히 여기며, 개인정보 보호법 및 관련 법령을 준수합니다. 본 방침은 서비스 이용 과정에서 수집되는 개인정보의 처리 방법, 목적, 보유 기간 등을 안내합니다.
+    </div>
+
+    <!-- 제1조 -->
+    <div class="section">
+      <h2 class="section-title">제1조 수집하는 개인정보 항목</h2>
+      <div class="section-body">
+        <p>핀돌는 서비스 제공을 위해 다음과 같은 개인정보를 수집합니다.</p>
+
+        <table class="info-table">
+          <thead>
+            <tr>
+              <th>수집 방법</th>
+              <th>수집 항목</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>회원 가입 시</strong></td>
+              <td>이메일 주소, 닉네임, 프로필 사진</td>
+            </tr>
+            <tr>
+              <td><strong>소셜 로그인 시</strong><br>(카카오 / 구글 / 애플)</td>
+              <td>소셜 서비스 제공 식별자(ID), 이메일 주소, 프로필 정보 (각 소셜 서비스에서 제공하는 범위 내)</td>
+            </tr>
+            <tr>
+              <td><strong>서비스 이용 시</strong></td>
+              <td>위치 정보 (GPS, 이용자 동의 시에만), 기기 정보 (FCM 푸시 토큰, OS 유형), 접속 로그, 서비스 이용 기록, 매칭·게임 기록</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="notice-box">
+          위치 정보는 이용자가 명시적으로 동의한 경우에만 수집되며, 동의를 거부하더라도 위치 기반 기능(핀 탐색 등) 외의 서비스는 이용 가능합니다.
+        </div>
+      </div>
+    </div>
+
+    <!-- 제2조 -->
+    <div class="section">
+      <h2 class="section-title">제2조 개인정보의 수집 및 이용 목적</h2>
+      <div class="section-body">
+        <p>수집된 개인정보는 다음 목적에 한해 이용됩니다.</p>
+        <ul>
+          <li><strong>회원 관리:</strong> 회원 식별, 본인 확인, 부정 이용 방지, 계정 보호</li>
+          <li><strong>서비스 제공:</strong> 스포츠 매칭 서비스 운영, 핀 생성·탐색, 팀 기능 제공</li>
+          <li><strong>위치 기반 서비스:</strong> 근처 핀 및 매칭 상대 탐색, 위치 기반 콘텐츠 제공</li>
+          <li><strong>푸시 알림:</strong> 매칭 결과, 채팅 메시지, 서비스 공지 등 알림 발송</li>
+          <li><strong>서비스 개선:</strong> 이용 통계 분석, 신규 기능 개발, 버그 수정</li>
+          <li><strong>고객 지원:</strong> 문의 응대, 신고 처리, 분쟁 해결</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 제3조 -->
+    <div class="section">
+      <h2 class="section-title">제3조 개인정보의 보유 및 이용 기간</h2>
+      <div class="section-body">
+        <p>개인정보는 수집 목적이 달성되면 지체 없이 파기합니다.</p>
+
+        <table class="info-table">
+          <thead>
+            <tr>
+              <th>항목</th>
+              <th>보유 기간</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>회원 정보 (이메일, 닉네임 등)</td>
+              <td>회원 탈퇴 시까지 (탈퇴 후 30일 이내 파기)</td>
+            </tr>
+            <tr>
+              <td>위치 정보</td>
+              <td>서비스 이용 세션 종료 즉시 파기 (기록 보관 없음)</td>
+            </tr>
+            <tr>
+              <td>매칭·게임 기록</td>
+              <td>회원 탈퇴 시까지</td>
+            </tr>
+            <tr>
+              <td>접속 로그 및 이용 기록</td>
+              <td>3개월</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p>단, 관련 법령에 따라 다음 기간 동안 보관됩니다.</p>
+        <ul>
+          <li>계약 또는 청약 철회 기록: 5년 (전자상거래 등에서의 소비자 보호에 관한 법률)</li>
+          <li>소비자 불만 또는 분쟁 처리 기록: 3년 (동 법률)</li>
+          <li>웹사이트 방문 기록: 3개월 (통신비밀보호법)</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 제4조 -->
+    <div class="section">
+      <h2 class="section-title">제4조 개인정보의 제3자 제공</h2>
+      <div class="section-body">
+        <p>핀돌는 이용자의 개인정보를 원칙적으로 제3자에게 제공하지 않습니다.</p>
+        <p>단, 다음 경우에는 예외로 합니다.</p>
+        <ul>
+          <li>이용자가 사전에 동의한 경우</li>
+          <li>법령의 규정에 의하거나 수사 목적으로 법령에 정해진 절차와 방법에 따라 수사기관의 요구가 있는 경우</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 제5조 -->
+    <div class="section">
+      <h2 class="section-title">제5조 개인정보 처리 위탁</h2>
+      <div class="section-body">
+        <p>핀돌는 원활한 서비스 제공을 위해 다음과 같이 개인정보 처리를 위탁합니다.</p>
+
+        <table class="info-table">
+          <thead>
+            <tr>
+              <th>수탁 업체</th>
+              <th>위탁 내용</th>
+              <th>보유 및 이용 기간</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Amazon Web Services (AWS)</td>
+              <td>서버 호스팅, 데이터베이스 운영, 파일 저장 (S3)</td>
+              <td>위탁 계약 종료 시까지</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p>위탁 업체에 대해서는 개인정보 보호 관련 법령을 준수하도록 필요한 사항을 규정하고 관리·감독합니다.</p>
+      </div>
+    </div>
+
+    <!-- 제6조 -->
+    <div class="section">
+      <h2 class="section-title">제6조 이용자 및 법정대리인의 권리</h2>
+      <div class="section-body">
+        <p>이용자는 언제든지 다음 권리를 행사할 수 있습니다.</p>
+        <ul>
+          <li><strong>열람 요구:</strong> 본인의 개인정보 처리 현황 확인 가능</li>
+          <li><strong>정정 요구:</strong> 오류가 있는 개인정보에 대한 정정 요청 가능</li>
+          <li><strong>삭제 요구:</strong> 개인정보의 삭제 요청 가능 (법령에 따른 보존 의무가 없는 경우)</li>
+          <li><strong>처리 정지 요구:</strong> 개인정보 처리의 정지 요청 가능</li>
+        </ul>
+        <p>위 권리 행사는 앱 내 설정 메뉴 또는 이메일(support@pins.kr)을 통해 요청할 수 있으며, 요청 후 10영업일 이내에 처리됩니다.</p>
+      </div>
+    </div>
+
+    <!-- 제7조 -->
+    <div class="section">
+      <h2 class="section-title">제7조 개인정보의 파기 절차 및 방법</h2>
+      <div class="section-body">
+        <p>보유 기간이 경과하거나 처리 목적이 달성된 개인정보는 다음 방법으로 파기합니다.</p>
+        <ul>
+          <li><strong>전자적 파일:</strong> 복구가 불가능한 방법으로 영구 삭제</li>
+          <li><strong>출력물 등 비전자적 형태:</strong> 분쇄기 또는 소각을 통해 파기</li>
+        </ul>
+        <p>회원 탈퇴 시, 개인정보는 즉시 처리 정지되고 30일 이내에 완전히 파기됩니다. 단, 법령에 따라 보존이 필요한 정보는 별도 보관 후 해당 기간 경과 시 파기합니다.</p>
+      </div>
+    </div>
+
+    <!-- 제8조 -->
+    <div class="section">
+      <h2 class="section-title">제8조 쿠키(Cookie) 및 유사 기술의 사용</h2>
+      <div class="section-body">
+        <p>핀돌 앱은 자동화된 수단을 통해 개인 식별에 사용되는 쿠키를 별도로 사용하지 않습니다. 단, 서비스 개선을 위해 비식별 통계 정보를 수집할 수 있습니다.</p>
+        <p>웹 랜딩 페이지 방문 시, 브라우저 쿠키가 사용될 수 있으며 이는 브라우저 설정을 통해 거부할 수 있습니다.</p>
+      </div>
+    </div>
+
+    <!-- 제9조 -->
+    <div class="section">
+      <h2 class="section-title">제9조 아동의 개인정보 보호</h2>
+      <div class="section-body">
+        <div class="notice-box warning">
+          핀돌는 만 14세 미만 아동의 회원 가입을 허용하지 않습니다. 만 14세 미만 이용자의 가입이 확인되는 경우, 해당 계정은 즉시 삭제 조치됩니다.
+        </div>
+        <p>만 14세 미만 아동의 개인정보가 수집된 사실을 발견한 경우 즉시 삭제하며, 관련 사항은 support@pins.kr로 신고해 주시기 바랍니다.</p>
+      </div>
+    </div>
+
+    <!-- 제10조 -->
+    <div class="section">
+      <h2 class="section-title">제10조 개인정보의 안전성 확보 조치</h2>
+      <div class="section-body">
+        <p>핀돌는 개인정보의 안전성 확보를 위해 다음과 같은 조치를 취하고 있습니다.</p>
+        <ul>
+          <li><strong>암호화:</strong> 비밀번호 및 민감 정보는 암호화되어 저장되며, 전송 시 HTTPS/TLS 보안 프로토콜 적용</li>
+          <li><strong>접근 통제:</strong> 개인정보에 대한 접근 권한을 최소한의 인원으로 제한</li>
+          <li><strong>보안 모니터링:</strong> 개인정보 처리 시스템에 대한 접근 기록 보관 및 위·변조 방지</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 제11조 -->
+    <div class="section">
+      <h2 class="section-title">제11조 개인정보 보호책임자</h2>
+      <div class="section-body">
+        <p>개인정보 처리에 관한 업무를 총괄하는 개인정보 보호책임자는 다음과 같습니다.</p>
+        <table class="info-table">
+          <tbody>
+            <tr>
+              <td><strong>성명</strong></td>
+              <td>[운영자명]</td>
+            </tr>
+            <tr>
+              <td><strong>직책</strong></td>
+              <td>개인정보 보호책임자 (서비스 운영자)</td>
+            </tr>
+            <tr>
+              <td><strong>이메일</strong></td>
+              <td>support@pins.kr</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>개인정보와 관련한 불만 처리 및 피해 구제는 아래 기관에도 문의하실 수 있습니다.</p>
+        <ul>
+          <li>개인정보 침해신고센터: privacy.kisa.or.kr / 국번 없이 118</li>
+          <li>개인정보 분쟁조정위원회: www.kopico.go.kr / 1833-6972</li>
+          <li>대검찰청 사이버수사과: www.spo.go.kr / 02-3480-3573</li>
+          <li>경찰청 사이버안전국: cyberbureau.police.go.kr / 국번 없이 182</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 제12조 -->
+    <div class="section">
+      <h2 class="section-title">제12조 개인정보처리방침의 변경</h2>
+      <div class="section-body">
+        <p>본 방침은 법령·정책 변경 또는 서비스 변경에 따라 내용이 추가·삭제·수정될 수 있습니다.</p>
+        <p>중요한 내용의 변경 시에는 시행 7일 전부터 앱 내 공지 또는 이메일을 통해 이용자에게 고지합니다.</p>
+        <ul>
+          <li>현행 방침 시행일: 2026년 4월 1일</li>
+        </ul>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="nav-logo">P</div>
+        <span class="footer-brand-text">핀돌</span>
+      </div>
+      <div class="footer-links">
+        <a href="terms.html">이용약관</a>
+        <a href="privacy.html">개인정보처리방침</a>
+        <a href="support.html">고객지원</a>
+      </div>
+      <div class="footer-copy">© 2026 핀돌. All rights reserved.</div>
+    </div>
+  </footer>
+
+</body>
+</html>

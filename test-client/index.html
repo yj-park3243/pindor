@@ -1,0 +1,2793 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Spots API 테스트 클라이언트</title>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg0: #0d0f18;
+  --bg1: #161925;
+  --bg2: #1e2235;
+  --bg3: #252b3e;
+  --bg4: #2d3448;
+  --border: #343c56;
+  --border2: #3f4968;
+  --text1: #e6e9f4;
+  --text2: #9099b8;
+  --text3: #5c6480;
+  --accent: #5865f2;
+  --accent-dk: #4752c4;
+  --green: #2ecc71;
+  --red: #e74c3c;
+  --yellow: #f1c40f;
+  --orange: #e67e22;
+  --cyan: #1abc9c;
+  --purple: #9b59b6;
+  --r: 8px;
+  --r-sm: 4px;
+  --shadow: 0 4px 16px rgba(0,0,0,.5);
+  --sidebar-w: 200px;
+  --header-h: 52px;
+  --console-h: 200px;
+}
+
+html, body { height: 100%; }
+
+body {
+  background: var(--bg0);
+  color: var(--text1);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Header ── */
+.header {
+  height: var(--header-h);
+  background: var(--bg1);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 12px;
+  flex-shrink: 0;
+  z-index: 100;
+}
+
+.header-title {
+  font-size: 14px;
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--accent) 0%, #7c8cf8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  white-space: nowrap;
+}
+
+.header-group { display: flex; align-items: center; gap: 6px; }
+.header-label { font-size: 11px; color: var(--text3); white-space: nowrap; }
+
+.ws-status-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--text3);
+  flex-shrink: 0;
+  transition: background .3s;
+}
+.ws-status-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.ws-status-dot.connecting { background: var(--yellow); }
+.ws-status-dot.error { background: var(--red); }
+
+/* ── Body layout ── */
+.app-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Sidebar ── */
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--bg1);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.sidebar-section { padding: 10px 0 4px; }
+.sidebar-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  padding: 0 12px;
+  margin-bottom: 2px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--text2);
+  border-left: 2px solid transparent;
+  transition: all .12s;
+  user-select: none;
+}
+.nav-item:hover { background: var(--bg2); color: var(--text1); }
+.nav-item.active { background: rgba(88,101,242,.12); border-left-color: var(--accent); color: var(--accent); font-weight: 600; }
+.nav-icon { font-size: 14px; width: 18px; text-align: center; flex-shrink: 0; }
+
+/* ── Main content ── */
+.main-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.content-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.module { display: none; }
+.module.active { display: block; }
+
+/* ── Console ── */
+.console-panel {
+  height: var(--console-h);
+  background: #08090f;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.console-header {
+  display: flex;
+  align-items: center;
+  padding: 4px 12px;
+  background: var(--bg1);
+  border-bottom: 1px solid var(--border);
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.console-title { font-size: 11px; font-weight: 700; color: var(--text2); }
+
+.console-log {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 12px;
+  font-family: 'Fira Code', 'Consolas', 'Courier New', monospace;
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.log-entry { cursor: pointer; }
+.log-entry:hover { background: rgba(255,255,255,.03); }
+.log-entry.expanded .log-detail { display: block; }
+.log-detail { display: none; background: var(--bg2); padding: 6px 10px; margin: 2px 0 4px; border-radius: 4px; white-space: pre-wrap; color: var(--text2); font-size: 10.5px; }
+.lt { color: var(--text3); }
+.lm { color: #61afef; font-weight: 600; }
+.lp { color: var(--text2); }
+.s2xx { color: var(--green); }
+.s4xx { color: var(--yellow); }
+.s5xx { color: var(--red); }
+.sws  { color: var(--cyan); }
+.lerr { color: var(--red); }
+.linfo { color: var(--purple); }
+.ldur { color: var(--text3); font-size: 10px; }
+
+/* ── Cards & Forms ── */
+.card {
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 14px;
+  margin-bottom: 12px;
+}
+
+.card-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.method-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: monospace;
+}
+.m-get    { background: rgba(46,204,113,.15);  color: var(--green); }
+.m-post   { background: rgba(88,101,242,.15);  color: #7b8cf8; }
+.m-patch  { background: rgba(230,126,34,.15);  color: var(--orange); }
+.m-delete { background: rgba(231,76,60,.15);   color: var(--red); }
+
+.endpoint-path {
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--text3);
+}
+
+.form-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.form-row:last-child { margin-bottom: 0; }
+
+.form-label {
+  font-size: 11px;
+  color: var(--text2);
+  min-width: 90px;
+  flex-shrink: 0;
+}
+
+.form-row input, .form-row select, .form-row textarea {
+  flex: 1;
+  min-width: 0;
+}
+
+input, select, textarea {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text1);
+  border-radius: var(--r-sm);
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color .15s;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+input::placeholder, textarea::placeholder { color: var(--text3); }
+textarea { resize: vertical; min-height: 60px; }
+
+/* ── Buttons ── */
+button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: var(--r-sm);
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  line-height: 1;
+  transition: all .15s;
+  white-space: nowrap;
+}
+button:disabled { opacity: .4; cursor: not-allowed; }
+
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--accent-dk); }
+.btn-success { background: var(--green); color: #0d1a10; }
+.btn-success:hover:not(:disabled) { background: #27ae60; }
+.btn-danger  { background: var(--red); color: #fff; }
+.btn-danger:hover:not(:disabled) { background: #c0392b; }
+.btn-warning { background: var(--orange); color: #fff; }
+.btn-warning:hover:not(:disabled) { background: #d35400; }
+.btn-ghost { background: var(--bg3); color: var(--text2); border: 1px solid var(--border); }
+.btn-ghost:hover:not(:disabled) { background: var(--bg4); color: var(--text1); }
+.btn-sm { padding: 4px 9px; font-size: 11px; }
+.btn-xs { padding: 3px 7px; font-size: 10px; }
+.btn-cyan { background: var(--cyan); color: #0d1a18; }
+.btn-cyan:hover:not(:disabled) { background: #16a085; }
+
+/* ── Response viewer ── */
+.response-area {
+  margin-top: 10px;
+  background: var(--bg0);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+.response-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+}
+
+.status-code {
+  font-weight: 700;
+  font-family: monospace;
+  font-size: 12px;
+}
+.sc-2xx { color: var(--green); }
+.sc-4xx { color: var(--yellow); }
+.sc-5xx { color: var(--red); }
+.sc-0 { color: var(--text3); }
+
+.response-time { color: var(--text3); font-size: 10px; margin-left: auto; }
+
+.response-body {
+  padding: 10px;
+  font-family: 'Fira Code', 'Consolas', monospace;
+  font-size: 11px;
+  line-height: 1.65;
+  max-height: 300px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--text1);
+}
+
+/* JSON syntax highlight */
+.json-key    { color: #7b8cf8; }
+.json-string { color: #98c379; }
+.json-number { color: #e5c07b; }
+.json-bool   { color: #e06c75; }
+.json-null   { color: var(--text3); }
+
+/* ── WebSocket section ── */
+.ws-messages {
+  background: var(--bg0);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  height: 200px;
+  overflow-y: auto;
+  padding: 10px;
+  font-family: monospace;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.ws-msg-in  { color: var(--green); }
+.ws-msg-out { color: #7b8cf8; }
+.ws-msg-sys { color: var(--text3); font-style: italic; }
+.ws-msg-err { color: var(--red); }
+
+/* ── Utility ── */
+.flex { display: flex; }
+.gap6 { gap: 6px; }
+.gap8 { gap: 8px; }
+.gap10 { gap: 10px; }
+.mt8  { margin-top: 8px; }
+.mt10 { margin-top: 10px; }
+.mt12 { margin-top: 12px; }
+.flex-1 { flex: 1; }
+.hidden { display: none !important; }
+.divider { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
+.mono { font-family: monospace; font-size: 11px; }
+.text2 { color: var(--text2); }
+.text3 { color: var(--text3); }
+
+.info-box {
+  background: rgba(88,101,242,.08);
+  border: 1px solid rgba(88,101,242,.2);
+  border-radius: var(--r-sm);
+  padding: 8px 12px;
+  font-size: 11.5px;
+  color: var(--text2);
+  line-height: 1.6;
+}
+
+.module-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.module-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text1);
+}
+
+.module-sub {
+  font-size: 11px;
+  color: var(--text3);
+  font-family: monospace;
+  background: var(--bg3);
+  padding: 2px 7px;
+  border-radius: 3px;
+}
+
+select option { background: var(--bg3); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text3); }
+
+/* Toast */
+#toasts {
+  position: fixed;
+  bottom: 220px;
+  right: 16px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.toast {
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: var(--r);
+  padding: 8px 14px;
+  font-size: 12px;
+  box-shadow: var(--shadow);
+  animation: tin .2s ease;
+  max-width: 280px;
+}
+.toast-ok   { border-left: 3px solid var(--green); }
+.toast-err  { border-left: 3px solid var(--red); }
+.toast-info { border-left: 3px solid var(--accent); }
+
+@keyframes tin { from { transform: translateX(12px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+</style>
+</head>
+<body>
+
+<!-- ═══ HEADER ═══════════════════════════════════════ -->
+<div class="header">
+  <span class="header-title">Spots API Tester</span>
+
+  <div class="header-group">
+    <span class="header-label">BASE URL:</span>
+    <input type="text" id="apiUrl" data-testid="api-url"
+           value="http://localhost:3000/v1"
+           style="width:230px; font-family:monospace; font-size:11px"
+           oninput="STATE.base=this.value" />
+  </div>
+
+  <div class="header-group">
+    <span class="header-label">User:</span>
+    <select id="userSelector" data-testid="user-selector" style="max-width:200px" onchange="onUserChange(this.value)">
+      <option value="">-- 유저 선택 --</option>
+    </select>
+    <button class="btn-ghost btn-xs" onclick="loadUsers()">↺</button>
+  </div>
+
+  <div class="header-group" style="margin-left:auto">
+    <div class="ws-status-dot" id="wsStatusDot" data-testid="ws-status"></div>
+    <span id="wsStatusText" style="font-size:11px; color:var(--text3)">WS: 미연결</span>
+  </div>
+</div>
+
+<!-- ═══ BODY ════════════════════════════════════════ -->
+<div class="app-body">
+
+  <!-- ── SIDEBAR ── -->
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">General</div>
+      <div class="nav-item active" data-testid="nav-health" onclick="showModule('health')">
+        <span class="nav-icon">♥</span>Health Check
+      </div>
+      <div class="nav-item" data-testid="nav-users" onclick="showModule('users')">
+        <span class="nav-icon">👤</span>Users
+      </div>
+      <div class="nav-item" data-testid="nav-sports-profiles" onclick="showModule('sports-profiles')">
+        <span class="nav-icon">🏅</span>Sports Profiles
+      </div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Matching</div>
+      <div class="nav-item" data-testid="nav-matching" onclick="showModule('matching')">
+        <span class="nav-icon">⚔</span>Matching
+      </div>
+      <div class="nav-item" data-testid="nav-games" onclick="showModule('games')">
+        <span class="nav-icon">🎮</span>Games
+      </div>
+      <div class="nav-item" data-testid="nav-teams" onclick="showModule('teams')">
+        <span class="nav-icon">👥</span>Teams
+      </div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Community</div>
+      <div class="nav-item" data-testid="nav-pins" onclick="showModule('pins')">
+        <span class="nav-icon">📍</span>Pins
+      </div>
+      <div class="nav-item" data-testid="nav-rankings" onclick="showModule('rankings')">
+        <span class="nav-icon">🏆</span>Rankings
+      </div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Communication</div>
+      <div class="nav-item" data-testid="nav-chat" onclick="showModule('chat')">
+        <span class="nav-icon">💬</span>Chat (REST)
+      </div>
+      <div class="nav-item" data-testid="nav-websocket" onclick="showModule('websocket')">
+        <span class="nav-icon">⚡</span>WebSocket
+      </div>
+      <div class="nav-item" data-testid="nav-notifications" onclick="showModule('notifications')">
+        <span class="nav-icon">🔔</span>Notifications
+      </div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">System</div>
+      <div class="nav-item" data-testid="nav-uploads" onclick="showModule('uploads')">
+        <span class="nav-icon">☁</span>Uploads
+      </div>
+      <div class="nav-item" data-testid="nav-admin" onclick="showModule('admin')">
+        <span class="nav-icon">🔧</span>Admin
+      </div>
+    </div>
+  </div>
+
+  <!-- ── MAIN AREA ── -->
+  <div class="main-area">
+    <div class="content-area" id="contentArea">
+
+      <!-- ══════════════════════════════════════
+           MODULE: HEALTH
+      ══════════════════════════════════════ -->
+      <div class="module active" id="mod-health">
+        <div class="module-header">
+          <span class="module-title">Health Check</span>
+          <span class="module-sub">GET /health, /v1/health</span>
+        </div>
+
+        <div class="card">
+          <div class="card-title">
+            <span class="method-badge m-get">GET</span>
+            <span class="endpoint-path">/health</span>
+            <span class="text3" style="font-size:11px">(no /v1 prefix)</span>
+          </div>
+          <button class="btn-primary" data-testid="btn-health-check" onclick="apiRaw('GET','http://localhost:3000/health', null, 'res-health')">Send</button>
+          <div id="res-health"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">
+            <span class="method-badge m-get">GET</span>
+            <span class="endpoint-path">/v1/health</span>
+          </div>
+          <button class="btn-primary" data-testid="btn-v1-health-check" onclick="api('GET','/health', null, 'res-v1-health')">Send</button>
+          <div id="res-v1-health"></div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════
+           MODULE: USERS
+      ══════════════════════════════════════ -->
+      <div class="module" id="mod-users">
+        <div class="module-header">
+          <span class="module-title">Users</span>
+          <span class="module-sub">/v1/users</span>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/users/me</span></div>
+          <button class="btn-primary" data-testid="btn-get-me" onclick="api('GET','/users/me',null,'res-get-me')">Send</button>
+          <div id="res-get-me"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-patch">PATCH</span><span class="endpoint-path">/users/me</span></div>
+          <div class="form-row">
+            <span class="form-label">nickname</span>
+            <input type="text" id="input-nickname" data-testid="input-nickname" placeholder="새 닉네임" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">profileImageUrl</span>
+            <input type="text" id="input-profile-image-url" data-testid="input-profile-image-url" placeholder="https://..." />
+          </div>
+          <div class="mt8">
+            <button class="btn-warning" data-testid="btn-update-profile" onclick="api('PATCH','/users/me',{nickname:$v('input-nickname')||undefined,profileImageUrl:$v('input-profile-image-url')||undefined},'res-patch-me')">Send</button>
+          </div>
+          <div id="res-patch-me"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-post">POST</span><span class="endpoint-path">/users/me/location</span></div>
+          <div class="form-row">
+            <span class="form-label">latitude</span>
+            <input type="number" id="input-latitude" data-testid="input-latitude" value="37.5007" step="0.0001" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">longitude</span>
+            <input type="number" id="input-longitude" data-testid="input-longitude" value="127.0361" step="0.0001" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">address</span>
+            <input type="text" id="input-location-address" data-testid="input-location-address" placeholder="서울시 강남구..." />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-update-location" onclick="api('POST','/users/me/location',{latitude:parseFloat($v('input-latitude')),longitude:parseFloat($v('input-longitude')),address:$v('input-location-address')||undefined},'res-location')">Send</button>
+          </div>
+          <div id="res-location"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/users/:id/profile</span></div>
+          <div class="form-row">
+            <span class="form-label">user id</span>
+            <input type="text" id="input-user-id" data-testid="input-user-id" placeholder="UUID" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-get-user-profile" onclick="api('GET','/users/'+$v('input-user-id')+'/profile',null,'res-user-profile')">Send</button>
+          </div>
+          <div id="res-user-profile"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-delete">DELETE</span><span class="endpoint-path">/users/me</span></div>
+          <div class="info-box" style="margin-bottom:10px">주의: 실제로 계정이 삭제됩니다.</div>
+          <button class="btn-danger" data-testid="btn-delete-me" onclick="api('DELETE','/users/me',null,'res-delete-me')">Delete Account</button>
+          <div id="res-delete-me"></div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════
+           MODULE: SPORTS PROFILES
+      ══════════════════════════════════════ -->
+      <div class="module" id="mod-sports-profiles">
+        <div class="module-header">
+          <span class="module-title">Sports Profiles</span>
+          <span class="module-sub">/v1/sports-profiles</span>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-post">POST</span><span class="endpoint-path">/sports-profiles</span></div>
+          <div class="form-row">
+            <span class="form-label">sportType</span>
+            <select id="input-sport-type" data-testid="input-sport-type">
+              <option value="GOLF">GOLF</option>
+              <option value="BILLIARDS">BILLIARDS</option>
+              <option value="TENNIS">TENNIS</option>
+              <option value="TABLE_TENNIS">TABLE_TENNIS</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <span class="form-label">displayName</span>
+            <input type="text" id="input-sport-display-name" data-testid="input-sport-display-name" placeholder="표시 이름" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-create-sports-profile" onclick="api('POST','/sports-profiles',{sportType:$v('input-sport-type'),displayName:$v('input-sport-display-name')},'res-create-sport')">Send</button>
+          </div>
+          <div id="res-create-sport"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/sports-profiles</span></div>
+          <button class="btn-primary" data-testid="btn-get-sports-profiles" onclick="api('GET','/sports-profiles',null,'res-get-sports')">Send</button>
+          <div id="res-get-sports"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-patch">PATCH</span><span class="endpoint-path">/sports-profiles/:id</span></div>
+          <div class="form-row">
+            <span class="form-label">profile id</span>
+            <input type="text" id="input-sport-profile-id" data-testid="input-sport-profile-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">displayName</span>
+            <input type="text" id="input-sport-display-name-patch" placeholder="새 표시 이름" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">isActive</span>
+            <select id="input-sport-is-active">
+              <option value="">-- 선택 --</option>
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+          </div>
+          <div class="mt8">
+            <button class="btn-warning" data-testid="btn-update-sports-profile" onclick="patchSportsProfile()">Send</button>
+          </div>
+          <div id="res-patch-sport"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/sports-profiles/:id/score-history</span></div>
+          <div class="form-row">
+            <span class="form-label">profile id</span>
+            <input type="text" id="input-score-hist-id" data-testid="input-score-hist-id" placeholder="UUID" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-get-score-history" onclick="api('GET','/sports-profiles/'+$v('input-score-hist-id')+'/score-history',null,'res-score-hist')">Send</button>
+          </div>
+          <div id="res-score-hist"></div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════
+           MODULE: MATCHING
+      ══════════════════════════════════════ -->
+      <div class="module" id="mod-matching">
+        <div class="module-header">
+          <span class="module-title">Matching</span>
+          <span class="module-sub">/v1/matches</span>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-post">POST</span><span class="endpoint-path">/matches/requests</span></div>
+          <div class="form-row">
+            <span class="form-label">sportType</span>
+            <select id="m-sport-type">
+              <option value="GOLF">GOLF</option>
+              <option value="BILLIARDS">BILLIARDS</option>
+              <option value="TENNIS">TENNIS</option>
+              <option value="TABLE_TENNIS">TABLE_TENNIS</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <span class="form-label">requestType</span>
+            <select id="m-req-type">
+              <option value="SCHEDULED">SCHEDULED</option>
+              <option value="INSTANT">INSTANT</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <span class="form-label">preferredDate</span>
+            <input type="date" id="m-pref-date" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">timeSlot</span>
+            <select id="m-time-slot">
+              <option value="MORNING">MORNING</option>
+              <option value="AFTERNOON">AFTERNOON</option>
+              <option value="EVENING">EVENING</option>
+              <option value="ANY">ANY</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <span class="form-label">lat / lng</span>
+            <input type="number" id="m-lat" value="37.5007" step="0.0001" style="width:120px" />
+            <input type="number" id="m-lng" value="127.0361" step="0.0001" style="width:120px" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">pinId</span>
+            <input type="text" id="m-pin-id" placeholder="UUID (선택)" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">message</span>
+            <input type="text" id="m-message" placeholder="선택 메시지" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-create-match-request" onclick="createMatchRequest()">Send</button>
+          </div>
+          <div id="res-match-req"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-post">POST</span><span class="endpoint-path">/matches/instant</span></div>
+          <div class="form-row">
+            <span class="form-label">sportType</span>
+            <select id="m-instant-sport">
+              <option value="GOLF">GOLF</option>
+              <option value="BILLIARDS">BILLIARDS</option>
+              <option value="TENNIS">TENNIS</option>
+              <option value="TABLE_TENNIS">TABLE_TENNIS</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <span class="form-label">pinId</span>
+            <input type="text" id="m-instant-pin" placeholder="UUID" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-instant-match" onclick="api('POST','/matches/instant',{sportType:$v('m-instant-sport'),pinId:$v('m-instant-pin')||undefined},'res-instant-match')">Send</button>
+          </div>
+          <div id="res-instant-match"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/matches/requests</span></div>
+          <div class="form-row">
+            <span class="form-label">status</span>
+            <input type="text" id="m-req-status" placeholder="WAITING|MATCHED|CANCELLED" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">sportType</span>
+            <input type="text" id="m-req-sport-filter" placeholder="GOLF|TENNIS..." />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-get-match-requests" onclick="api('GET',buildQS('/matches/requests',{status:$v('m-req-status'),sportType:$v('m-req-sport-filter')}),null,'res-get-reqs')">Send</button>
+          </div>
+          <div id="res-get-reqs"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-delete">DELETE</span><span class="endpoint-path">/matches/requests/:id</span></div>
+          <div class="form-row">
+            <span class="form-label">request id</span>
+            <input type="text" id="m-del-req-id" data-testid="input-match-request-id" placeholder="UUID" />
+          </div>
+          <div class="mt8">
+            <button class="btn-danger" data-testid="btn-delete-match-request" onclick="api('DELETE','/matches/requests/'+$v('m-del-req-id'),null,'res-del-req')">Send</button>
+          </div>
+          <div id="res-del-req"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/matches</span></div>
+          <div class="form-row">
+            <span class="form-label">status</span>
+            <input type="text" id="m-list-status" placeholder="PENDING_ACCEPT|CHAT..." />
+          </div>
+          <div class="form-row">
+            <span class="form-label">page / limit</span>
+            <input type="number" id="m-list-page" value="1" style="width:60px" />
+            <input type="number" id="m-list-limit" value="20" style="width:60px" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-get-matches" onclick="api('GET',buildQS('/matches',{status:$v('m-list-status'),page:$v('m-list-page'),limit:$v('m-list-limit')}),null,'res-matches-list')">Send</button>
+          </div>
+          <div id="res-matches-list"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/matches/:id</span></div>
+          <div class="form-row">
+            <span class="form-label">match id</span>
+            <input type="text" id="m-get-id" data-testid="input-match-id" placeholder="UUID" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-get-match" onclick="api('GET','/matches/'+$v('m-get-id'),null,'res-match-get')">Send</button>
+          </div>
+          <div id="res-match-get"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-patch">PATCH</span><span class="endpoint-path">/matches/:id/confirm</span></div>
+          <div class="form-row">
+            <span class="form-label">match id</span>
+            <input type="text" id="m-confirm-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">confirmedDate</span>
+            <input type="date" id="m-confirmed-date" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">confirmedTime</span>
+            <input type="time" id="m-confirmed-time" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">confirmedLocation</span>
+            <input type="text" id="m-confirmed-loc" placeholder="장소명" />
+          </div>
+          <div class="mt8">
+            <button class="btn-warning" data-testid="btn-confirm-match" onclick="api('PATCH','/matches/'+$v('m-confirm-id')+'/confirm',{confirmedDate:$v('m-confirmed-date'),confirmedTime:$v('m-confirmed-time'),confirmedLocation:$v('m-confirmed-loc')},'res-match-confirm')">Send</button>
+          </div>
+          <div id="res-match-confirm"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-patch">PATCH</span><span class="endpoint-path">/matches/:id/cancel</span></div>
+          <div class="form-row">
+            <span class="form-label">match id</span>
+            <input type="text" id="m-cancel-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">reason</span>
+            <input type="text" id="m-cancel-reason" placeholder="취소 사유" />
+          </div>
+          <div class="mt8">
+            <button class="btn-danger" data-testid="btn-cancel-match" onclick="api('PATCH','/matches/'+$v('m-cancel-id')+'/cancel',{reason:$v('m-cancel-reason')},'res-match-cancel')">Send</button>
+          </div>
+          <div id="res-match-cancel"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-post">POST</span><span class="endpoint-path">/matches/:matchId/accept</span></div>
+          <div class="form-row">
+            <span class="form-label">match id</span>
+            <input type="text" id="m-accept-id" placeholder="UUID" />
+          </div>
+          <div class="mt8">
+            <button class="btn-success" data-testid="btn-accept-match" onclick="api('POST','/matches/'+$v('m-accept-id')+'/accept',null,'res-match-accept')">Send</button>
+          </div>
+          <div id="res-match-accept"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-post">POST</span><span class="endpoint-path">/matches/:matchId/reject</span></div>
+          <div class="form-row">
+            <span class="form-label">match id</span>
+            <input type="text" id="m-reject-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">reason</span>
+            <input type="text" id="m-reject-reason" placeholder="거절 사유" />
+          </div>
+          <div class="mt8">
+            <button class="btn-danger" data-testid="btn-reject-match" onclick="api('POST','/matches/'+$v('m-reject-id')+'/reject',{reason:$v('m-reject-reason')},'res-match-reject')">Send</button>
+          </div>
+          <div id="res-match-reject"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/matches/:matchId/status</span></div>
+          <div class="form-row">
+            <span class="form-label">match id</span>
+            <input type="text" id="m-status-id" placeholder="UUID" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-get-match-status" onclick="api('GET','/matches/'+$v('m-status-id')+'/status',null,'res-match-status')">Send</button>
+          </div>
+          <div id="res-match-status"></div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════
+           MODULE: GAMES
+      ══════════════════════════════════════ -->
+      <div class="module" id="mod-games">
+        <div class="module-header">
+          <span class="module-title">Games</span>
+          <span class="module-sub">/v1/games</span>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-post">POST</span><span class="endpoint-path">/games/:gameId/result</span></div>
+          <div class="form-row">
+            <span class="form-label">game id</span>
+            <input type="text" id="g-result-id" data-testid="input-game-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">requesterScore</span>
+            <input type="number" id="g-req-score" value="3" min="0" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">opponentScore</span>
+            <input type="number" id="g-opp-score" value="2" min="0" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">proofImageUrl</span>
+            <input type="text" id="g-proof-url" placeholder="https://... (선택)" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-submit-game-result" onclick="api('POST','/games/'+$v('g-result-id')+'/result',{requesterScore:parseInt($v('g-req-score')),opponentScore:parseInt($v('g-opp-score')),proofImageUrl:$v('g-proof-url')||undefined},'res-game-result')">Send</button>
+          </div>
+          <div id="res-game-result"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-post">POST</span><span class="endpoint-path">/games/:gameId/confirm</span></div>
+          <div class="form-row">
+            <span class="form-label">game id</span>
+            <input type="text" id="g-confirm-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">confirmed</span>
+            <select id="g-confirmed">
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+          </div>
+          <div class="mt8">
+            <button class="btn-success" data-testid="btn-confirm-game" onclick="api('POST','/games/'+$v('g-confirm-id')+'/confirm',{confirmed:$v('g-confirmed')==='true'},'res-game-confirm')">Send</button>
+          </div>
+          <div id="res-game-confirm"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-post">POST</span><span class="endpoint-path">/games/:gameId/dispute</span></div>
+          <div class="form-row">
+            <span class="form-label">game id</span>
+            <input type="text" id="g-dispute-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">reason</span>
+            <input type="text" id="g-dispute-reason" placeholder="이의 제기 사유" />
+          </div>
+          <div class="mt8">
+            <button class="btn-warning" data-testid="btn-dispute-game" onclick="api('POST','/games/'+$v('g-dispute-id')+'/dispute',{reason:$v('g-dispute-reason')},'res-game-dispute')">Send</button>
+          </div>
+          <div id="res-game-dispute"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/games/:id</span></div>
+          <div class="form-row">
+            <span class="form-label">game id</span>
+            <input type="text" id="g-get-id" placeholder="UUID" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-get-game" onclick="api('GET','/games/'+$v('g-get-id'),null,'res-game-get')">Send</button>
+          </div>
+          <div id="res-game-get"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/games</span></div>
+          <div class="form-row">
+            <span class="form-label">status</span>
+            <input type="text" id="g-list-status" placeholder="PENDING|COMPLETED|DISPUTED..." />
+          </div>
+          <div class="form-row">
+            <span class="form-label">page / limit</span>
+            <input type="number" id="g-list-page" value="1" style="width:60px" />
+            <input type="number" id="g-list-limit" value="20" style="width:60px" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-get-games" onclick="api('GET',buildQS('/games',{status:$v('g-list-status'),page:$v('g-list-page'),limit:$v('g-list-limit')}),null,'res-games-list')">Send</button>
+          </div>
+          <div id="res-games-list"></div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════
+           MODULE: CHAT
+      ══════════════════════════════════════ -->
+      <div class="module" id="mod-chat">
+        <div class="module-header">
+          <span class="module-title">Chat (REST)</span>
+          <span class="module-sub">/v1/chat-rooms</span>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/chat-rooms</span></div>
+          <button class="btn-primary" data-testid="btn-get-chat-rooms" onclick="api('GET','/chat-rooms',null,'res-chat-rooms')">Send</button>
+          <div id="res-chat-rooms"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/chat-rooms/:id/messages</span></div>
+          <div class="form-row">
+            <span class="form-label">room id</span>
+            <input type="text" id="chat-room-id" data-testid="input-chat-room-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">cursor</span>
+            <input type="text" id="chat-cursor" placeholder="cursor (선택)" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">limit</span>
+            <input type="number" id="chat-limit" value="50" style="width:80px" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-get-chat-messages" onclick="api('GET',buildQS('/chat-rooms/'+$v('chat-room-id')+'/messages',{cursor:$v('chat-cursor'),limit:$v('chat-limit')}),null,'res-chat-msgs')">Send</button>
+          </div>
+          <div id="res-chat-msgs"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-post">POST</span><span class="endpoint-path">/chat-rooms/:id/messages</span></div>
+          <div class="form-row">
+            <span class="form-label">room id</span>
+            <input type="text" id="chat-send-room-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">content</span>
+            <input type="text" id="chat-send-content" placeholder="메시지 내용" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">messageType</span>
+            <select id="chat-send-type">
+              <option value="TEXT">TEXT</option>
+              <option value="IMAGE">IMAGE</option>
+            </select>
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-send-chat-message" onclick="api('POST','/chat-rooms/'+$v('chat-send-room-id')+'/messages',{content:$v('chat-send-content'),messageType:$v('chat-send-type')},'res-chat-send')">Send</button>
+          </div>
+          <div id="res-chat-send"></div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════
+           MODULE: WEBSOCKET
+      ══════════════════════════════════════ -->
+      <div class="module" id="mod-websocket">
+        <div class="module-header">
+          <span class="module-title">WebSocket (Socket.IO)</span>
+          <span class="module-sub">path: /ws</span>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Connection</div>
+          <div class="form-row">
+            <span class="form-label">Server URL</span>
+            <input type="text" id="ws-url" value="http://localhost:3000" style="font-family:monospace;font-size:11px" />
+          </div>
+          <div class="flex gap8 mt8">
+            <button class="btn-success" data-testid="ws-connect" onclick="wsConnect()">Connect</button>
+            <button class="btn-danger" data-testid="ws-disconnect" onclick="wsDisconnect()">Disconnect</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Room Management</div>
+          <div class="form-row">
+            <span class="form-label">room id</span>
+            <input type="text" id="ws-room-id" data-testid="ws-room-id" placeholder="Chat room UUID" />
+          </div>
+          <div class="flex gap8 mt8">
+            <button class="btn-primary" data-testid="ws-join-room" onclick="wsJoinRoom()">JOIN_ROOM</button>
+            <button class="btn-ghost" data-testid="ws-leave-room" onclick="wsLeaveRoom()">LEAVE_ROOM</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Send Message</div>
+          <div class="form-row">
+            <span class="form-label">room id</span>
+            <input type="text" id="ws-msg-room-id" placeholder="Chat room UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">message</span>
+            <input type="text" id="ws-message-input" data-testid="ws-message-input" placeholder="메시지 내용"
+                   onkeydown="if(event.key==='Enter')wsSendMessage()" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">messageType</span>
+            <select id="ws-msg-type">
+              <option value="TEXT">TEXT</option>
+              <option value="IMAGE">IMAGE</option>
+            </select>
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="ws-send-message" onclick="wsSendMessage()">SEND_MESSAGE</button>
+            <button class="btn-ghost btn-sm" style="margin-left:8px" onclick="wsTyping()">TYPING</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Event Log
+            <button class="btn-ghost btn-xs" style="margin-left:auto" onclick="clearWsMessages()">Clear</button>
+          </div>
+          <div class="ws-messages" id="ws-messages" data-testid="ws-messages"></div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════
+           MODULE: RANKINGS
+      ══════════════════════════════════════ -->
+      <div class="module" id="mod-rankings">
+        <div class="module-header">
+          <span class="module-title">Rankings</span>
+          <span class="module-sub">/v1/rankings</span>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/rankings/pins/:pinId</span></div>
+          <div class="form-row">
+            <span class="form-label">pin id</span>
+            <input type="text" id="rank-pin-id" data-testid="input-rank-pin-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">sportType</span>
+            <input type="text" id="rank-pin-sport" placeholder="GOLF|TENNIS..." />
+          </div>
+          <div class="form-row">
+            <span class="form-label">page / limit</span>
+            <input type="number" id="rank-pin-page" value="1" style="width:60px" />
+            <input type="number" id="rank-pin-limit" value="20" style="width:60px" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-get-pin-rankings" onclick="api('GET',buildQS('/rankings/pins/'+$v('rank-pin-id'),{sportType:$v('rank-pin-sport'),page:$v('rank-pin-page'),limit:$v('rank-pin-limit')}),null,'res-pin-rank')">Send</button>
+          </div>
+          <div id="res-pin-rank"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/rankings/national</span></div>
+          <div class="form-row">
+            <span class="form-label">sportType</span>
+            <input type="text" id="rank-nat-sport" placeholder="GOLF|TENNIS..." />
+          </div>
+          <div class="form-row">
+            <span class="form-label">page / limit</span>
+            <input type="number" id="rank-nat-page" value="1" style="width:60px" />
+            <input type="number" id="rank-nat-limit" value="20" style="width:60px" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-get-national-rankings" onclick="api('GET',buildQS('/rankings/national',{sportType:$v('rank-nat-sport'),page:$v('rank-nat-page'),limit:$v('rank-nat-limit')}),null,'res-nat-rank')">Send</button>
+          </div>
+          <div id="res-nat-rank"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/rankings/me</span></div>
+          <button class="btn-primary" data-testid="btn-get-my-ranking" onclick="api('GET','/rankings/me',null,'res-my-rank')">Send</button>
+          <div id="res-my-rank"></div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════
+           MODULE: PINS
+      ══════════════════════════════════════ -->
+      <div class="module" id="mod-pins">
+        <div class="module-header">
+          <span class="module-title">Pins / Community</span>
+          <span class="module-sub">/v1/pins</span>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/pins/nearby</span></div>
+          <div class="form-row">
+            <span class="form-label">latitude</span>
+            <input type="number" id="pin-lat" value="37.5007" step="0.0001" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">longitude</span>
+            <input type="number" id="pin-lng" value="127.0361" step="0.0001" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">radiusKm</span>
+            <input type="number" id="pin-radius" value="10" min="1" max="100" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">level</span>
+            <input type="number" id="pin-level" placeholder="1-5 (선택)" min="1" max="5" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-get-nearby-pins" onclick="api('GET',buildQS('/pins/nearby',{latitude:$v('pin-lat'),longitude:$v('pin-lng'),radiusKm:$v('pin-radius'),level:$v('pin-level')}),null,'res-nearby-pins')">Send</button>
+          </div>
+          <div id="res-nearby-pins"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/pins/:id</span></div>
+          <div class="form-row">
+            <span class="form-label">pin id</span>
+            <input type="text" id="pin-get-id" data-testid="input-pin-id" placeholder="UUID" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-get-pin" onclick="api('GET','/pins/'+$v('pin-get-id'),null,'res-pin-get')">Send</button>
+          </div>
+          <div id="res-pin-get"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/pins/:pinId/posts</span></div>
+          <div class="form-row">
+            <span class="form-label">pin id</span>
+            <input type="text" id="pin-posts-pin-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">category</span>
+            <select id="pin-posts-cat">
+              <option value="">-- All --</option>
+              <option value="GENERAL">GENERAL</option>
+              <option value="MATCH_SEEK">MATCH_SEEK</option>
+              <option value="REVIEW">REVIEW</option>
+              <option value="NOTICE">NOTICE</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <span class="form-label">page / limit</span>
+            <input type="number" id="pin-posts-page" value="1" style="width:60px" />
+            <input type="number" id="pin-posts-limit" value="20" style="width:60px" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-get-pin-posts" onclick="api('GET',buildQS('/pins/'+$v('pin-posts-pin-id')+'/posts',{category:$v('pin-posts-cat'),page:$v('pin-posts-page'),limit:$v('pin-posts-limit')}),null,'res-pin-posts')">Send</button>
+          </div>
+          <div id="res-pin-posts"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-post">POST</span><span class="endpoint-path">/pins/:pinId/posts</span></div>
+          <div class="form-row">
+            <span class="form-label">pin id</span>
+            <input type="text" id="pin-post-create-pin-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">title</span>
+            <input type="text" id="pin-post-title" placeholder="게시글 제목" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">content</span>
+            <textarea id="pin-post-content" placeholder="게시글 내용"></textarea>
+          </div>
+          <div class="form-row">
+            <span class="form-label">category</span>
+            <select id="pin-post-cat">
+              <option value="GENERAL">GENERAL</option>
+              <option value="MATCH_SEEK">MATCH_SEEK</option>
+              <option value="REVIEW">REVIEW</option>
+              <option value="NOTICE">NOTICE</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <span class="form-label">imageUrls</span>
+            <input type="text" id="pin-post-images" placeholder='["url1","url2"] (선택)' />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-create-pin-post" onclick="createPinPost()">Send</button>
+          </div>
+          <div id="res-pin-post-create"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/pins/:pinId/posts/:postId</span></div>
+          <div class="form-row">
+            <span class="form-label">pin id</span>
+            <input type="text" id="pin-post-get-pin" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">post id</span>
+            <input type="text" id="pin-post-get-post" data-testid="input-post-id" placeholder="UUID" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-get-pin-post" onclick="api('GET','/pins/'+$v('pin-post-get-pin')+'/posts/'+$v('pin-post-get-post'),null,'res-pin-post-get')">Send</button>
+          </div>
+          <div id="res-pin-post-get"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-patch">PATCH</span><span class="endpoint-path">/pins/:pinId/posts/:postId</span></div>
+          <div class="form-row">
+            <span class="form-label">pin id</span>
+            <input type="text" id="pin-post-patch-pin" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">post id</span>
+            <input type="text" id="pin-post-patch-post" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">title</span>
+            <input type="text" id="pin-post-patch-title" placeholder="새 제목" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">content</span>
+            <textarea id="pin-post-patch-content" placeholder="새 내용"></textarea>
+          </div>
+          <div class="mt8">
+            <button class="btn-warning" data-testid="btn-update-pin-post" onclick="api('PATCH','/pins/'+$v('pin-post-patch-pin')+'/posts/'+$v('pin-post-patch-post'),{title:$v('pin-post-patch-title')||undefined,content:$v('pin-post-patch-content')||undefined},'res-pin-post-patch')">Send</button>
+          </div>
+          <div id="res-pin-post-patch"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-delete">DELETE</span><span class="endpoint-path">/pins/:pinId/posts/:postId</span></div>
+          <div class="form-row">
+            <span class="form-label">pin id</span>
+            <input type="text" id="pin-post-del-pin" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">post id</span>
+            <input type="text" id="pin-post-del-post" placeholder="UUID" />
+          </div>
+          <div class="mt8">
+            <button class="btn-danger" data-testid="btn-delete-pin-post" onclick="api('DELETE','/pins/'+$v('pin-post-del-pin')+'/posts/'+$v('pin-post-del-post'),null,'res-pin-post-del')">Send</button>
+          </div>
+          <div id="res-pin-post-del"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-post">POST</span><span class="endpoint-path">/pins/:pinId/posts/:postId/comments</span></div>
+          <div class="form-row">
+            <span class="form-label">pin id</span>
+            <input type="text" id="pin-comment-pin" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">post id</span>
+            <input type="text" id="pin-comment-post" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">content</span>
+            <input type="text" id="pin-comment-content" placeholder="댓글 내용" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">parentId</span>
+            <input type="text" id="pin-comment-parent" placeholder="UUID (대댓글인 경우)" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-create-pin-comment" onclick="api('POST','/pins/'+$v('pin-comment-pin')+'/posts/'+$v('pin-comment-post')+'/comments',{content:$v('pin-comment-content'),parentId:$v('pin-comment-parent')||undefined},'res-pin-comment-create')">Send</button>
+          </div>
+          <div id="res-pin-comment-create"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/pins/:pinId/posts/:postId/comments</span></div>
+          <div class="form-row">
+            <span class="form-label">pin id</span>
+            <input type="text" id="pin-comments-pin" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">post id</span>
+            <input type="text" id="pin-comments-post" placeholder="UUID" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-get-pin-comments" onclick="api('GET','/pins/'+$v('pin-comments-pin')+'/posts/'+$v('pin-comments-post')+'/comments',null,'res-pin-comments')">Send</button>
+          </div>
+          <div id="res-pin-comments"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-post">POST</span><span class="endpoint-path">/pins/:pinId/posts/:postId/like</span></div>
+          <div class="form-row">
+            <span class="form-label">pin id</span>
+            <input type="text" id="pin-like-pin" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">post id</span>
+            <input type="text" id="pin-like-post" placeholder="UUID" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-like-pin-post" onclick="api('POST','/pins/'+$v('pin-like-pin')+'/posts/'+$v('pin-like-post')+'/like',null,'res-pin-like')">Send</button>
+          </div>
+          <div id="res-pin-like"></div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════
+           MODULE: NOTIFICATIONS
+      ══════════════════════════════════════ -->
+      <div class="module" id="mod-notifications">
+        <div class="module-header">
+          <span class="module-title">Notifications</span>
+          <span class="module-sub">/v1/notifications, /v1/devices</span>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/notifications</span></div>
+          <div class="form-row">
+            <span class="form-label">page / limit</span>
+            <input type="number" id="notif-page" value="1" style="width:60px" />
+            <input type="number" id="notif-limit" value="20" style="width:60px" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">type</span>
+            <input type="text" id="notif-type" placeholder="MATCH|CHAT|COMMUNITY..." />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-get-notifications" onclick="api('GET',buildQS('/notifications',{page:$v('notif-page'),limit:$v('notif-limit'),type:$v('notif-type')}),null,'res-notifications')">Send</button>
+          </div>
+          <div id="res-notifications"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-patch">PATCH</span><span class="endpoint-path">/notifications/read-all</span></div>
+          <button class="btn-warning" data-testid="btn-read-all-notifications" onclick="api('PATCH','/notifications/read-all',null,'res-notif-read-all')">Send</button>
+          <div id="res-notif-read-all"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-patch">PATCH</span><span class="endpoint-path">/notifications/:id/read</span></div>
+          <div class="form-row">
+            <span class="form-label">notification id</span>
+            <input type="text" id="notif-read-id" data-testid="input-notification-id" placeholder="UUID" />
+          </div>
+          <div class="mt8">
+            <button class="btn-warning" data-testid="btn-read-notification" onclick="api('PATCH','/notifications/'+$v('notif-read-id')+'/read',null,'res-notif-read')">Send</button>
+          </div>
+          <div id="res-notif-read"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-post">POST</span><span class="endpoint-path">/devices/push-token</span></div>
+          <div class="form-row">
+            <span class="form-label">token</span>
+            <input type="text" id="device-token" data-testid="input-device-token" placeholder="푸시 토큰" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">platform</span>
+            <select id="device-platform">
+              <option value="IOS">IOS</option>
+              <option value="ANDROID">ANDROID</option>
+            </select>
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-register-push-token" onclick="api('POST','/devices/push-token',{token:$v('device-token'),platform:$v('device-platform')},'res-push-token')">Send</button>
+          </div>
+          <div id="res-push-token"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-delete">DELETE</span><span class="endpoint-path">/devices/push-token</span></div>
+          <div class="form-row">
+            <span class="form-label">token</span>
+            <input type="text" id="device-del-token" placeholder="삭제할 푸시 토큰" />
+          </div>
+          <div class="mt8">
+            <button class="btn-danger" data-testid="btn-delete-push-token" onclick="api('DELETE','/devices/push-token',{token:$v('device-del-token')},'res-push-token-del')">Send</button>
+          </div>
+          <div id="res-push-token-del"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-patch">PATCH</span><span class="endpoint-path">/notifications/settings</span></div>
+          <div class="form-row">
+            <span class="form-label">matchNotif</span>
+            <select id="notif-setting-match">
+              <option value="">-- --</option>
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <span class="form-label">chatNotif</span>
+            <select id="notif-setting-chat">
+              <option value="">-- --</option>
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <span class="form-label">communityNotif</span>
+            <select id="notif-setting-community">
+              <option value="">-- --</option>
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <span class="form-label">dndStartTime</span>
+            <input type="time" id="notif-dnd-start" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">dndEndTime</span>
+            <input type="time" id="notif-dnd-end" />
+          </div>
+          <div class="mt8">
+            <button class="btn-warning" data-testid="btn-update-notification-settings" onclick="updateNotifSettings()">Send</button>
+          </div>
+          <div id="res-notif-settings"></div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════
+           MODULE: UPLOADS
+      ══════════════════════════════════════ -->
+      <div class="module" id="mod-uploads">
+        <div class="module-header">
+          <span class="module-title">Uploads</span>
+          <span class="module-sub">/v1/uploads</span>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-post">POST</span><span class="endpoint-path">/uploads/presigned-url</span></div>
+          <div class="form-row">
+            <span class="form-label">purpose</span>
+            <select id="upload-purpose" data-testid="input-upload-purpose">
+              <option value="PROFILE_IMAGE">PROFILE_IMAGE</option>
+              <option value="GAME_RESULT">GAME_RESULT</option>
+              <option value="POST_IMAGE">POST_IMAGE</option>
+              <option value="CHAT_IMAGE">CHAT_IMAGE</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <span class="form-label">contentType</span>
+            <input type="text" id="upload-content-type" value="image/jpeg" placeholder="image/jpeg" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">fileName</span>
+            <input type="text" id="upload-file-name" value="test.jpg" placeholder="test.jpg" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-get-presigned-url" onclick="api('POST','/uploads/presigned-url',{purpose:$v('upload-purpose'),contentType:$v('upload-content-type'),fileName:$v('upload-file-name')},'res-presigned')">Send</button>
+          </div>
+          <div id="res-presigned"></div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════
+           MODULE: ADMIN
+      ══════════════════════════════════════ -->
+      <div class="module" id="mod-admin">
+        <div class="module-header">
+          <span class="module-title">Admin</span>
+          <span class="module-sub">/v1/admin</span>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/admin/dashboard</span></div>
+          <button class="btn-primary" data-testid="btn-admin-dashboard" onclick="api('GET','/admin/dashboard',null,'res-admin-dash')">Send</button>
+          <div id="res-admin-dash"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/admin/users</span></div>
+          <div class="form-row">
+            <span class="form-label">search</span>
+            <input type="text" id="admin-users-search" placeholder="닉네임/이메일" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">status</span>
+            <input type="text" id="admin-users-status" placeholder="ACTIVE|SUSPENDED..." />
+          </div>
+          <div class="form-row">
+            <span class="form-label">page / limit</span>
+            <input type="number" id="admin-users-page" value="1" style="width:60px" />
+            <input type="number" id="admin-users-limit" value="20" style="width:60px" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-admin-get-users" onclick="api('GET',buildQS('/admin/users',{search:$v('admin-users-search'),status:$v('admin-users-status'),page:$v('admin-users-page'),limit:$v('admin-users-limit')}),null,'res-admin-users')">Send</button>
+          </div>
+          <div id="res-admin-users"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-patch">PATCH</span><span class="endpoint-path">/admin/users/:id/suspend</span></div>
+          <div class="form-row">
+            <span class="form-label">user id</span>
+            <input type="text" id="admin-suspend-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">reason</span>
+            <input type="text" id="admin-suspend-reason" placeholder="정지 사유" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">durationDays</span>
+            <input type="number" id="admin-suspend-days" value="7" min="1" />
+          </div>
+          <div class="mt8">
+            <button class="btn-danger" data-testid="btn-admin-suspend-user" onclick="api('PATCH','/admin/users/'+$v('admin-suspend-id')+'/suspend',{reason:$v('admin-suspend-reason'),durationDays:parseInt($v('admin-suspend-days'))},'res-admin-suspend')">Send</button>
+          </div>
+          <div id="res-admin-suspend"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-patch">PATCH</span><span class="endpoint-path">/admin/users/:id/activate</span></div>
+          <div class="form-row">
+            <span class="form-label">user id</span>
+            <input type="text" id="admin-activate-id" placeholder="UUID" />
+          </div>
+          <div class="mt8">
+            <button class="btn-success" data-testid="btn-admin-activate-user" onclick="api('PATCH','/admin/users/'+$v('admin-activate-id')+'/activate',null,'res-admin-activate')">Send</button>
+          </div>
+          <div id="res-admin-activate"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/admin/reports</span></div>
+          <div class="form-row">
+            <span class="form-label">status</span>
+            <input type="text" id="admin-reports-status" placeholder="PENDING|RESOLVED..." />
+          </div>
+          <div class="form-row">
+            <span class="form-label">type</span>
+            <input type="text" id="admin-reports-type" placeholder="신고 유형" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">page / limit</span>
+            <input type="number" id="admin-reports-page" value="1" style="width:60px" />
+            <input type="number" id="admin-reports-limit" value="20" style="width:60px" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-admin-get-reports" onclick="api('GET',buildQS('/admin/reports',{status:$v('admin-reports-status'),type:$v('admin-reports-type'),page:$v('admin-reports-page'),limit:$v('admin-reports-limit')}),null,'res-admin-reports')">Send</button>
+          </div>
+          <div id="res-admin-reports"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-patch">PATCH</span><span class="endpoint-path">/admin/reports/:id/resolve</span></div>
+          <div class="form-row">
+            <span class="form-label">report id</span>
+            <input type="text" id="admin-report-resolve-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">resolution</span>
+            <input type="text" id="admin-report-resolution" placeholder="처리 내용" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">action</span>
+            <input type="text" id="admin-report-action" placeholder="조치 사항" />
+          </div>
+          <div class="mt8">
+            <button class="btn-warning" data-testid="btn-admin-resolve-report" onclick="api('PATCH','/admin/reports/'+$v('admin-report-resolve-id')+'/resolve',{resolution:$v('admin-report-resolution'),action:$v('admin-report-action')},'res-admin-report-resolve')">Send</button>
+          </div>
+          <div id="res-admin-report-resolve"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/admin/games/disputed</span></div>
+          <div class="form-row">
+            <span class="form-label">page / limit</span>
+            <input type="number" id="admin-disputed-page" value="1" style="width:60px" />
+            <input type="number" id="admin-disputed-limit" value="20" style="width:60px" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-admin-get-disputed" onclick="api('GET',buildQS('/admin/games/disputed',{page:$v('admin-disputed-page'),limit:$v('admin-disputed-limit')}),null,'res-admin-disputed')">Send</button>
+          </div>
+          <div id="res-admin-disputed"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-post">POST</span><span class="endpoint-path">/admin/games/:id/resolve-dispute</span></div>
+          <div class="form-row">
+            <span class="form-label">game id</span>
+            <input type="text" id="admin-resolve-game-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">winnerId</span>
+            <input type="text" id="admin-resolve-winner" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">reason</span>
+            <input type="text" id="admin-resolve-reason" placeholder="판정 이유" />
+          </div>
+          <div class="mt8">
+            <button class="btn-warning" data-testid="btn-admin-resolve-dispute" onclick="api('POST','/admin/games/'+$v('admin-resolve-game-id')+'/resolve-dispute',{winnerId:$v('admin-resolve-winner'),reason:$v('admin-resolve-reason')},'res-admin-resolve-dispute')">Send</button>
+          </div>
+          <div id="res-admin-resolve-dispute"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/admin/pins</span></div>
+          <div class="form-row">
+            <span class="form-label">level</span>
+            <input type="number" id="admin-pins-level" placeholder="1-5 (선택)" min="1" max="5" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">isActive</span>
+            <select id="admin-pins-active">
+              <option value="">-- --</option>
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <span class="form-label">page / limit</span>
+            <input type="number" id="admin-pins-page" value="1" style="width:60px" />
+            <input type="number" id="admin-pins-limit" value="20" style="width:60px" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-admin-get-pins" onclick="api('GET',buildQS('/admin/pins',{level:$v('admin-pins-level'),isActive:$v('admin-pins-active'),page:$v('admin-pins-page'),limit:$v('admin-pins-limit')}),null,'res-admin-pins')">Send</button>
+          </div>
+          <div id="res-admin-pins"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-patch">PATCH</span><span class="endpoint-path">/admin/pins/:id/activate</span></div>
+          <div class="form-row">
+            <span class="form-label">pin id</span>
+            <input type="text" id="admin-pin-activate-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">isActive</span>
+            <select id="admin-pin-is-active">
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+          </div>
+          <div class="mt8">
+            <button class="btn-warning" data-testid="btn-admin-activate-pin" onclick="api('PATCH','/admin/pins/'+$v('admin-pin-activate-id')+'/activate',{isActive:$v('admin-pin-is-active')==='true'},'res-admin-pin-activate')">Send</button>
+          </div>
+          <div id="res-admin-pin-activate"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-post">POST</span><span class="endpoint-path">/admin/users/:id/grant-admin</span></div>
+          <div class="form-row">
+            <span class="form-label">user id</span>
+            <input type="text" id="admin-grant-user-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">role</span>
+            <select id="admin-grant-role">
+              <option value="ADMIN">ADMIN</option>
+              <option value="MODERATOR">MODERATOR</option>
+            </select>
+          </div>
+          <div class="mt8">
+            <button class="btn-warning" data-testid="btn-admin-grant-admin" onclick="api('POST','/admin/users/'+$v('admin-grant-user-id')+'/grant-admin',{role:$v('admin-grant-role')},'res-admin-grant')">Send</button>
+          </div>
+          <div id="res-admin-grant"></div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════
+           MODULE: TEAMS
+      ══════════════════════════════════════ -->
+      <div class="module" id="mod-teams">
+        <div class="module-header">
+          <span class="module-title">Teams</span>
+          <span class="module-sub">/v1/teams, /v1/team-matches, /v1/team-chat-rooms</span>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-post">POST</span><span class="endpoint-path">/teams</span></div>
+          <div class="form-row">
+            <span class="form-label">name</span>
+            <input type="text" id="team-name" data-testid="input-team-name" placeholder="팀 이름" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">sportType</span>
+            <select id="team-sport">
+              <option value="GOLF">GOLF</option>
+              <option value="BILLIARDS">BILLIARDS</option>
+              <option value="TENNIS">TENNIS</option>
+              <option value="TABLE_TENNIS">TABLE_TENNIS</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <span class="form-label">description</span>
+            <textarea id="team-desc" placeholder="팀 설명"></textarea>
+          </div>
+          <div class="form-row">
+            <span class="form-label">pinId</span>
+            <input type="text" id="team-pin-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">maxMembers</span>
+            <input type="number" id="team-max-members" value="10" min="2" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-create-team" onclick="api('POST','/teams',{name:$v('team-name'),sportType:$v('team-sport'),description:$v('team-desc')||undefined,pinId:$v('team-pin-id')||undefined,maxMembers:parseInt($v('team-max-members'))},'res-team-create')">Send</button>
+          </div>
+          <div id="res-team-create"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/teams/nearby</span></div>
+          <div class="form-row">
+            <span class="form-label">latitude</span>
+            <input type="number" id="team-nearby-lat" value="37.5007" step="0.0001" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">longitude</span>
+            <input type="number" id="team-nearby-lng" value="127.0361" step="0.0001" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">radiusKm</span>
+            <input type="number" id="team-nearby-radius" value="10" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">sportType</span>
+            <input type="text" id="team-nearby-sport" placeholder="선택" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-get-nearby-teams" onclick="api('GET',buildQS('/teams/nearby',{latitude:$v('team-nearby-lat'),longitude:$v('team-nearby-lng'),radiusKm:$v('team-nearby-radius'),sportType:$v('team-nearby-sport')}),null,'res-nearby-teams')">Send</button>
+          </div>
+          <div id="res-nearby-teams"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/teams/search</span></div>
+          <div class="form-row">
+            <span class="form-label">keyword</span>
+            <input type="text" id="team-search-kw" placeholder="검색어" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">sportType</span>
+            <input type="text" id="team-search-sport" placeholder="선택" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">page / limit</span>
+            <input type="number" id="team-search-page" value="1" style="width:60px" />
+            <input type="number" id="team-search-limit" value="20" style="width:60px" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-search-teams" onclick="api('GET',buildQS('/teams/search',{keyword:$v('team-search-kw'),sportType:$v('team-search-sport'),page:$v('team-search-page'),limit:$v('team-search-limit')}),null,'res-team-search')">Send</button>
+          </div>
+          <div id="res-team-search"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/teams/:id</span></div>
+          <div class="form-row">
+            <span class="form-label">team id</span>
+            <input type="text" id="team-get-id" data-testid="input-team-id" placeholder="UUID" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-get-team" onclick="api('GET','/teams/'+$v('team-get-id'),null,'res-team-get')">Send</button>
+          </div>
+          <div id="res-team-get"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-patch">PATCH</span><span class="endpoint-path">/teams/:id</span></div>
+          <div class="form-row">
+            <span class="form-label">team id</span>
+            <input type="text" id="team-patch-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">name</span>
+            <input type="text" id="team-patch-name" placeholder="새 팀 이름" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">description</span>
+            <input type="text" id="team-patch-desc" placeholder="새 설명" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">isRecruiting</span>
+            <select id="team-patch-recruiting">
+              <option value="">-- --</option>
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <span class="form-label">maxMembers</span>
+            <input type="number" id="team-patch-max" placeholder="최대 인원" />
+          </div>
+          <div class="mt8">
+            <button class="btn-warning" data-testid="btn-update-team" onclick="updateTeam()">Send</button>
+          </div>
+          <div id="res-team-patch"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-delete">DELETE</span><span class="endpoint-path">/teams/:id</span></div>
+          <div class="form-row">
+            <span class="form-label">team id</span>
+            <input type="text" id="team-del-id" placeholder="UUID" />
+          </div>
+          <div class="mt8">
+            <button class="btn-danger" data-testid="btn-delete-team" onclick="api('DELETE','/teams/'+$v('team-del-id'),null,'res-team-del')">Send</button>
+          </div>
+          <div id="res-team-del"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/teams/:id/members</span></div>
+          <div class="form-row">
+            <span class="form-label">team id</span>
+            <input type="text" id="team-members-id" placeholder="UUID" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-get-team-members" onclick="api('GET','/teams/'+$v('team-members-id')+'/members',null,'res-team-members')">Send</button>
+          </div>
+          <div id="res-team-members"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-post">POST</span><span class="endpoint-path">/teams/:id/members/join</span></div>
+          <div class="form-row">
+            <span class="form-label">team id</span>
+            <input type="text" id="team-join-id" placeholder="UUID" />
+          </div>
+          <div class="mt8">
+            <button class="btn-success" data-testid="btn-join-team" onclick="api('POST','/teams/'+$v('team-join-id')+'/members/join',null,'res-team-join')">Send</button>
+          </div>
+          <div id="res-team-join"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-post">POST</span><span class="endpoint-path">/teams/:id/members/:userId/kick</span></div>
+          <div class="form-row">
+            <span class="form-label">team id</span>
+            <input type="text" id="team-kick-team-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">user id</span>
+            <input type="text" id="team-kick-user-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">reason</span>
+            <input type="text" id="team-kick-reason" placeholder="강퇴 사유" />
+          </div>
+          <div class="mt8">
+            <button class="btn-danger" data-testid="btn-kick-team-member" onclick="api('POST','/teams/'+$v('team-kick-team-id')+'/members/'+$v('team-kick-user-id')+'/kick',{reason:$v('team-kick-reason')},'res-team-kick')">Send</button>
+          </div>
+          <div id="res-team-kick"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-patch">PATCH</span><span class="endpoint-path">/teams/:id/members/:userId/role</span></div>
+          <div class="form-row">
+            <span class="form-label">team id</span>
+            <input type="text" id="team-role-team-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">user id</span>
+            <input type="text" id="team-role-user-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">role</span>
+            <select id="team-role-value">
+              <option value="CAPTAIN">CAPTAIN</option>
+              <option value="VICE_CAPTAIN">VICE_CAPTAIN</option>
+              <option value="MEMBER">MEMBER</option>
+            </select>
+          </div>
+          <div class="mt8">
+            <button class="btn-warning" data-testid="btn-update-team-member-role" onclick="api('PATCH','/teams/'+$v('team-role-team-id')+'/members/'+$v('team-role-user-id')+'/role',{role:$v('team-role-value')},'res-team-role')">Send</button>
+          </div>
+          <div id="res-team-role"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-delete">DELETE</span><span class="endpoint-path">/teams/:id/members/me</span></div>
+          <div class="form-row">
+            <span class="form-label">team id</span>
+            <input type="text" id="team-leave-id" placeholder="UUID" />
+          </div>
+          <div class="mt8">
+            <button class="btn-danger" data-testid="btn-leave-team" onclick="api('DELETE','/teams/'+$v('team-leave-id')+'/members/me',null,'res-team-leave')">Send</button>
+          </div>
+          <div id="res-team-leave"></div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-post">POST</span><span class="endpoint-path">/team-matches/requests</span></div>
+          <div class="form-row">
+            <span class="form-label">teamId</span>
+            <input type="text" id="tm-team-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">sportType</span>
+            <select id="tm-sport">
+              <option value="GOLF">GOLF</option>
+              <option value="BILLIARDS">BILLIARDS</option>
+              <option value="TENNIS">TENNIS</option>
+              <option value="TABLE_TENNIS">TABLE_TENNIS</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <span class="form-label">preferredDate</span>
+            <input type="date" id="tm-date" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">timeSlot</span>
+            <select id="tm-time-slot">
+              <option value="MORNING">MORNING</option>
+              <option value="AFTERNOON">AFTERNOON</option>
+              <option value="EVENING">EVENING</option>
+              <option value="ANY">ANY</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <span class="form-label">pinId</span>
+            <input type="text" id="tm-pin-id" placeholder="UUID (선택)" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">message</span>
+            <input type="text" id="tm-message" placeholder="선택 메시지" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-create-team-match-request" onclick="api('POST','/team-matches/requests',{teamId:$v('tm-team-id'),sportType:$v('tm-sport'),preferredDate:$v('tm-date')||undefined,timeSlot:$v('tm-time-slot'),pinId:$v('tm-pin-id')||undefined,message:$v('tm-message')||undefined},'res-tm-create')">Send</button>
+          </div>
+          <div id="res-tm-create"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-delete">DELETE</span><span class="endpoint-path">/team-matches/requests/:id</span></div>
+          <div class="form-row">
+            <span class="form-label">request id</span>
+            <input type="text" id="tm-del-id" placeholder="UUID" />
+          </div>
+          <div class="mt8">
+            <button class="btn-danger" data-testid="btn-delete-team-match-request" onclick="api('DELETE','/team-matches/requests/'+$v('tm-del-id'),null,'res-tm-del-req')">Send</button>
+          </div>
+          <div id="res-tm-del-req"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/team-matches</span></div>
+          <div class="form-row">
+            <span class="form-label">teamId</span>
+            <input type="text" id="tm-list-team-id" placeholder="UUID (선택)" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">status</span>
+            <input type="text" id="tm-list-status" placeholder="상태 (선택)" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">page / limit</span>
+            <input type="number" id="tm-list-page" value="1" style="width:60px" />
+            <input type="number" id="tm-list-limit" value="20" style="width:60px" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-get-team-matches" onclick="api('GET',buildQS('/team-matches',{teamId:$v('tm-list-team-id'),status:$v('tm-list-status'),page:$v('tm-list-page'),limit:$v('tm-list-limit')}),null,'res-tm-list')">Send</button>
+          </div>
+          <div id="res-tm-list"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/team-matches/:id</span></div>
+          <div class="form-row">
+            <span class="form-label">match id</span>
+            <input type="text" id="tm-get-id" placeholder="UUID" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-get-team-match" onclick="api('GET','/team-matches/'+$v('tm-get-id'),null,'res-tm-get')">Send</button>
+          </div>
+          <div id="res-tm-get"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-patch">PATCH</span><span class="endpoint-path">/team-matches/:id/confirm</span></div>
+          <div class="form-row">
+            <span class="form-label">match id</span>
+            <input type="text" id="tm-confirm-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">confirmedDate</span>
+            <input type="date" id="tm-confirmed-date" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">confirmedTime</span>
+            <input type="time" id="tm-confirmed-time" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">confirmedLocation</span>
+            <input type="text" id="tm-confirmed-loc" placeholder="장소명" />
+          </div>
+          <div class="mt8">
+            <button class="btn-warning" data-testid="btn-confirm-team-match" onclick="api('PATCH','/team-matches/'+$v('tm-confirm-id')+'/confirm',{confirmedDate:$v('tm-confirmed-date'),confirmedTime:$v('tm-confirmed-time'),confirmedLocation:$v('tm-confirmed-loc')},'res-tm-confirm')">Send</button>
+          </div>
+          <div id="res-tm-confirm"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-post">POST</span><span class="endpoint-path">/team-matches/:id/result</span></div>
+          <div class="form-row">
+            <span class="form-label">match id</span>
+            <input type="text" id="tm-result-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">homeScore</span>
+            <input type="number" id="tm-home-score" value="3" min="0" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">awayScore</span>
+            <input type="number" id="tm-away-score" value="2" min="0" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-submit-team-match-result" onclick="api('POST','/team-matches/'+$v('tm-result-id')+'/result',{homeScore:parseInt($v('tm-home-score')),awayScore:parseInt($v('tm-away-score'))},'res-tm-result')">Send</button>
+          </div>
+          <div id="res-tm-result"></div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/team-chat-rooms</span></div>
+          <div class="form-row">
+            <span class="form-label">teamId</span>
+            <input type="text" id="tchat-team-id" placeholder="UUID (선택)" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-get-team-chat-rooms" onclick="api('GET',buildQS('/team-chat-rooms',{teamId:$v('tchat-team-id')}),null,'res-tchat-rooms')">Send</button>
+          </div>
+          <div id="res-tchat-rooms"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/team-chat-rooms/:id/messages</span></div>
+          <div class="form-row">
+            <span class="form-label">room id</span>
+            <input type="text" id="tchat-room-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">cursor</span>
+            <input type="text" id="tchat-cursor" placeholder="cursor (선택)" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">limit</span>
+            <input type="number" id="tchat-limit" value="50" style="width:80px" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-get-team-chat-messages" onclick="api('GET',buildQS('/team-chat-rooms/'+$v('tchat-room-id')+'/messages',{cursor:$v('tchat-cursor'),limit:$v('tchat-limit')}),null,'res-tchat-msgs')">Send</button>
+          </div>
+          <div id="res-tchat-msgs"></div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/teams/:id/posts</span></div>
+          <div class="form-row">
+            <span class="form-label">team id</span>
+            <input type="text" id="tpost-team-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">category</span>
+            <select id="tpost-cat">
+              <option value="">-- All --</option>
+              <option value="NOTICE">NOTICE</option>
+              <option value="SCHEDULE">SCHEDULE</option>
+              <option value="FREE">FREE</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <span class="form-label">page / limit</span>
+            <input type="number" id="tpost-page" value="1" style="width:60px" />
+            <input type="number" id="tpost-limit" value="20" style="width:60px" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-get-team-posts" onclick="api('GET',buildQS('/teams/'+$v('tpost-team-id')+'/posts',{category:$v('tpost-cat'),page:$v('tpost-page'),limit:$v('tpost-limit')}),null,'res-tposts')">Send</button>
+          </div>
+          <div id="res-tposts"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-post">POST</span><span class="endpoint-path">/teams/:id/posts</span></div>
+          <div class="form-row">
+            <span class="form-label">team id</span>
+            <input type="text" id="tpost-create-team-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">title</span>
+            <input type="text" id="tpost-title" placeholder="게시글 제목" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">content</span>
+            <textarea id="tpost-content" placeholder="게시글 내용"></textarea>
+          </div>
+          <div class="form-row">
+            <span class="form-label">category</span>
+            <select id="tpost-create-cat">
+              <option value="NOTICE">NOTICE</option>
+              <option value="SCHEDULE">SCHEDULE</option>
+              <option value="FREE">FREE</option>
+            </select>
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-create-team-post" onclick="api('POST','/teams/'+$v('tpost-create-team-id')+'/posts',{title:$v('tpost-title'),content:$v('tpost-content'),category:$v('tpost-create-cat')},'res-tpost-create')">Send</button>
+          </div>
+          <div id="res-tpost-create"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-get">GET</span><span class="endpoint-path">/teams/:id/posts/:postId</span></div>
+          <div class="form-row">
+            <span class="form-label">team id</span>
+            <input type="text" id="tpost-get-team-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">post id</span>
+            <input type="text" id="tpost-get-post-id" placeholder="UUID" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-get-team-post" onclick="api('GET','/teams/'+$v('tpost-get-team-id')+'/posts/'+$v('tpost-get-post-id'),null,'res-tpost-get')">Send</button>
+          </div>
+          <div id="res-tpost-get"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-patch">PATCH</span><span class="endpoint-path">/teams/:id/posts/:postId</span></div>
+          <div class="form-row">
+            <span class="form-label">team id</span>
+            <input type="text" id="tpost-patch-team-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">post id</span>
+            <input type="text" id="tpost-patch-post-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">title</span>
+            <input type="text" id="tpost-patch-title" placeholder="새 제목" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">content</span>
+            <textarea id="tpost-patch-content" placeholder="새 내용"></textarea>
+          </div>
+          <div class="mt8">
+            <button class="btn-warning" data-testid="btn-update-team-post" onclick="api('PATCH','/teams/'+$v('tpost-patch-team-id')+'/posts/'+$v('tpost-patch-post-id'),{title:$v('tpost-patch-title')||undefined,content:$v('tpost-patch-content')||undefined},'res-tpost-patch')">Send</button>
+          </div>
+          <div id="res-tpost-patch"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-delete">DELETE</span><span class="endpoint-path">/teams/:id/posts/:postId</span></div>
+          <div class="form-row">
+            <span class="form-label">team id</span>
+            <input type="text" id="tpost-del-team-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">post id</span>
+            <input type="text" id="tpost-del-post-id" placeholder="UUID" />
+          </div>
+          <div class="mt8">
+            <button class="btn-danger" data-testid="btn-delete-team-post" onclick="api('DELETE','/teams/'+$v('tpost-del-team-id')+'/posts/'+$v('tpost-del-post-id'),null,'res-tpost-del')">Send</button>
+          </div>
+          <div id="res-tpost-del"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="method-badge m-post">POST</span><span class="endpoint-path">/teams/:id/posts/:postId/comments</span></div>
+          <div class="form-row">
+            <span class="form-label">team id</span>
+            <input type="text" id="tpost-comment-team-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">post id</span>
+            <input type="text" id="tpost-comment-post-id" placeholder="UUID" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">content</span>
+            <input type="text" id="tpost-comment-content" placeholder="댓글 내용" />
+          </div>
+          <div class="form-row">
+            <span class="form-label">parentId</span>
+            <input type="text" id="tpost-comment-parent" placeholder="UUID (대댓글인 경우)" />
+          </div>
+          <div class="mt8">
+            <button class="btn-primary" data-testid="btn-create-team-post-comment" onclick="api('POST','/teams/'+$v('tpost-comment-team-id')+'/posts/'+$v('tpost-comment-post-id')+'/comments',{content:$v('tpost-comment-content'),parentId:$v('tpost-comment-parent')||undefined},'res-tpost-comment')">Send</button>
+          </div>
+          <div id="res-tpost-comment"></div>
+        </div>
+      </div>
+
+    </div><!-- /content-area -->
+
+    <!-- ══ CONSOLE PANEL ══ -->
+    <div class="console-panel">
+      <div class="console-header">
+        <span class="console-title">Request / Response Log</span>
+        <button class="btn-ghost btn-xs" onclick="clearLog()">Clear</button>
+        <span id="log-count" style="font-size:10px; color:var(--text3); margin-left:4px"></span>
+        <div style="margin-left:auto; display:flex; gap:6px; align-items:center">
+          <span style="font-size:10px; color:var(--text3)">Response:</span>
+          <div id="response-viewer-mini" data-testid="response-status" style="font-size:11px; font-family:monospace"></div>
+        </div>
+      </div>
+      <div class="console-log" id="consoleLog" data-testid="console-log"></div>
+    </div>
+
+  </div><!-- /main-area -->
+</div><!-- /app-body -->
+
+<div id="toasts"></div>
+
+<!-- Hidden response viewer for Playwright targeting -->
+<div id="response-viewer" data-testid="response-viewer" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden"></div>
+
+<script>
+// ═══════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════
+const STATE = {
+  base: 'http://localhost:3000/v1',
+  token: '',
+  user: null,
+  ws: null,
+  logCount: 0
+};
+
+// ═══════════════════════════════════════════════════
+//  UTILS
+// ═══════════════════════════════════════════════════
+const $ = id => document.getElementById(id);
+const $v = id => { const el = $(id); return el ? el.value.trim() : ''; };
+
+function buildQS(path, params) {
+  const q = Object.entries(params)
+    .filter(([,v]) => v !== '' && v !== null && v !== undefined)
+    .map(([k,v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join('&');
+  return q ? `${path}?${q}` : path;
+}
+
+function getBase() { return ($('apiUrl').value || STATE.base).replace(/\/$/, ''); }
+
+function getToken() { return STATE.token; }
+
+function showModule(name) {
+  document.querySelectorAll('.module').forEach(m => m.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const mod = $(`mod-${name}`);
+  if (mod) mod.classList.add('active');
+  const nav = document.querySelector(`[data-testid="nav-${name}"]`);
+  if (nav) nav.classList.add('active');
+}
+
+function syntaxHighlight(json) {
+  if (typeof json !== 'string') json = JSON.stringify(json, null, 2);
+  return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, match => {
+    let cls = 'json-number';
+    if (/^"/.test(match)) {
+      cls = /:$/.test(match) ? 'json-key' : 'json-string';
+    } else if (/true|false/.test(match)) {
+      cls = 'json-bool';
+    } else if (/null/.test(match)) {
+      cls = 'json-null';
+    }
+    return `<span class="${cls}">${match}</span>`;
+  });
+}
+
+function renderResponse(containerId, status, data, duration) {
+  const el = $(containerId);
+  if (!el) return;
+  const sc = status >= 500 ? 'sc-5xx' : status >= 400 ? 'sc-4xx' : status > 0 ? 'sc-2xx' : 'sc-0';
+  let body = '';
+  try {
+    const parsed = typeof data === 'string' ? JSON.parse(data) : data;
+    body = syntaxHighlight(JSON.stringify(parsed, null, 2));
+  } catch {
+    body = String(data || '');
+  }
+  el.innerHTML = `
+    <div class="response-area">
+      <div class="response-header">
+        <span class="status-code ${sc}">${status || 'ERR'}</span>
+        <span style="color:var(--text3);font-size:11px">${status >= 200 && status < 300 ? 'OK' : 'Error'}</span>
+        <span class="response-time">${duration}ms</span>
+      </div>
+      <div class="response-body">${body}</div>
+    </div>`;
+  // Update hidden response viewer for Playwright
+  // Store plain JSON for Playwright (not HTML-highlighted)
+  try {
+    const parsed2 = typeof data === 'string' ? JSON.parse(data) : data;
+    $('response-viewer').textContent = JSON.stringify(parsed2, null, 2);
+  } catch { $('response-viewer').textContent = String(data || ''); }
+  $('response-viewer-mini').textContent = `${status} ${duration}ms`;
+  $('response-viewer-mini').className = sc;
+}
+
+// ═══════════════════════════════════════════════════
+//  CONSOLE LOG
+// ═══════════════════════════════════════════════════
+function addLog(method, path, status, duration, reqBody, resBody) {
+  STATE.logCount++;
+  $('log-count').textContent = `(${STATE.logCount})`;
+  const log = $('consoleLog');
+  const sc = status >= 500 ? 's5xx' : status >= 400 ? 's4xx' : status > 0 ? 's2xx' : 'sws';
+  const ts = new Date().toLocaleTimeString('ko-KR', {hour12:false});
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML = `<span class="lt">[${ts}]</span> <span class="lm">${method}</span> <span class="lp">${path}</span> <span class="${sc}">${status || 'ERR'}</span> <span class="ldur">${duration}ms</span>`;
+  const detail = document.createElement('div');
+  detail.className = 'log-detail';
+  let detailContent = '';
+  if (reqBody) detailContent += `REQ: ${JSON.stringify(reqBody, null, 2)}\n`;
+  if (resBody) {
+    try { detailContent += `RES: ${JSON.stringify(typeof resBody === 'string' ? JSON.parse(resBody) : resBody, null, 2)}`; }
+    catch { detailContent += `RES: ${resBody}`; }
+  }
+  detail.textContent = detailContent;
+  entry.appendChild(detail);
+  entry.addEventListener('click', () => entry.classList.toggle('expanded'));
+  log.appendChild(entry);
+  log.scrollTop = log.scrollHeight;
+}
+
+function addWsLog(event, data) {
+  const log = $('consoleLog');
+  const ts = new Date().toLocaleTimeString('ko-KR', {hour12:false});
+  const entry = document.createElement('div');
+  entry.innerHTML = `<span class="lt">[${ts}]</span> <span class="sws">WS</span> <span class="lp">${event}</span>`;
+  if (data) {
+    const detail = document.createElement('div');
+    detail.className = 'log-detail';
+    try { detail.textContent = JSON.stringify(typeof data === 'string' ? JSON.parse(data) : data, null, 2); }
+    catch { detail.textContent = String(data); }
+    entry.appendChild(detail);
+    entry.addEventListener('click', () => entry.classList.toggle('expanded'));
+  }
+  log.appendChild(entry);
+  log.scrollTop = log.scrollHeight;
+}
+
+function clearLog() {
+  $('consoleLog').innerHTML = '';
+  STATE.logCount = 0;
+  $('log-count').textContent = '';
+}
+
+// ═══════════════════════════════════════════════════
+//  API CALL
+// ═══════════════════════════════════════════════════
+async function apiCall(method, url, body, containerId) {
+  const t0 = Date.now();
+  let status = 0, resBody = '';
+  try {
+    const opts = {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(STATE.token ? { 'Authorization': `Bearer ${STATE.token}` } : {})
+      }
+    };
+    if (body && method !== 'GET' && method !== 'DELETE') {
+      opts.body = JSON.stringify(body);
+    } else if (body && method === 'DELETE') {
+      opts.body = JSON.stringify(body);
+    }
+    const resp = await fetch(url, opts);
+    status = resp.status;
+    try { resBody = await resp.json(); } catch { resBody = await resp.text(); }
+    const dur = Date.now() - t0;
+    if (containerId) renderResponse(containerId, status, resBody, dur);
+    addLog(method, url, status, dur, body, resBody);
+    return { status, data: resBody };
+  } catch(e) {
+    const dur = Date.now() - t0;
+    const errMsg = e.message || 'Network error';
+    if (containerId) renderResponse(containerId, 0, { error: errMsg }, dur);
+    addLog(method, url, 0, dur, body, { error: errMsg });
+    return { status: 0, data: { error: errMsg } };
+  }
+}
+
+// api(): uses STATE.base prefix
+async function api(method, path, body, containerId) {
+  return apiCall(method, getBase() + path, body, containerId);
+}
+
+// apiRaw(): uses full URL directly
+async function apiRaw(method, fullUrl, body, containerId) {
+  return apiCall(method, fullUrl, body, containerId);
+}
+
+// ═══════════════════════════════════════════════════
+//  TOAST
+// ═══════════════════════════════════════════════════
+function toast(msg, type = 'info') {
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.textContent = msg;
+  $('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+// ═══════════════════════════════════════════════════
+//  USER MANAGEMENT
+// ═══════════════════════════════════════════════════
+async function loadUsers() {
+  try {
+    const resp = await fetch('./test-users.json');
+    if (!resp.ok) throw new Error('test-users.json not found');
+    const users = await resp.json();
+    const sel = $('userSelector');
+    sel.innerHTML = '<option value="">-- 유저 선택 --</option>';
+    users.forEach((u, i) => {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = `${u.nickname} (${u.tier || 'BRONZE'}) - ${u.email}`;
+      opt.dataset.user = JSON.stringify(u);
+      sel.appendChild(opt);
+    });
+    toast(`${users.length}명의 테스트 유저를 로드했습니다.`, 'ok');
+  } catch(e) {
+    toast('test-users.json 로드 실패: ' + e.message, 'err');
+  }
+}
+
+function onUserChange(idx) {
+  if (!idx) { STATE.token = ''; STATE.user = null; return; }
+  const sel = $('userSelector');
+  const opt = sel.options[sel.selectedIndex];
+  try {
+    const user = JSON.parse(opt.dataset.user);
+    STATE.token = user.token;
+    STATE.user = user;
+    toast(`유저 선택: ${user.nickname} (${user.tier || 'BRONZE'})`, 'ok');
+    addWsLog('USER_SELECTED', { id: user.id, nickname: user.nickname, tier: user.tier });
+  } catch(e) {
+    toast('유저 파싱 오류', 'err');
+  }
+}
+
+// ═══════════════════════════════════════════════════
+//  SPORTS PROFILES helpers
+// ═══════════════════════════════════════════════════
+function patchSportsProfile() {
+  const id = $v('input-sport-profile-id');
+  const body = {};
+  const dn = $v('input-sport-display-name-patch');
+  const ia = $v('input-sport-is-active');
+  if (dn) body.displayName = dn;
+  if (ia !== '') body.isActive = ia === 'true';
+  api('PATCH', '/sports-profiles/' + id, body, 'res-patch-sport');
+}
+
+// ═══════════════════════════════════════════════════
+//  MATCHING helpers
+// ═══════════════════════════════════════════════════
+function createMatchRequest() {
+  const body = {
+    sportType: $v('m-sport-type'),
+    requestType: $v('m-req-type'),
+    preferredLocation: {
+      lat: parseFloat($v('m-lat')),
+      lng: parseFloat($v('m-lng'))
+    }
+  };
+  const d = $v('m-pref-date'); if (d) body.preferredDate = d;
+  const ts = $v('m-time-slot'); if (ts) body.timeSlot = ts;
+  const pin = $v('m-pin-id'); if (pin) body.pinId = pin;
+  const msg = $v('m-message'); if (msg) body.message = msg;
+  api('POST', '/matches/requests', body, 'res-match-req');
+}
+
+// ═══════════════════════════════════════════════════
+//  PINS helpers
+// ═══════════════════════════════════════════════════
+function createPinPost() {
+  const pinId = $v('pin-post-create-pin-id');
+  const body = {
+    title: $v('pin-post-title'),
+    content: $v('pin-post-content'),
+    category: $v('pin-post-cat')
+  };
+  const imgs = $v('pin-post-images');
+  if (imgs) {
+    try { body.imageUrls = JSON.parse(imgs); } catch { body.imageUrls = [imgs]; }
+  }
+  api('POST', '/pins/' + pinId + '/posts', body, 'res-pin-post-create');
+}
+
+// ═══════════════════════════════════════════════════
+//  NOTIFICATIONS helpers
+// ═══════════════════════════════════════════════════
+function updateNotifSettings() {
+  const body = {};
+  const m = $v('notif-setting-match');
+  const c = $v('notif-setting-chat');
+  const co = $v('notif-setting-community');
+  const ds = $v('notif-dnd-start');
+  const de = $v('notif-dnd-end');
+  if (m !== '') body.matchNotification = m === 'true';
+  if (c !== '') body.chatNotification = c === 'true';
+  if (co !== '') body.communityNotification = co === 'true';
+  if (ds) body.dndStartTime = ds;
+  if (de) body.dndEndTime = de;
+  api('PATCH', '/notifications/settings', body, 'res-notif-settings');
+}
+
+// ═══════════════════════════════════════════════════
+//  TEAMS helpers
+// ═══════════════════════════════════════════════════
+function updateTeam() {
+  const id = $v('team-patch-id');
+  const body = {};
+  const n = $v('team-patch-name'); if (n) body.name = n;
+  const d = $v('team-patch-desc'); if (d) body.description = d;
+  const r = $v('team-patch-recruiting'); if (r !== '') body.isRecruiting = r === 'true';
+  const m = $v('team-patch-max'); if (m) body.maxMembers = parseInt(m);
+  api('PATCH', '/teams/' + id, body, 'res-team-patch');
+}
+
+// ═══════════════════════════════════════════════════
+//  WEBSOCKET (Socket.IO)
+// ═══════════════════════════════════════════════════
+function updateWsStatus(state) {
+  const dot = $('wsStatusDot');
+  const txt = $('wsStatusText');
+  dot.className = 'ws-status-dot';
+  if (state === 'connected') {
+    dot.classList.add('connected');
+    txt.textContent = 'WS: 연결됨';
+    txt.style.color = 'var(--green)';
+  } else if (state === 'connecting') {
+    dot.classList.add('connecting');
+    txt.textContent = 'WS: 연결 중...';
+    txt.style.color = 'var(--yellow)';
+  } else if (state === 'error') {
+    dot.classList.add('error');
+    txt.textContent = 'WS: 오류';
+    txt.style.color = 'var(--red)';
+  } else {
+    txt.textContent = 'WS: 미연결';
+    txt.style.color = 'var(--text3)';
+  }
+}
+
+function addWsMessage(type, content, cssClass) {
+  const area = $('ws-messages');
+  const ts = new Date().toLocaleTimeString('ko-KR', {hour12:false});
+  const div = document.createElement('div');
+  div.className = `ws-msg-${cssClass || 'sys'}`;
+  div.textContent = `[${ts}] ${type}: ${typeof content === 'object' ? JSON.stringify(content) : content}`;
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+}
+
+function clearWsMessages() { $('ws-messages').innerHTML = ''; }
+
+function wsConnect() {
+  if (STATE.ws) { STATE.ws.disconnect(); STATE.ws = null; }
+  const url = $v('ws-url') || 'http://localhost:3000';
+  const token = STATE.token;
+  if (!token) { toast('먼저 유저를 선택하세요.', 'err'); return; }
+  updateWsStatus('connecting');
+  addWsMessage('CONNECT', `Connecting to ${url}`, 'sys');
+  try {
+    STATE.ws = io(url, {
+      path: '/ws',
+      auth: { token },
+      transports: ['websocket', 'polling']
+    });
+    STATE.ws.on('connect', () => {
+      updateWsStatus('connected');
+      addWsMessage('connect', `Socket ID: ${STATE.ws.id}`, 'in');
+      addWsLog('WS:connect', { id: STATE.ws.id });
+      toast('WebSocket 연결됨', 'ok');
+    });
+    STATE.ws.on('disconnect', reason => {
+      updateWsStatus('disconnected');
+      addWsMessage('disconnect', reason, 'sys');
+      addWsLog('WS:disconnect', reason);
+    });
+    STATE.ws.on('connect_error', err => {
+      updateWsStatus('error');
+      addWsMessage('connect_error', err.message, 'err');
+      addWsLog('WS:connect_error', err.message);
+      toast('WS 연결 오류: ' + err.message, 'err');
+    });
+    // Listen to all relevant events
+    const evts = ['NEW_MESSAGE','USER_TYPING','ROOM_JOINED','ROOM_LEFT','notification','ERROR','error','message'];
+    evts.forEach(evt => {
+      STATE.ws.on(evt, data => {
+        addWsMessage(evt, data, evt === 'ERROR' || evt === 'error' ? 'err' : 'in');
+        addWsLog(`WS:${evt}`, data);
+      });
+    });
+  } catch(e) {
+    updateWsStatus('error');
+    toast('Socket.IO 초기화 실패: ' + e.message, 'err');
+  }
+}
+
+function wsDisconnect() {
+  if (STATE.ws) {
+    STATE.ws.disconnect();
+    STATE.ws = null;
+    updateWsStatus('disconnected');
+    addWsMessage('disconnect', 'Manually disconnected', 'sys');
+    toast('WebSocket 연결 해제', 'info');
+  }
+}
+
+function wsJoinRoom() {
+  if (!STATE.ws || !STATE.ws.connected) { toast('먼저 연결하세요', 'err'); return; }
+  const roomId = $v('ws-room-id');
+  if (!roomId) { toast('Room ID를 입력하세요', 'err'); return; }
+  STATE.ws.emit('JOIN_ROOM', { roomId });
+  addWsMessage('JOIN_ROOM', { roomId }, 'out');
+  addWsLog('WS:emit:JOIN_ROOM', { roomId });
+}
+
+function wsLeaveRoom() {
+  if (!STATE.ws || !STATE.ws.connected) { toast('먼저 연결하세요', 'err'); return; }
+  const roomId = $v('ws-room-id');
+  STATE.ws.emit('LEAVE_ROOM', { roomId });
+  addWsMessage('LEAVE_ROOM', { roomId }, 'out');
+  addWsLog('WS:emit:LEAVE_ROOM', { roomId });
+}
+
+function wsSendMessage() {
+  if (!STATE.ws || !STATE.ws.connected) { toast('먼저 연결하세요', 'err'); return; }
+  const roomId = $v('ws-msg-room-id');
+  const content = $v('ws-message-input');
+  const messageType = $v('ws-msg-type');
+  if (!content) { toast('메시지를 입력하세요', 'err'); return; }
+  const payload = { roomId, content, messageType };
+  STATE.ws.emit('SEND_MESSAGE', payload);
+  addWsMessage('SEND_MESSAGE', payload, 'out');
+  addWsLog('WS:emit:SEND_MESSAGE', payload);
+  $('ws-message-input').value = '';
+}
+
+function wsTyping() {
+  if (!STATE.ws || !STATE.ws.connected) { toast('먼저 연결하세요', 'err'); return; }
+  const roomId = $v('ws-msg-room-id') || $v('ws-room-id');
+  STATE.ws.emit('TYPING', { roomId });
+  addWsMessage('TYPING', { roomId }, 'out');
+  addWsLog('WS:emit:TYPING', { roomId });
+}
+
+// ═══════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════
+window.addEventListener('load', () => {
+  loadUsers();
+  // Sync base URL
+  $('apiUrl').addEventListener('input', e => { STATE.base = e.target.value; });
+  addWsMessage('SYSTEM', 'Spots API 테스트 클라이언트 로드됨. 유저를 선택하여 시작하세요.', 'sys');
+  addLog('INIT', window.location.href, 200, 0, null, { message: 'Client initialized' });
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,123 @@
+Resolving dependencies...
+Downloading packages...
+  _fe_analyzer_shared 85.0.0 (98.0.0 available)
+  _flutterfire_internals 1.3.59 (1.3.68 available)
+  analyzer 7.6.0 (12.0.0 available)
+  analyzer_plugin 0.13.4 (0.14.7 available)
+  build 2.5.4 (4.0.5 available)
+  build_config 1.1.2 (1.3.0 available)
+  build_resolvers 2.5.4 (3.0.4 available)
+  build_runner 2.5.4 (2.13.1 available)
+  build_runner_core 9.1.2 (9.3.2 available)
+  characters 1.4.0 (1.4.1 available)
+  connectivity_plus 5.0.2 (7.1.0 available)
+  connectivity_plus_platform_interface 1.2.4 (2.1.0 available)
+  custom_lint_core 0.7.5 (0.8.2 available)
+  custom_lint_visitor 1.0.0+7.7.0 (1.0.0+9.0.0 available)
+  dart_style 3.1.1 (3.1.8 available)
+  drift 2.28.2 (2.32.1 available)
+  drift_dev 2.28.0 (2.32.1 available)
+  drift_flutter 0.2.7 (0.3.0 available)
+  firebase_core 3.15.2 (4.6.0 available)
+  firebase_core_web 2.24.1 (3.5.1 available)
+  firebase_messaging 15.2.10 (16.1.3 available)
+  firebase_messaging_platform_interface 4.6.10 (4.7.8 available)
+  firebase_messaging_web 3.10.10 (4.1.4 available)
+  fl_chart 0.67.0 (1.2.0 available)
+  flutter_lints 3.0.2 (6.0.0 available)
+  flutter_local_notifications 18.0.1 (21.0.0 available)
+  flutter_local_notifications_linux 5.0.0 (8.0.0 available)
+  flutter_local_notifications_platform_interface 8.0.0 (11.0.0 available)
+  flutter_riverpod 2.6.1 (3.3.1 available)
+  flutter_secure_storage 9.2.4 (10.0.0 available)
+  flutter_secure_storage_linux 1.2.3 (3.0.0 available)
+  flutter_secure_storage_macos 3.1.3 (4.0.0 available)
+  flutter_secure_storage_platform_interface 1.1.2 (2.0.1 available)
+  flutter_secure_storage_web 1.2.1 (2.1.0 available)
+  flutter_secure_storage_windows 3.1.2 (4.1.0 available)
+  geolocator 11.1.0 (14.0.2 available)
+  geolocator_android 4.6.2 (5.0.2 available)
+  geolocator_web 3.0.0 (4.1.3 available)
+  go_router 13.2.5 (17.2.0 available)
+  google_sign_in 6.3.0 (7.2.0 available)
+  google_sign_in_android 6.2.1 (7.2.10 available)
+  google_sign_in_ios 5.9.0 (6.3.0 available)
+  google_sign_in_platform_interface 2.5.0 (3.1.0 available)
+  google_sign_in_web 0.12.4+4 (1.1.3 available)
+  image_picker_android 0.8.13+15 (0.8.13+16 available)
+  image_picker_ios 0.8.13+3 (0.8.13+6 available)
+  intl 0.19.0 (0.20.2 available)
+  js 0.6.7 (0.7.2 available)
+  lints 3.0.0 (6.1.0 available)
+  matcher 0.12.17 (0.12.19 available)
+  material_color_utilities 0.11.1 (0.13.0 available)
+  meta 1.16.0 (1.18.2 available)
+  path_provider_android 2.2.23 (2.3.0 available)
+  path_provider_foundation 2.5.1 (2.6.0 available)
+  permission_handler 11.4.0 (12.0.1 available)
+  permission_handler_android 12.1.0 (13.0.1 available)
+  riverpod 2.6.1 (3.2.1 available)
+  riverpod_annotation 2.6.1 (4.0.2 available)
+  riverpod_generator 2.6.5 (4.0.3 available)
+  socket_io_client 2.0.3+1 (3.1.4 available)
+  socket_io_common 2.0.3 (3.1.1 available)
+  source_gen 2.0.0 (4.2.2 available)
+  sqflite_android 2.4.2+2 (2.4.2+3 available)
+  sqlite3 2.9.4 (3.3.0 available)
+  sqlite3_flutter_libs 0.5.42 (0.6.0+eol available)
+  sqlparser 0.41.2 (0.44.3 available)
+  test_api 0.7.6 (0.7.11 available)
+  timezone 0.9.4 (0.11.0 available)
+  url_launcher_ios 6.3.6 (6.4.1 available)
+  url_launcher_web 2.4.1 (2.4.2 available)
+  vector_math 2.2.0 (2.3.0 available)
+  win32 5.15.0 (6.0.0 available)
+Got dependencies!
+72 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+Running Xcode build...                                          
+Xcode build done.                                           20.2s
+VMServiceFlutterDriver: Connecting to Flutter application at http://127.0.0.1:51479/Mf5WSCPPuSo=/
+VMServiceFlutterDriver: Isolate found with number: 3569208922135487
+VMServiceFlutterDriver: Isolate 3569208922135487 is runnable.
+VMServiceFlutterDriver: Isolate is paused at start.
+VMServiceFlutterDriver: Attempting to resume isolate
+flutter: 00:00 +0: 매칭 플로우
+VMServiceFlutterDriver: Connected to Flutter application.
+flutter: [LocalNotification] 초기화 완료
+flutter: [API] GET https://api.pins.kr/v1/app-version
+flutter: [Push] 권한 상태: AuthorizationStatus.authorized
+flutter: [API] GET https://api.pins.kr/v1/users/me
+flutter: [API] 200 /app-version
+flutter: [API] 200 /users/me
+flutter: [Socket] 연결됨
+flutter: [API] GET https://api.pins.kr/v1/notices/pinned
+flutter: [API] GET https://api.pins.kr/v1/notifications
+flutter: [API] GET https://api.pins.kr/v1/pins/nearby
+flutter: [API] GET https://api.pins.kr/v1/matches
+flutter: [API] 200 /notices/pinned
+flutter: [API] 200 /matches
+flutter: [API] 200 /notifications
+flutter: [API] 200 /pins/nearby
+flutter: [API] GET https://api.pins.kr/v1/pins/30056647-ee3d-4ef4-84b9-6f040d13957e/posts
+flutter: [API] 200 /pins/30056647-ee3d-4ef4-84b9-6f040d13957e/posts
+flutter: === 1. 앱 로드 완료 ===
+flutter: [Push] APNS 토큰: 없음
+flutter: [Push] FCM 토큰 가져오기 실패 (시뮬레이터): [firebase_messaging/apns-token-not-set] APNS token has not been set yet. Please ensure the APNS token is available by calling `getAPNSToken()`.
+flutter: === 2. 홈 화면 대기 완료 ===
+flutter: [API] GET https://api.pins.kr/v1/pins/all
+flutter: [API] 200 /pins/all
+flutter: [PinRepo] 핀 데이터 갱신 완료 (v20260404154448, 153개)
+flutter: === 3. 핀 탭 이동 ===
+flutter: === 4. 검색 열림 ===
+flutter: [API] GET https://api.pins.kr/v1/rankings/pins/cba40ebd-656d-4852-a2d4-7c3c153db1d8
+flutter: [API] 200 /rankings/pins/cba40ebd-656d-4852-a2d4-7c3c153db1d8
+flutter: === 5. 핀 선택 완료 ===
+flutter: [API] GET https://api.pins.kr/v1/matches/create
+flutter: [API] Error: 400 /matches/create
+flutter: [API] Error data: {success: false, error: {code: COMMON_001, message: 입력값이 올바르지 않습니다., details: [{instancePath: /id, schemaPath: #/properties/id/format, keyword: format, params: {format: uuid}, message: must match format "uuid"}]}}
+flutter: === 6. 매칭 생성 화면 ===
+flutter: === 테스트 종료 ===
+flutter: 00:27 +1: (tearDownAll)
+flutter: 00:28 +2: All tests passed!
+All tests passed.
