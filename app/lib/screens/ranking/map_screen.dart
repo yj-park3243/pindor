@@ -268,8 +268,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final clusters = _computeClusters(pins);
 
     for (final item in clusters) {
+      if (!mounted) return;
       if (item.isCluster) {
         final icon = await _createClusterIcon(item.clusterCount!);
+        if (!mounted) return;
         final marker = NMarker(
           id: 'cluster_${item.clusterLat}_${item.clusterLng}',
           position: NLatLng(item.clusterLat!, item.clusterLng!),
@@ -290,17 +292,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         final isSelected = pin.id == _selectedPin?.id;
         final width = (pin.name.length * 14.0 + 32).clamp(70.0, 220.0);
         const height = 46.0;
+        final icon = await NOverlayImage.fromWidget(
+          widget: SizedBox(
+            width: width, height: height,
+            child: SportPinMarker(label: pin.name, isSelected: isSelected),
+          ),
+          size: Size(width, height),
+          context: context,
+        );
+        if (!mounted) return;
         final marker = NMarker(
           id: pin.id,
           position: NLatLng(pin.centerLatitude, pin.centerLongitude),
-          icon: await NOverlayImage.fromWidget(
-            widget: SizedBox(
-              width: width, height: height,
-              child: SportPinMarker(label: pin.name, isSelected: isSelected),
-            ),
-            size: Size(width, height),
-            context: context,
-          ),
+          icon: icon,
           anchor: const NPoint(0.5, 1.0),
         );
         marker.setOnTapListener((_) => _onPinTap(pin));

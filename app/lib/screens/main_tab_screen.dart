@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import '../config/router.dart';
-import '../config/theme.dart';
-import '../providers/auth_provider.dart';
 import '../providers/notification_provider.dart';
 import '../providers/socket_provider.dart';
 import '../providers/matching_provider.dart';
 import '../repositories/matching_repository.dart';
+import '../providers/chat_provider.dart';
 import '../widgets/common/in_app_notification.dart';
-import '../widgets/common/app_toast.dart';
 
 /// 메인 탭 네비게이션 화면
 class MainTabScreen extends ConsumerStatefulWidget {
@@ -40,7 +39,11 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> {
       ref.listenManual(socketNotificationProvider, (previous, next) {
         next.whenData((data) {
           final type = data['type'] as String? ?? '';
-          if (type == 'CHAT_MESSAGE' || type == 'CHAT_IMAGE') return;
+          if (type == 'CHAT_MESSAGE' || type == 'CHAT_IMAGE') {
+            // 서버에서 최신 unreadCount 조회
+            refreshUnreadCounts(ref);
+            return;
+          }
 
           // 매칭 성사 알림 — 수락 화면으로 직접 이동
           if (type == 'MATCH_PENDING_ACCEPT') {
@@ -54,6 +57,18 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> {
               } else {
                 context.go(AppRoutes.matchList);
               }
+            }
+            ref.read(notificationListProvider.notifier).addNotification(data);
+            return;
+          }
+
+          // 매칭 완료/취소 — 목록 + 상세 즉시 갱신
+          if (type == 'MATCH_COMPLETED' || type == 'MATCH_CANCELLED') {
+            ref.read(matchingRepositoryProvider).clearLocalCache();
+            ref.invalidate(matchListProvider(null));
+            final matchId = data['data']?['matchId'] as String?;
+            if (matchId != null) {
+              ref.invalidate(matchDetailProvider(matchId));
             }
             ref.read(notificationListProvider.notifier).addNotification(data);
             return;
@@ -97,36 +112,38 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> {
   @override
   Widget build(BuildContext context) {
     final currentIndex = _getCurrentIndex(context);
+    final unreadCount = ref.watch(totalUnreadCountProvider);
 
-    return Scaffold(
-      body: widget.child,
-      bottomNavigationBar: NavigationBar(
+    // AdaptiveScaffold는 body 위에 바텀 네비를 overlay하므로
+    // 하단 패딩을 추가하여 콘텐츠가 가려지지 않도록 함
+    final bottomPadding = MediaQuery.of(context).padding.bottom + kBottomNavigationBarHeight + 16;
+
+    return AdaptiveScaffold(
+      body: MediaQuery(
+        data: MediaQuery.of(context).copyWith(
+          padding: MediaQuery.of(context).padding.copyWith(bottom: bottomPadding),
+        ),
+        child: widget.child,
+      ),
+      bottomNavigationBar: AdaptiveBottomNavigationBar(
         selectedIndex: currentIndex,
-        onDestinationSelected: _onTabTap,
-        backgroundColor: const Color(0xFF1A1A1A),
-        surfaceTintColor: Colors.transparent,
-        shadowColor: Colors.transparent,
-        indicatorColor: AppTheme.primaryColor.withValues(alpha: 0.18),
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home_rounded, color: AppTheme.primaryColor),
+        onTap: _onTabTap,
+        items: [
+          const AdaptiveNavigationDestination(
+            icon: 'house.fill',
             label: '홈',
           ),
-          NavigationDestination(
-            icon: Icon(Icons.location_on_outlined),
-            selectedIcon: Icon(Icons.location_on_rounded, color: AppTheme.primaryColor),
+          const AdaptiveNavigationDestination(
+            icon: 'mappin.and.ellipse',
             label: '핀',
           ),
-          NavigationDestination(
-            icon: Icon(Icons.stadium_outlined),
-            selectedIcon: Icon(Icons.stadium, color: AppTheme.primaryColor),
+          AdaptiveNavigationDestination(
+            icon: 'sportscourt.fill',
             label: '매칭',
+            badgeCount: unreadCount > 0 ? unreadCount : null,
           ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline_rounded),
-            selectedIcon: Icon(Icons.person_rounded, color: AppTheme.primaryColor),
+          const AdaptiveNavigationDestination(
+            icon: 'person.fill',
             label: '마이',
           ),
         ],

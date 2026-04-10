@@ -311,9 +311,11 @@ class _GameResultSystemBubble extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              '상대방이 경기 결과를 입력했습니다',
-              style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)),
+            Text(
+              message.content.isNotEmpty
+                  ? message.content
+                  : '경기 결과가 입력되었습니다',
+              style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)),
             ),
             const SizedBox(height: 10),
             if (isDraw)

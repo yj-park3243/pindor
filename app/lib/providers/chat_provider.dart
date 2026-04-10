@@ -26,15 +26,75 @@ final chatRoomListProvider =
   final hasCache = await repo.hasChatRoomsCache();
 
   if (hasCache) {
-    // 캐시가 있으면 즉시 로컬 반환 후 항상 백그라운드로 API 갱신
-    // (TTL 무관하게 항상 갱신 — 새 채팅방 누락 방지)
-    unawaited(repo.fetchAndCacheChatRooms().catchError((e) {
+    unawaited(repo.fetchAndCacheChatRooms().then((rooms) {
+      final map = <String, int>{};
+      for (final room in rooms) {
+        map[room.id] = room.unreadCount;
+      }
+      ref.read(_unreadMapProvider.notifier).state = map;
+    }).catchError((e) {
       debugPrint('[ChatProvider] rooms refresh failed: $e');
     }));
     return repo.getChatRoomsLocal();
   }
 
-  return repo.fetchAndCacheChatRooms();
+  final rooms = await repo.fetchAndCacheChatRooms();
+  final map = <String, int>{};
+  for (final room in rooms) {
+    map[room.id] = room.unreadCount;
+  }
+  ref.read(_unreadMapProvider.notifier).state = map;
+  return rooms;
+});
+
+// ─── 읽지 않은 메시지 수 프로바이더 ────────────────────────────
+
+/// roomId → unreadCount 맵 (실시간 업데이트)
+final _unreadMapProvider = StateProvider<Map<String, int>>((ref) => {});
+
+/// 서버에서 가져온 unreadCount로 맵 초기화 + 실시간 증감
+void syncUnreadFromServer(WidgetRef ref, List<ChatRoom> rooms) {
+  final map = <String, int>{};
+  for (final room in rooms) {
+    map[room.id] = room.unreadCount;
+  }
+  ref.read(_unreadMapProvider.notifier).state = map;
+}
+
+void incrementUnread(dynamic ref, String roomId) {
+  final map = Map<String, int>.from((ref as dynamic).read(_unreadMapProvider) as Map);
+  map[roomId] = (map[roomId] ?? 0) + 1;
+  (ref as dynamic).read(_unreadMapProvider.notifier).state = map;
+}
+
+void clearUnread(dynamic ref, String roomId) {
+  final map = Map<String, int>.from((ref as dynamic).read(_unreadMapProvider) as Map);
+  map[roomId] = 0;
+  (ref as dynamic).read(_unreadMapProvider.notifier).state = map;
+}
+
+Future<void> refreshUnreadCounts(dynamic ref) async {
+  try {
+    final repo = (ref as dynamic).read(chatRepositoryProvider) as ChatRepository;
+    final rooms = await repo.fetchAndCacheChatRooms();
+    final map = <String, int>{};
+    for (final room in rooms) {
+      map[room.id] = room.unreadCount;
+    }
+    (ref as dynamic).read(_unreadMapProvider.notifier).state = map;
+  } catch (_) {}
+}
+
+/// 전체 읽지 않은 메시지 총 수 (바텀 네비 배지용)
+final totalUnreadCountProvider = Provider<int>((ref) {
+  final map = ref.watch(_unreadMapProvider);
+  return map.values.fold<int>(0, (sum, v) => sum + v);
+});
+
+/// 특정 채팅방의 읽지 않은 메시지 수
+final roomUnreadCountProvider = Provider.family<int, String>((ref, roomId) {
+  final map = ref.watch(_unreadMapProvider);
+  return map[roomId] ?? 0;
 });
 
 // ─── 타이핑 상태 프로바이더 ────────────────────────────
@@ -106,8 +166,10 @@ class ChatMessagesNotifier
     _setupSocketListener(roomId);
     _setupMessagesReadListener(roomId);
 
-    // 채팅방 입장 시 읽음 처리 전송
-    SocketService.instance.sendMarkRead(roomId);
+    // 채팅방 입장 → 즉시 배지 제거 + 서버 읽음 처리
+    // build() 중 다른 provider 수정 불가 → microtask로 지연
+    Future.microtask(() => clearUnread(ref, roomId));
+    _markAsRead(roomId);
 
     final repo = ref.read(chatRepositoryProvider);
 
@@ -176,7 +238,7 @@ class ChatMessagesNotifier
         // 새 메시지 수신 시 읽음 처리 전송 (내가 현재 채팅방에 있으므로)
         final currentUser = ref.read(currentUserProvider);
         if (message.senderId != currentUser?.id) {
-          SocketService.instance.sendMarkRead(roomId);
+          _markAsRead(roomId);
         }
       }
     });
@@ -219,6 +281,20 @@ class ChatMessagesNotifier
 
       state = AsyncData(updated);
     });
+  }
+
+  /// 읽음 처리 (소켓 우선, 실패 시 HTTP 폴백)
+  Future<void> _markAsRead(String roomId) async {
+    if (SocketService.instance.isConnected) {
+      SocketService.instance.sendMarkRead(roomId);
+    } else {
+      try {
+        final api = ref.read(chatRepositoryProvider);
+        await api.markAsReadHttp(roomId);
+      } catch (e) {
+        debugPrint('[ChatMessages] markAsRead HTTP failed: $e');
+      }
+    }
   }
 
   /// 이전 메시지 로드 (스크롤 위로)

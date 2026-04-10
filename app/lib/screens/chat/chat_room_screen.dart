@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -14,10 +13,8 @@ import '../../widgets/chat/chat_input_bar.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/error_view.dart';
 import '../../widgets/common/app_toast.dart';
+import '../../widgets/common/game_result_sheet.dart';
 import '../../core/network/socket_service.dart';
-import '../../providers/matching_provider.dart';
-import '../../repositories/matching_repository.dart';
-import '../../repositories/game_repository.dart';
 import 'location_picker_screen.dart';
 
 /// 채팅방 화면 (PRD SCREEN-032)
@@ -285,7 +282,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           // 승부 결과 입력 버튼
           _GameResultButton(
             roomId: widget.roomId,
-            ref: ref,
           ),
 
           // 입력바
@@ -509,15 +505,24 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   }
 }
 
-/// 승부 결과 입력 버튼 (ChatInputBar 위)
-class _GameResultButton extends StatelessWidget {
+/// 승부 결과 버튼 (ChatInputBar 위)
+class _GameResultButton extends ConsumerWidget {
   final String roomId;
-  final WidgetRef ref;
 
-  const _GameResultButton({required this.roomId, required this.ref});
+  const _GameResultButton({required this.roomId});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final messages = ref.watch(chatMessagesProvider(roomId)).valueOrNull ?? [];
+    final currentUser = ref.watch(currentUserProvider);
+    final myId = currentUser?.id;
+
+    // SYSTEM 메시지 제외, 양쪽 유저가 각각 3개 이상 보내야 활성화
+    final userMessages = messages.where((m) => m.messageType != 'SYSTEM').toList();
+    final myCount = userMessages.where((m) => m.senderId == myId).length;
+    final otherCount = userMessages.where((m) => m.senderId != myId).length;
+    final enabled = myCount >= 3 && otherCount >= 3;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -525,12 +530,14 @@ class _GameResultButton extends StatelessWidget {
       child: SizedBox(
         height: 42,
         child: ElevatedButton.icon(
-          onPressed: () => _showGameResultSheet(context),
+          onPressed: enabled ? () => _onGameResult(context, ref) : null,
           icon: const Icon(Icons.emoji_events_rounded, size: 18),
-          label: const Text('승부 결과 입력', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+          label: const Text('승부 결과', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
           style: ElevatedButton.styleFrom(
             backgroundColor: AppTheme.secondaryColor,
             foregroundColor: Colors.white,
+            disabledBackgroundColor: const Color(0xFF2A2A2A),
+            disabledForegroundColor: const Color(0xFF6B7280),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             elevation: 0,
           ),
@@ -539,7 +546,7 @@ class _GameResultButton extends StatelessWidget {
     );
   }
 
-  void _showGameResultSheet(BuildContext context) {
+  void _onGameResult(BuildContext context, WidgetRef ref) {
     final chatRooms = ref.read(chatRoomListProvider).valueOrNull;
     final room = chatRooms?.where((r) => r.id == roomId).firstOrNull;
     final matchId = room?.matchId;
@@ -549,206 +556,10 @@ class _GameResultButton extends StatelessWidget {
       return;
     }
 
-    String? selectedResult;
-    int mannerScore = 3;
-    bool isSubmitting = false;
-    final List<File> photos = [];
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheetState) {
-          final canSubmit = selectedResult != null && photos.isNotEmpty && !isSubmitting;
-
-          return Padding(
-            padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-            child: Container(
-              decoration: const BoxDecoration(
-                color: Color(0xFF1E1E1E),
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-              ),
-              padding: EdgeInsets.fromLTRB(24, 20, 24, MediaQuery.of(ctx).padding.bottom + 20),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(width: 36, height: 4, decoration: BoxDecoration(color: const Color(0xFF2A2A2A), borderRadius: BorderRadius.circular(2))),
-                    const SizedBox(height: 20),
-                    const Text('승부 결과 입력', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white)),
-                    const SizedBox(height: 24),
-
-                    // 승/무/패
-                    Row(
-                      children: [
-                        _gameResultOption(ctx, '승리', 'WIN', Icons.emoji_events_rounded, Colors.blue, selectedResult, (v) => setSheetState(() => selectedResult = v)),
-                        const SizedBox(width: 10),
-                        _gameResultOption(ctx, '무승부', 'DRAW', Icons.handshake_rounded, const Color(0xFF6B7280), selectedResult, (v) => setSheetState(() => selectedResult = v)),
-                        const SizedBox(width: 10),
-                        _gameResultOption(ctx, '패배', 'LOSS', Icons.sentiment_dissatisfied_rounded, Colors.red, selectedResult, (v) => setSheetState(() => selectedResult = v)),
-                      ],
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // 사진 촬영 (필수)
-                    const Align(alignment: Alignment.centerLeft, child: Text('사진 첨부 (필수)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textSecondary))),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        ...photos.asMap().entries.map((entry) {
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 10),
-                            child: Stack(
-                              children: [
-                                ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.file(entry.value, width: 72, height: 72, fit: BoxFit.cover)),
-                                Positioned(
-                                  top: -4, right: -4,
-                                  child: GestureDetector(
-                                    onTap: () => setSheetState(() => photos.removeAt(entry.key)),
-                                    child: Container(width: 22, height: 22, decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle), child: const Icon(Icons.close, size: 14, color: Colors.white)),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }),
-                        if (photos.length < 2)
-                          GestureDetector(
-                            onTap: () async {
-                              final picker = ImagePicker();
-                              final xFile = await picker.pickImage(source: ImageSource.camera, imageQuality: 80);
-                              if (xFile != null) setSheetState(() => photos.add(File(xFile.path)));
-                            },
-                            child: Container(
-                              width: 72, height: 72,
-                              decoration: BoxDecoration(color: const Color(0xFF2A2A2A), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFF3A3A3A))),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(Icons.camera_alt_rounded, size: 24, color: AppTheme.textSecondary),
-                                  const SizedBox(height: 2),
-                                  Text('${photos.length}/2', style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
-                                ],
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    if (photos.isEmpty) ...[
-                      const SizedBox(height: 6),
-                      const Align(alignment: Alignment.centerLeft, child: Text('카메라로 결과 사진을 찍어주세요', style: TextStyle(fontSize: 11, color: AppTheme.textDisabled))),
-                    ],
-
-                    const SizedBox(height: 20),
-                    const Align(alignment: Alignment.centerLeft, child: Text('매너 점수', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textSecondary))),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(5, (i) {
-                        final score = i + 1;
-                        return GestureDetector(
-                          onTap: () => setSheetState(() => mannerScore = score),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
-                            child: Icon(score <= mannerScore ? Icons.star_rounded : Icons.star_outline_rounded, size: 32, color: score <= mannerScore ? Colors.amber : const Color(0xFF2A2A2A)),
-                          ),
-                        );
-                      }),
-                    ),
-                    const SizedBox(height: 24),
-
-                    SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: ElevatedButton(
-                        onPressed: !canSubmit
-                            ? null
-                            : () async {
-                                setSheetState(() => isSubmitting = true);
-                                try {
-                                  final uploadRepo = ref.read(uploadRepositoryProvider);
-                                  final imageUrls = await uploadRepo.uploadGameProofs(
-                                    photos.map((p) => p.path).toList(),
-                                  );
-
-                                  final matchDetail = await ref.read(matchingRepositoryProvider).getMatchDetail(matchId);
-                                  final gameId = matchDetail.gameId;
-                                  if (gameId == null) {
-                                    AppToast.error('경기 정보를 찾을 수 없습니다.');
-                                    return;
-                                  }
-                                  final gameRepo = ref.read(gameRepositoryProvider);
-                                  final currentUser = ref.read(currentUserProvider);
-                                  final game = await gameRepo.getGameDetail(gameId);
-                                  final isRequester = game.requesterUserId == currentUser?.id;
-                                  final myProfileId = isRequester ? game.requesterProfileId : game.opponentProfileId;
-                                  final oppProfileId = isRequester ? game.opponentProfileId : game.requesterProfileId;
-                                  String? winnerId;
-                                  if (selectedResult == 'WIN') winnerId = myProfileId;
-                                  if (selectedResult == 'LOSS') winnerId = oppProfileId;
-
-                                  await gameRepo.submitGameResult(gameId, myResult: selectedResult!, winnerId: winnerId, mannerScore: mannerScore);
-                                  if (imageUrls.isNotEmpty) {
-                                    await gameRepo.uploadProofUrls(gameId, imageUrls);
-                                  }
-
-                                  if (ctx.mounted) Navigator.pop(ctx);
-                                  if (context.mounted) {
-                                    AppToast.success('결과가 제출되었습니다.');
-                                    ref.invalidate(matchDetailProvider(matchId));
-                                    ref.invalidate(matchListProvider(null));
-                                  }
-                                } catch (e) {
-                                  if (ctx.mounted) {
-                                    setSheetState(() => isSubmitting = false);
-                                    AppToast.error('결과 제출 실패: $e');
-                                  }
-                                }
-                              },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.secondaryColor, foregroundColor: Colors.white,
-                          disabledBackgroundColor: const Color(0xFF2A2A2A),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        ),
-                        child: isSubmitting
-                            ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
-                            : const Text('결과 제출', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _gameResultOption(BuildContext context, String label, String value, IconData icon, Color color, String? selected, void Function(String) onTap) {
-    final isSelected = selected == value;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => onTap(value),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          decoration: BoxDecoration(
-            color: isSelected ? color.withOpacity(0.15) : const Color(0xFF2A2A2A),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: isSelected ? color : Colors.transparent, width: 2),
-          ),
-          child: Column(
-            children: [
-              Icon(icon, size: 28, color: isSelected ? color : AppTheme.textSecondary),
-              const SizedBox(height: 6),
-              Text(label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: isSelected ? color : AppTheme.textSecondary)),
-            ],
-          ),
-        ),
-      ),
+    showGameResultSheet(
+      context,
+      ref: ref,
+      matchId: matchId,
     );
   }
 }

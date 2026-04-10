@@ -211,10 +211,13 @@ export class GamesService {
       const submitter = isRequester
         ? (match.requesterProfile as any).user
         : (match.opponentProfile as any).user;
+      const submitterNickname = submitter?.nickname ?? '알 수 없음';
+
+      // claimedResult가 WIN이면 제출자가 승자, LOSS이면 상대가 승자
       const winnerNickname = claimedResult === 'DRAW'
         ? null
         : claimedResult === 'WIN'
-          ? submitter?.nickname ?? '나'
+          ? submitterNickname
           : (isRequester
               ? (match.opponentProfile as any).user?.nickname
               : (match.requesterProfile as any).user?.nickname) ?? '상대';
@@ -226,16 +229,21 @@ export class GamesService {
               ? (match.opponentProfile as any).user?.profileImageUrl
               : (match.requesterProfile as any).user?.profileImageUrl) ?? null;
 
+      // 결과 텍스트: "OOO님이 승리로 결과를 입력했습니다"
+      const resultLabel = claimedResult === 'WIN' ? '승리' : claimedResult === 'LOSS' ? '패배' : '무승부';
+      const content = `${submitterNickname}님이 ${resultLabel}(으)로 결과를 입력했습니다.`;
+
       const messageRepo = this.dataSource.getRepository(Message);
       const chatRoomRepo = this.dataSource.getRepository(ChatRoom);
       const sysMsg = messageRepo.create({
         chatRoomId: match.chatRoomId,
         senderId: userId,
         messageType: MessageType.SYSTEM,
-        content: '상대방이 경기 결과를 입력했습니다.',
+        content,
         extraData: {
           type: 'GAME_RESULT',
           claimedResult,
+          submitterNickname,
           winnerNickname,
           winnerProfileImage,
         },
@@ -312,6 +320,26 @@ export class GamesService {
       : isCasual
       ? '친선 경기 결과가 확정되었습니다.'
       : '경기 결과가 확정되었습니다. 점수가 반영되었습니다.';
+
+    // 양쪽 유저에게 MATCH_COMPLETED 알림 → 앱에서 즉시 반영
+    if (this.notificationService) {
+      await this.notificationService.sendBulk([
+        {
+          userId: (match.requesterProfile as any).userId,
+          type: 'MATCH_COMPLETED',
+          title: '경기 완료',
+          body: message,
+          data: { matchId: match.id, gameId, deepLink: `/matches/${match.id}` },
+        },
+        {
+          userId: (match.opponentProfile as any).userId,
+          type: 'MATCH_COMPLETED',
+          title: '경기 완료',
+          body: message,
+          data: { matchId: match.id, gameId, deepLink: `/matches/${match.id}` },
+        },
+      ]);
+    }
 
     return {
       status: 'VERIFIED',
@@ -764,6 +792,13 @@ export class GamesService {
         status: 'COMPLETED' as any,
         completedAt: new Date(),
       });
+
+      // matchRequest 상태도 EXPIRED로 변경 (중복 매칭 요청 방지)
+      if (match.matchRequestId) {
+        await manager.update(MatchRequest, match.matchRequestId, {
+          status: 'EXPIRED' as any,
+        });
+      }
     });
 
     // 알림 발송

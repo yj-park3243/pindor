@@ -79,6 +79,33 @@ export async function chatRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
+  // ─── PATCH /chat-rooms/:id/read (읽음 처리 HTTP fallback) ───
+  fastify.patch(
+    '/chat-rooms/:id/read',
+    {
+      onRequest: [fastify.authenticate],
+      schema: {
+        tags: ['Chat'],
+        summary: '메시지 읽음 처리',
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: 'object',
+          properties: { id: { type: 'string', format: 'uuid' } },
+        },
+      },
+    },
+    async (
+      request: FastifyRequest<{ Params: { id: string } }>,
+      reply: FastifyReply,
+    ) => {
+      const readIds = await chatService.markMessagesRead(
+        request.user.userId,
+        request.params.id,
+      );
+      return reply.send({ success: true, data: { readCount: readIds.length } });
+    },
+  );
+
   // ─── POST /chat-rooms/:id/messages (HTTP Fallback) ───
   fastify.post(
     '/chat-rooms/:id/messages',

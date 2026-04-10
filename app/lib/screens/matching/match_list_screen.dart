@@ -16,6 +16,7 @@ import '../../widgets/common/empty_state.dart';
 import '../../widgets/common/app_toast.dart';
 import '../../widgets/common/user_avatar.dart';
 import '../../widgets/common/score_display.dart';
+import '../../providers/chat_provider.dart';
 
 
 /// 매칭 목록 화면 (PRD SCREEN-020)
@@ -1137,7 +1138,7 @@ class _MatchSlotBanner extends StatelessWidget {
   }
 }
 
-class _MatchListTile extends StatelessWidget {
+class _MatchListTile extends ConsumerWidget {
   final Match match;
   final VoidCallback? onTap;
 
@@ -1175,10 +1176,15 @@ class _MatchListTile extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final accentColor = _statusAccentColor();
+    final unreadCount = (match.chatRoomId.isNotEmpty)
+        ? ref.watch(roomUnreadCountProvider(match.chatRoomId))
+        : 0;
 
-    return Container(
+    return Stack(
+      children: [
+      Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
       decoration: BoxDecoration(
         color: const Color(0xFF1E1E1E),
@@ -1384,6 +1390,29 @@ class _MatchListTile extends StatelessWidget {
           ),
         ),
       ),
+    ),
+      // 읽지 않은 메시지 배지
+      if (unreadCount > 0)
+        Positioned(
+          top: 0,
+          right: 8,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: Colors.red,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              unreadCount > 99 ? '99+' : '$unreadCount',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

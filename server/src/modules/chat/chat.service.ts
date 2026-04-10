@@ -57,6 +57,24 @@ export class ChatService {
     const lastMessageMap = new Map<string, Message | null>();
     chatRoomIds.forEach((id, idx) => lastMessageMap.set(id, lastMessages[idx] ?? null));
 
+    // 읽지 않은 메시지 수 (상대가 보낸 메시지 중 read_at이 null인 것)
+    const unreadCounts = await this.messageRepo
+      .createQueryBuilder('m')
+      .select('m.chat_room_id', 'roomId')
+      .addSelect('COUNT(*)', 'count')
+      .where('m.chat_room_id IN (:...ids)', { ids: chatRoomIds })
+      .andWhere('m.sender_id != :userId', { userId })
+      .andWhere('m.read_at IS NULL')
+      .andWhere('m.is_deleted = false')
+      .andWhere("m.message_type != 'SYSTEM'")
+      .groupBy('m.chat_room_id')
+      .getRawMany<{ roomId: string; count: string }>();
+
+    const unreadMap = new Map<string, number>();
+    for (const row of unreadCounts) {
+      unreadMap.set(row.roomId, parseInt(row.count, 10));
+    }
+
     const matchByChatRoomId = new Map<string, typeof matches[0]>();
     for (const match of matches) {
       if (match.chatRoomId) {
@@ -93,6 +111,7 @@ export class ChatService {
                 createdAt: lastMessage.createdAt,
               }
             : null,
+          unreadCount: unreadMap.get(room.id) ?? 0,
           lastMessageAt: room.lastMessageAt,
           createdAt: room.createdAt,
         };

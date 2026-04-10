@@ -9,12 +9,10 @@ import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/error_view.dart';
 import '../../widgets/common/app_toast.dart';
 
-import 'dart:io';
-import 'package:image_picker/image_picker.dart';
 import '../../widgets/common/user_avatar.dart';
+import '../../widgets/common/game_result_sheet.dart';
 import '../../providers/auth_provider.dart';
-import '../../repositories/game_repository.dart';
-import '../../repositories/upload_repository.dart';
+import '../../providers/chat_provider.dart';
 import 'opponent_profile_sheet.dart';
 
 /// 노쇼 신고 확인 바텀시트
@@ -333,10 +331,12 @@ class _MatchDetailContent extends ConsumerStatefulWidget {
 
 class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
   bool _isCancelling = false;
+  bool _resultSubmitted = false;
 
   @override
   Widget build(BuildContext context) {
     final match = widget.match;
+    final isResultSubmitted = match.myResultSubmitted || _resultSubmitted;
 
     return SingleChildScrollView(
       child: Column(
@@ -388,47 +388,72 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
               children: [
                 // 채팅하기
                 if (match.isChat || match.isConfirmed) ...[
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: ElevatedButton.icon(
-                      onPressed: () =>
-                          context.push('/chats/${match.chatRoomId}'),
-                      icon: const Icon(Icons.chat_bubble_rounded, size: 18),
-                      label: const Text('채팅하기'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
+                  Builder(builder: (context) {
+                    final chatUnread = ref.watch(roomUnreadCountProvider(match.chatRoomId));
+                    return SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: Badge(
+                        isLabelVisible: chatUnread > 0,
+                        label: Text(
+                          chatUnread > 99 ? '99+' : '$chatUnread',
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                        ),
+                        backgroundColor: Colors.red,
+                        largeSize: 22,
+                        offset: const Offset(-4, -8),
+                        child: SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: ElevatedButton.icon(
+                            onPressed: () =>
+                                context.push('/chats/${match.chatRoomId}'),
+                            icon: const Icon(Icons.chat_bubble_rounded, size: 18),
+                            label: const Text('채팅하기'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue,
+                              foregroundColor: Colors.white,
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
+                    );
+                  }),
                   const SizedBox(height: 10),
                 ],
 
-                // 승부 결과 입력 버튼 (CHAT / CONFIRMED 상태에서 표시)
+                // 승부 결과 버튼 (CHAT / CONFIRMED 상태에서 표시)
                 if (match.isChat || match.isConfirmed) ...[
                   const SizedBox(height: 10),
                   SizedBox(
                     width: double.infinity,
                     height: 52,
                     child: ElevatedButton.icon(
-                      onPressed: match.myResultSubmitted
+                      onPressed: isResultSubmitted
                           ? null
-                          : () => _showGameResultSheet(context, match),
+                          : () => showGameResultSheet(
+                                context,
+                                ref: ref,
+                                matchId: match.id,
+                                opponentNickname: match.opponent.nickname,
+                                onSubmitted: () {
+                                  setState(() => _resultSubmitted = true);
+                                },
+                              ),
                       icon: Icon(
-                        match.myResultSubmitted
+                        isResultSubmitted
                             ? Icons.check_circle_rounded
                             : Icons.emoji_events_rounded,
                         size: 18,
                       ),
-                      label: Text(match.myResultSubmitted
+                      label: Text(isResultSubmitted
                           ? '결과 제출 완료 (상대 대기중)'
-                          : '승부 결과 입력'),
+                          : '승부 결과'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: match.myResultSubmitted
+                        backgroundColor: isResultSubmitted
                             ? const Color(0xFF2A2A2A)
                             : AppTheme.secondaryColor,
-                        foregroundColor: match.myResultSubmitted
+                        foregroundColor: isResultSubmitted
                             ? AppTheme.textSecondary
                             : Colors.white,
                         disabledBackgroundColor: const Color(0xFF2A2A2A),
@@ -495,256 +520,6 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
     );
   }
 
-  /// 승부 결과 입력 바텀시트
-  void _showGameResultSheet(BuildContext context, Match match) {
-    String? selectedResult; // WIN | LOSS | DRAW
-    int mannerScore = 3;
-    bool isSubmitting = false;
-    final List<File> photos = [];
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheetState) {
-          final canSubmit = selectedResult != null && photos.isNotEmpty && !isSubmitting;
-
-          return Padding(
-            padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-            child: Container(
-              decoration: const BoxDecoration(
-                color: Color(0xFF1E1E1E),
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-              ),
-              padding: EdgeInsets.fromLTRB(24, 20, 24, MediaQuery.of(ctx).padding.bottom + 20),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(width: 36, height: 4, decoration: BoxDecoration(color: const Color(0xFF2A2A2A), borderRadius: BorderRadius.circular(2))),
-                    const SizedBox(height: 20),
-                    const Text('승부 결과 입력', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white)),
-                    const SizedBox(height: 8),
-                    Text('vs ${match.opponent.nickname}', style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
-                    const SizedBox(height: 24),
-
-                    // 승/무/패 버튼
-                    Row(
-                      children: [
-                        _resultButton(ctx, '승리', 'WIN', Icons.emoji_events_rounded, Colors.blue, selectedResult, (v) => setSheetState(() => selectedResult = v)),
-                        const SizedBox(width: 10),
-                        _resultButton(ctx, '무승부', 'DRAW', Icons.handshake_rounded, const Color(0xFF6B7280), selectedResult, (v) => setSheetState(() => selectedResult = v)),
-                        const SizedBox(width: 10),
-                        _resultButton(ctx, '패배', 'LOSS', Icons.sentiment_dissatisfied_rounded, Colors.red, selectedResult, (v) => setSheetState(() => selectedResult = v)),
-                      ],
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // 사진 촬영 (필수, 최대 2장)
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text('사진 첨부 (필수)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textSecondary)),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        // 촬영한 사진들
-                        ...photos.asMap().entries.map((entry) {
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 10),
-                            child: Stack(
-                              children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: Image.file(entry.value, width: 72, height: 72, fit: BoxFit.cover),
-                                ),
-                                Positioned(
-                                  top: -4, right: -4,
-                                  child: GestureDetector(
-                                    onTap: () => setSheetState(() => photos.removeAt(entry.key)),
-                                    child: Container(
-                                      width: 22, height: 22,
-                                      decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                                      child: const Icon(Icons.close, size: 14, color: Colors.white),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }),
-                        // 추가 버튼 (2장 미만일 때)
-                        if (photos.length < 2)
-                          GestureDetector(
-                            onTap: () async {
-                              final picker = ImagePicker();
-                              final xFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70, maxWidth: 1200, maxHeight: 1200);
-                              if (xFile != null) {
-                                setSheetState(() => photos.add(File(xFile.path)));
-                              }
-                            },
-                            child: Container(
-                              width: 72, height: 72,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF2A2A2A),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: const Color(0xFF3A3A3A)),
-                              ),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(Icons.camera_alt_rounded, size: 24, color: AppTheme.textSecondary),
-                                  const SizedBox(height: 2),
-                                  Text('${photos.length}/2', style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
-                                ],
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    if (photos.isEmpty) ...[
-                      const SizedBox(height: 6),
-                      const Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text('카메라로 결과 사진을 찍어주세요', style: TextStyle(fontSize: 11, color: AppTheme.textDisabled)),
-                      ),
-                    ],
-
-                    const SizedBox(height: 20),
-
-                    // 매너 점수
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text('매너 점수', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textSecondary)),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(5, (i) {
-                        final score = i + 1;
-                        return GestureDetector(
-                          onTap: () => setSheetState(() => mannerScore = score),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
-                            child: Icon(
-                              score <= mannerScore ? Icons.star_rounded : Icons.star_outline_rounded,
-                              size: 32,
-                              color: score <= mannerScore ? Colors.amber : const Color(0xFF2A2A2A),
-                            ),
-                          ),
-                        );
-                      }),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // 제출 버튼
-                    SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: ElevatedButton(
-                        onPressed: !canSubmit
-                            ? null
-                            : () async {
-                                setSheetState(() => isSubmitting = true);
-                                try {
-                                  final uploadRepo = ref.read(uploadRepositoryProvider);
-
-                                  // 사진 업로드
-                                  final imageUrls = await uploadRepo.uploadGameProofs(
-                                    photos.map((p) => p.path).toList(),
-                                  );
-
-                                  // matchId로 gameId 조회
-                                  final matchDetail = await ref.read(matchingRepositoryProvider).getMatchDetail(match.id);
-                                  final gameId = matchDetail.gameId;
-                                  if (gameId == null) {
-                                    AppToast.error('경기 정보를 찾을 수 없습니다.');
-                                    return;
-                                  }
-                                  final gameRepo = ref.read(gameRepositoryProvider);
-                                  final currentUser = ref.read(currentUserProvider);
-                                  final game = await gameRepo.getGameDetail(gameId);
-                                  final isRequester = game.requesterUserId == currentUser?.id;
-                                  final myProfileId = isRequester ? game.requesterProfileId : game.opponentProfileId;
-                                  final oppProfileId = isRequester ? game.opponentProfileId : game.requesterProfileId;
-                                  String? winnerId;
-                                  if (selectedResult == 'WIN') winnerId = myProfileId;
-                                  if (selectedResult == 'LOSS') winnerId = oppProfileId;
-
-                                  // 결과 제출
-                                  await gameRepo.submitGameResult(
-                                    gameId,
-                                    myResult: selectedResult!,
-                                    winnerId: winnerId,
-                                    mannerScore: mannerScore,
-                                  );
-
-                                  // 증빙 사진 업로드
-                                  if (imageUrls.isNotEmpty) {
-                                    await gameRepo.uploadProofUrls(gameId, imageUrls);
-                                  }
-
-                                  if (ctx.mounted) Navigator.pop(ctx);
-                                  if (context.mounted) {
-                                    AppToast.success('결과가 제출되었습니다.');
-                                    ref.invalidate(matchDetailProvider(match.id));
-                                    ref.invalidate(matchListProvider(null));
-                                  }
-                                } catch (e) {
-                                  if (ctx.mounted) {
-                                    setSheetState(() => isSubmitting = false);
-                                    AppToast.error('결과 제출 실패: $e');
-                                  }
-                                }
-                              },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.secondaryColor,
-                          foregroundColor: Colors.white,
-                          disabledBackgroundColor: const Color(0xFF2A2A2A),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        ),
-                        child: isSubmitting
-                            ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
-                            : const Text('결과 제출', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _resultButton(BuildContext context, String label, String value, IconData icon, Color color, String? selected, void Function(String) onTap) {
-    final isSelected = selected == value;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => onTap(value),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          decoration: BoxDecoration(
-            color: isSelected ? color.withOpacity(0.15) : const Color(0xFF2A2A2A),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: isSelected ? color : Colors.transparent, width: 2),
-          ),
-          child: Column(
-            children: [
-              Icon(icon, size: 28, color: isSelected ? color : AppTheme.textSecondary),
-              const SizedBox(height: 6),
-              Text(label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: isSelected ? color : AppTheme.textSecondary)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   void _showOpponentProfile(BuildContext context, MatchOpponent opponent) {
     showModalBottomSheet(

@@ -1536,8 +1536,30 @@ export class MatchingService {
       cancelReason: dto.reason,
     });
 
+    // matchRequest 상태도 EXPIRED로 변경 (중복 매칭 요청 방지)
+    if (match.matchRequestId) {
+      await this.matchRequestRepo.update(match.matchRequestId, {
+        status: 'EXPIRED' as any,
+      });
+    }
+
     if (isConfirmed) {
       await this.applyNoShowPenalty(userId, matchId, match);
+    }
+
+    // 양쪽 유저에게 MATCH_CANCELLED 알림 → 앱에서 즉시 반영
+    if (this.notificationService) {
+      const opponentUserId =
+        (match.requesterProfile as any).userId === userId
+          ? (match.opponentProfile as any).userId
+          : (match.requesterProfile as any).userId;
+      await this.notificationService.send({
+        userId: opponentUserId,
+        type: 'MATCH_CANCELLED',
+        title: '매칭 취소',
+        body: '상대방이 매칭을 취소했습니다.',
+        data: { matchId, deepLink: '/matches' },
+      });
     }
 
     return this.matchRepo.findOne({ where: { id: matchId } });
