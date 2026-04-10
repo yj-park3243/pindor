@@ -31,15 +31,18 @@ class SupportRepository {
   /// [category]: ACCOUNT | MATCH | SCORE | BUG | SUGGESTION | OTHER
   /// [title]: 문의 제목
   /// [content]: 문의 내용
+  /// [imageUrl]: 첨부 이미지 URL (선택)
   Future<void> createInquiry({
     required String category,
     required String title,
     required String content,
+    String? imageUrl,
   }) async {
     await _api.post('/inquiries', body: {
       'category': category,
       'title': title,
       'content': content,
+      if (imageUrl != null) 'imageUrl': imageUrl,
     });
   }
 

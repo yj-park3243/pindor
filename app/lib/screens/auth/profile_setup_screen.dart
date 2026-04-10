@@ -9,6 +9,7 @@ import '../../core/network/api_client.dart';
 import '../../repositories/upload_repository.dart';
 import '../../repositories/user_repository.dart';
 import '../../providers/auth_provider.dart';
+import '../../widgets/common/app_toast.dart';
 
 /// 닉네임/프로필 이미지 설정 화면 (신규 가입 플로우)
 class ProfileSetupScreen extends ConsumerStatefulWidget {
@@ -25,7 +26,6 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
   bool _isLoading = false;
   bool _isImageLoading = false;
   String? _nicknameError;
-  bool _isNicknameChecked = false;
 
   static const _adjectives = [
     // 속도/힘
@@ -119,80 +119,44 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
       setState(() => _profileImageUrl = url);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('이미지 업로드 실패')),
-        );
+        AppToast.error('이미지 업로드 실패');
       }
     } finally {
       if (mounted) setState(() => _isImageLoading = false);
     }
   }
 
-  Future<void> _checkNickname() async {
-    FocusScope.of(context).unfocus();
-    final nickname = _nicknameController.text.trim();
-    if (nickname.length < 2) {
-      setState(() => _nicknameError = '닉네임은 2자 이상 입력해주세요.');
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-      _nicknameError = null;
-    });
-
-    try {
-      final response = await ApiClient.instance.get(
-        '/users/check-nickname',
-        queryParameters: {'nickname': nickname},
-      );
-      final available = response['data']?['available'] as bool? ?? false;
-
-      if (available) {
-        setState(() => _isNicknameChecked = true);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('사용 가능한 닉네임입니다.'),
-              backgroundColor: AppTheme.secondaryColor,
-            ),
-          );
-        }
-      } else {
-        setState(() {
-          _isNicknameChecked = false;
-          _nicknameError = '이미 사용 중인 닉네임입니다.';
-        });
-      }
-    } catch (e) {
-      setState(() {
-        _isNicknameChecked = false;
-        _nicknameError = '닉네임 확인에 실패했습니다.';
-      });
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
-    if (!_isNicknameChecked) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('닉네임 중복 확인을 해주세요')),
-      );
-      return;
-    }
-
     setState(() {
       _isLoading = true;
       _nicknameError = null;
     });
 
     try {
+      // 제출 시 닉네임 중복 확인
+      final nickname = _nicknameController.text.trim();
+      final checkResponse = await ApiClient.instance.get(
+        '/users/check-nickname',
+        queryParameters: {'nickname': nickname},
+      );
+      final available = checkResponse['data']?['available'] as bool? ?? false;
+
+      if (!available) {
+        setState(() {
+          _isLoading = false;
+          _nicknameError = '이미 사용 중인 닉네임입니다.';
+        });
+        if (mounted) {
+          AppToast.warning('이미 사용 중인 닉네임입니다.');
+        }
+        return;
+      }
+
       final userRepo = ref.read(userRepositoryProvider);
       final user = await userRepo.updateProfile(
-        nickname: _nicknameController.text.trim(),
+        nickname: nickname,
         profileImageUrl: _profileImageUrl,
       );
 
@@ -202,20 +166,19 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
     } on ApiException catch (e) {
       if (e.statusCode == 409 || e.code == 'NICKNAME_TAKEN') {
         setState(() => _nicknameError = '이미 사용 중인 닉네임입니다.');
+        if (mounted) {
+          AppToast.warning('이미 사용 중인 닉네임입니다.');
+        }
       } else {
         debugPrint('[ProfileSetup] _submit ApiException: $e');
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('프로필 저장 실패: ${e.message}')),
-          );
+          AppToast.error('프로필 저장 실패: ${e.message}');
         }
       }
     } catch (e) {
       debugPrint('[ProfileSetup] _submit 에러: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('프로필 저장 실패: $e')),
-        );
+        AppToast.error('프로필 저장 실패: $e');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -225,11 +188,11 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         title: const Text('프로필 설정'),
         automaticallyImplyLeading: false,
-        backgroundColor: Colors.white,
+        backgroundColor: const Color(0xFF0A0A0A),
         elevation: 0,
       ),
       body: GestureDetector(
@@ -297,11 +260,11 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                         height: 100,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: const Color(0xFFF3F4F6),
+                          color: const Color(0xFF2A2A2A),
                           border: Border.all(
                             color: _profileImageUrl != null
                                 ? AppTheme.primaryColor
-                                : const Color(0xFFE5E7EB),
+                                : const Color(0xFF2A2A2A),
                             width: 2,
                           ),
                         ),
@@ -334,7 +297,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                           decoration: BoxDecoration(
                             color: AppTheme.primaryColor,
                             shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2.5),
+                            border: Border.all(color: const Color(0xFF1E1E1E), width: 2.5),
                             boxShadow: [
                               BoxShadow(
                                 color: AppTheme.primaryColor.withOpacity(0.3),
@@ -356,7 +319,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
 
               const SizedBox(height: 36),
 
-              // 닉네임 입력 + 중복 체크
+              // 닉네임 입력
               Row(
                 children: [
                   const Text(
@@ -372,7 +335,6 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                         ? null
                         : () {
                             setState(() {
-                              _isNicknameChecked = false;
                               _nicknameError = null;
                             });
                             _generateRandomNickname();
@@ -397,75 +359,22 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                 ],
               ),
               const SizedBox(height: 10),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _nicknameController,
-                      maxLength: 20,
-                      onChanged: (_) {
-                        if (_isNicknameChecked) {
-                          setState(() => _isNicknameChecked = false);
-                        }
-                      },
-                      decoration: InputDecoration(
-                        hintText: '2~20자 이내로 입력해주세요',
-                        errorText: _nicknameError,
-                        counterText: '',
-                        filled: true,
-                        fillColor: Colors.white,
-                        suffixIcon: _isNicknameChecked
-                            ? const Icon(
-                                Icons.check_circle_rounded,
-                                color: AppTheme.secondaryColor,
-                              )
-                            : null,
-                      ),
-                      validator: (value) {
-                        if (value == null || value.trim().length < 2) {
-                          return '닉네임은 2자 이상 입력해주세요.';
-                        }
-                        return null;
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  SizedBox(
-                    height: 52,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _checkNickname,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
-                        foregroundColor: AppTheme.primaryColor,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 0),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          side: const BorderSide(
-                            color: AppTheme.primaryColor,
-                            width: 1,
-                          ),
-                        ),
-                      ),
-                      child: _isLoading
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: AppTheme.primaryColor,
-                              ),
-                            )
-                          : const Text(
-                              '중복 확인',
-                              style: TextStyle(
-                                  fontSize: 13, fontWeight: FontWeight.w600),
-                            ),
-                    ),
-                  ),
-                ],
+              TextFormField(
+                controller: _nicknameController,
+                maxLength: 20,
+                decoration: InputDecoration(
+                  hintText: '2~20자 이내로 입력해주세요',
+                  errorText: _nicknameError,
+                  counterText: '',
+                  filled: true,
+                  fillColor: const Color(0xFF2A2A2A),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().length < 2) {
+                    return '닉네임은 2자 이상 입력해주세요.';
+                  }
+                  return null;
+                },
               ),
 
               const SizedBox(height: 56),
@@ -521,7 +430,7 @@ class _StepProgressBar extends StatelessWidget {
               decoration: BoxDecoration(
                 color: index < currentStep
                     ? AppTheme.primaryColor
-                    : const Color(0xFFE5E7EB),
+                    : const Color(0xFF2A2A2A),
                 borderRadius: BorderRadius.circular(3),
               ),
             ),

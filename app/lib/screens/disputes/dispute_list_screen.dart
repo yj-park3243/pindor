@@ -17,10 +17,10 @@ class DisputeListScreen extends ConsumerWidget {
     final disputesAsync = ref.watch(myDisputesProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         title: const Text('의의 제기 내역'),
-        backgroundColor: const Color(0xFFF8F9FA),
+        backgroundColor: const Color(0xFF0A0A0A),
         elevation: 0,
       ),
       body: disputesAsync.when(
@@ -109,7 +109,7 @@ class _DisputeCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: const Color(0xFF1E1E1E),
           borderRadius: BorderRadius.circular(14),
           boxShadow: [
             BoxShadow(
@@ -234,7 +234,7 @@ class _DisputeDetailSheet extends StatelessWidget {
       expand: false,
       builder: (context, controller) => Container(
         decoration: const BoxDecoration(
-          color: Colors.white,
+          color: Color(0xFF1E1E1E),
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Column(
@@ -244,7 +244,7 @@ class _DisputeDetailSheet extends StatelessWidget {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: const Color(0xFFE5E7EB),
+                color: const Color(0xFF2A2A2A),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),

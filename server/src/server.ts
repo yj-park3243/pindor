@@ -127,6 +127,7 @@ async function start(): Promise<void> {
     const { scheduleDeadlineWarnings } = await import('./workers/result-deadline.worker.js');
     const { rankingRefreshQueue } = await import('./workers/ranking-refresh.worker.js');
     const { processMatchingQueue } = await import('./workers/matching-queue.worker.js');
+    const { processAutoResolveGames } = await import('./workers/auto-resolve.worker.js');
 
     // 5분마다 만료된 매칭 요청 처리
     setInterval(processExpiredMatchRequests, 5 * 60 * 1000);
@@ -141,6 +142,9 @@ async function start(): Promise<void> {
 
     // 매칭 큐 워커 (10초마다)
     setInterval(() => processMatchingQueue().catch(console.error), 10000);
+
+    // 1시간마다 경기 결과 자동 확정 (3일 무입력 → 무승부, 1일 단측 → 채택)
+    setInterval(() => processAutoResolveGames().catch(console.error), 60 * 60 * 1000);
   }
 
   // ─────────────────────────────────────

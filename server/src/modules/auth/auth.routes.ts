@@ -3,12 +3,14 @@ import { AuthService } from './auth.service.js';
 import {
   kakaoLoginSchema,
   googleLoginSchema,
+  appleLoginSchema,
   emailRegisterSchema,
   emailLoginSchema,
   refreshTokenSchema,
   logoutSchema,
   type KakaoLoginDto,
   type GoogleLoginDto,
+  type AppleLoginDto,
   type EmailRegisterDto,
   type EmailLoginDto,
   type RefreshTokenDto,
@@ -69,6 +71,37 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
     async (request: FastifyRequest<{ Body: GoogleLoginDto }>, reply: FastifyReply) => {
       const dto = googleLoginSchema.parse(request.body);
       const result = await authService.googleLogin(dto);
+
+      return reply.status(200).send({
+        success: true,
+        data: result,
+      });
+    },
+  );
+
+  // ─── POST /auth/apple ───
+  fastify.post(
+    '/auth/apple',
+    {
+      ...authRateLimitConfig,
+      schema: {
+        tags: ['Auth'],
+        summary: 'Apple 소셜 로그인',
+        body: {
+          type: 'object',
+          required: ['identityToken', 'authorizationCode'],
+          properties: {
+            identityToken: { type: 'string' },
+            authorizationCode: { type: 'string' },
+            email: { type: 'string' },
+            fullName: { type: 'string' },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest<{ Body: AppleLoginDto }>, reply: FastifyReply) => {
+      const dto = appleLoginSchema.parse(request.body);
+      const result = await authService.appleLogin(dto);
 
       return reply.status(200).send({
         success: true,

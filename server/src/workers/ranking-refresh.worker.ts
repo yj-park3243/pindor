@@ -113,8 +113,22 @@ async function refreshPinRanking(pinId: string, sportType: string): Promise<void
     }
   }
 
-  // 핀 userCount 업데이트
-  await pinRepo.update(pinId, { userCount: profiles.length });
+  // 핀 userCount 업데이트: 해당 핀에서 매칭한 사람 + 자주 가는 핀으로 등록한 사람의 고유 사용자 수
+  const [{ count }] = await AppDataSource.query<Array<{ count: number }>>(
+    `SELECT COUNT(DISTINCT user_id)::int AS count FROM (
+      SELECT user_id FROM user_pins WHERE pin_id = $1
+      UNION
+      SELECT sp.user_id FROM matches m
+        JOIN sports_profiles sp ON sp.id = m.requester_profile_id
+        WHERE m.pin_id = $1
+      UNION
+      SELECT sp.user_id FROM matches m
+        JOIN sports_profiles sp ON sp.id = m.opponent_profile_id
+        WHERE m.pin_id = $1
+    ) active_users`,
+    [pinId],
+  );
+  await pinRepo.update(pinId, { userCount: count });
 
   console.info(`[RankingRefresh] Pin ${pinId} / ${sportType}: ${profiles.length} entries`);
 }

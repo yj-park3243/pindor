@@ -191,11 +191,11 @@ class ScoreChangeResult {
 
   factory ScoreChangeResult.fromJson(Map<String, dynamic> json) {
     return ScoreChangeResult(
-      previousScore: json['previousScore'] as int,
-      newScore: json['newScore'] as int,
-      scoreDelta: json['scoreDelta'] as int,
-      previousTier: json['previousTier'] as String,
-      newTier: json['newTier'] as String,
+      previousScore: (json['previousScore'] as num?)?.toInt() ?? 0,
+      newScore: (json['newScore'] as num?)?.toInt() ?? 0,
+      scoreDelta: (json['scoreDelta'] as num?)?.toInt() ?? 0,
+      previousTier: json['previousTier'] as String? ?? 'BRONZE',
+      newTier: json['newTier'] as String? ?? 'BRONZE',
       tierChanged: json['tierChanged'] as bool? ?? false,
       tierUpgraded: json['tierUpgraded'] as bool? ?? false,
       previousRank: json['previousRank'] as int?,

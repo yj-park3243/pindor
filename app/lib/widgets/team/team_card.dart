@@ -70,7 +70,7 @@ class TeamCard extends StatelessWidget {
                         ),
                         const SizedBox(width: 10),
                         Text(
-                          '${team.wins}승 ${team.losses}패 ${team.draws}무',
+                          '${team.wins + team.losses + team.draws}경기',
                           style: const TextStyle(
                             fontSize: 12,
                             color: AppTheme.textSecondary,
@@ -154,6 +154,8 @@ class _TeamLogo extends StatelessWidget {
           width: size,
           height: size,
           fit: BoxFit.cover,
+          memCacheWidth: (size * 2).toInt(),
+          memCacheHeight: (size * 2).toInt(),
           errorWidget: (context, url, error) => _buildFallback(initial, size),
         ),
       );

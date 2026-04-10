@@ -21,6 +21,8 @@ export enum SportType {
   SOCCER = 'SOCCER',
   BASKETBALL = 'BASKETBALL',
   BASEBALL = 'BASEBALL',
+  ROCK_PAPER_SCISSORS = 'ROCK_PAPER_SCISSORS',
+  ARM_WRESTLING = 'ARM_WRESTLING',
 }
 
 export enum Tier {
@@ -40,10 +42,14 @@ export enum RequestType {
 }
 
 export enum TimeSlot {
-  DAWN = 'DAWN',
-  MORNING = 'MORNING',
-  AFTERNOON = 'AFTERNOON',
-  EVENING = 'EVENING',
+  DAWN = 'DAWN',           // 00~03
+  EARLY_MORNING = 'EARLY_MORNING', // 03~06
+  MORNING = 'MORNING',     // 06~09
+  LATE_MORNING = 'LATE_MORNING',   // 09~12
+  AFTERNOON = 'AFTERNOON', // 12~15
+  LATE_AFTERNOON = 'LATE_AFTERNOON', // 15~18
+  EVENING = 'EVENING',     // 18~21
+  NIGHT = 'NIGHT',         // 21~24
   ANY = 'ANY',
 }
 
@@ -94,6 +100,7 @@ export enum MessageType {
   IMAGE = 'IMAGE',
   SYSTEM = 'SYSTEM',
   SCHEDULE_PROPOSAL = 'SCHEDULE_PROPOSAL',
+  LOCATION = 'LOCATION',
 }
 
 export enum RoomType {

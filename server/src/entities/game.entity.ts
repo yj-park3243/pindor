@@ -21,8 +21,8 @@ export class Game {
   @Column({ name: 'sport_type', type: 'enum', enum: SportType, enumName: 'SportType' })
   sportType!: SportType;
 
-  @Column({ name: 'venue_name', type: 'varchar', length: 255 })
-  venueName!: string;
+  @Column({ name: 'venue_name', type: 'varchar', length: 255, nullable: true })
+  venueName!: string | null;
 
   @Column({
     name: 'venue_location',
@@ -59,6 +59,9 @@ export class Game {
 
   @Column({ name: 'opponent_claimed_result', type: 'varchar', length: 10, nullable: true })
   opponentClaimedResult!: string | null; // WIN, LOSS, DRAW
+
+  @Column({ name: 'proof_image_urls', type: 'jsonb', default: '[]' })
+  proofImageUrls!: string[];
 
   @Column({ name: 'verified_at', type: 'timestamptz', nullable: true })
   verifiedAt!: Date | null;

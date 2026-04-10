@@ -199,6 +199,27 @@ export class MatchingService {
       }
     }
 
+    // ─── CONFIRMED 매칭 중 결과 미입력 차단 ───
+    // CONFIRMED 상태인 매칭에 연결된 게임이 있고 resultStatus가 PENDING이면 신규 매칭 불가
+    const confirmedMatchesWithPendingResult = await this.dataSource.query<Array<{ count: string }>>(
+      `SELECT COUNT(*)::int AS count
+       FROM matches m
+       JOIN sports_profiles rp ON rp.id = m.requester_profile_id
+       JOIN sports_profiles op ON op.id = m.opponent_profile_id
+       JOIN games g ON g.match_id = m.id
+       WHERE (rp.user_id = $1::uuid OR op.user_id = $1::uuid)
+         AND m.status = 'CONFIRMED'
+         AND g.result_status = 'PENDING'`,
+      [userId],
+    );
+
+    if (parseInt(confirmedMatchesWithPendingResult[0]?.count ?? '0', 10) > 0) {
+      throw AppError.conflict(
+        ErrorCode.MATCH_ALREADY_EXISTS,
+        '결과 입력 대기 중인 매칭이 있습니다. 결과 입력 후 다시 신청해주세요.',
+      );
+    }
+
     // ─── 총 활성 매칭/요청 2개 제한 ───
     const totalActiveRequests = await this.matchRequestRepo
       .createQueryBuilder('mr')
@@ -211,13 +232,13 @@ export class MatchingService {
       .leftJoin('m.requesterProfile', 'rp')
       .leftJoin('m.opponentProfile', 'op')
       .where('(rp.userId = :userId OR op.userId = :userId)', { userId })
-      .andWhere('m.status IN (:...statuses)', { statuses: ['PENDING_ACCEPT', 'CHAT', 'CONFIRMED'] })
+      .andWhere('m.status IN (:...statuses)', { statuses: ['CHAT', 'CONFIRMED'] })
       .getCount();
 
     if (totalActiveRequests + totalActiveMatches >= 2) {
       throw AppError.conflict(
         ErrorCode.MATCH_ALREADY_EXISTS,
-        '최대 2개까지만 매칭 요청이 가능합니다. (오늘/내일)',
+        '매칭이 2개 있습니다. 결과 입력 후 다시 신청해주세요.',
       );
     }
 
@@ -265,6 +286,22 @@ export class MatchingService {
     const hasCoords = lat !== undefined && lng !== undefined;
     const pointWkt = hasCoords ? wktPoint(lat, lng) : null;
 
+    // ageRange → minAge/maxAge 계산 (유저 birthDate 기준)
+    let resolvedMinAge: number | null = dto.minAge ?? null;
+    let resolvedMaxAge: number | null = dto.maxAge ?? null;
+    if (dto.ageRange !== undefined && dto.ageRange !== null) {
+      const userRows = await this.dataSource.query<Array<{ birthDate: string | null }>>(
+        `SELECT birth_date AS "birthDate" FROM users WHERE id = $1::uuid`,
+        [userId],
+      );
+      const birthDate = userRows[0]?.birthDate;
+      if (birthDate) {
+        const myAge = calculateAge(new Date(birthDate));
+        resolvedMinAge = Math.max(14, myAge - dto.ageRange);
+        resolvedMaxAge = Math.min(100, myAge + dto.ageRange);
+      }
+    }
+
     // 매칭 요청 생성 (Pin 기반)
     const request = await this.dataSource.query<Array<{ id: string }>>(
       `INSERT INTO match_requests (
@@ -307,8 +344,8 @@ export class MatchingService {
         dto.minOpponentScore,
         dto.maxOpponentScore,
         dto.genderPreference ?? 'ANY',
-        dto.minAge ?? null,
-        dto.maxAge ?? null,
+        resolvedMinAge,
+        resolvedMaxAge,
         dto.message ?? null,
         isCasual,
         expiresAt,
@@ -337,6 +374,17 @@ export class MatchingService {
       where: { id: requestId },
       select: { status: true } as any,
     });
+
+    // WAITING이면 매칭 큐 Worker에 이벤트 발행 (즉시 매칭 시도)
+    if ((updatedRequest?.status ?? 'WAITING') === 'WAITING') {
+      try {
+        const { triggerMatchingProcess } = await import('../../workers/matching-queue.worker.js');
+        await triggerMatchingProcess(dto.pinId, dto.sportType);
+      } catch (e) {
+        // 이벤트 발행 실패해도 매칭 요청 자체는 정상 반환
+        console.warn('[MatchService] triggerMatchingProcess failed:', (e as Error).message);
+      }
+    }
 
     return {
       id: requestId,
@@ -484,37 +532,8 @@ export class MatchingService {
 
     const bestCandidate = candidatesWithDiff[0];
 
-    // 4~6) 점수 차이에 따른 즉시 매칭 or 지연 매칭
-    if (bestCandidate.scoreDiff <= 50) {
-      // 4) 점수차 50 이내 → 즉시 매칭
-      await this.createMatch(requestId, bestCandidate, opts);
-    } else if (bestCandidate.scoreDiff <= 150) {
-      // 5) 점수차 50~150 → 3분 대기 후 매칭
-      await this.matchAcceptTimeoutQueue.add(
-        'delayed-match',
-        {
-          matchId: '',
-          requesterUserId: opts.requesterUserId,
-          opponentUserId: bestCandidate.userId,
-          requesterRequestId: requestId,
-          opponentRequestId: bestCandidate.matchRequestId,
-        },
-        { delay: 3 * 60 * 1000, jobId: `delayed-match-${requestId}` },
-      );
-    } else {
-      // 6) 점수차 150 이상 → 5분 대기 후 매칭
-      await this.matchAcceptTimeoutQueue.add(
-        'delayed-match',
-        {
-          matchId: '',
-          requesterUserId: opts.requesterUserId,
-          opponentUserId: bestCandidate.userId,
-          requesterRequestId: requestId,
-          opponentRequestId: bestCandidate.matchRequestId,
-        },
-        { delay: 5 * 60 * 1000, jobId: `delayed-match-${requestId}` },
-      );
-    }
+    // 점수 차이에 관계없이 최선의 후보와 즉시 매칭
+    await this.createMatch(requestId, bestCandidate, opts);
 
     return filteredCandidates.length;
   }
@@ -564,6 +583,15 @@ export class MatchingService {
         select: { nickname: true, gender: true, birthDate: true } as any,
       });
 
+      // 양쪽 요청의 시간대 resolve (ANY가 아닌 쪽 우선)
+      const [reqMr, oppMr] = await Promise.all([
+        manager.findOne(MatchRequest, { where: { id: requestId }, select: { desiredDate: true, desiredTimeSlot: true } as any }),
+        manager.findOne(MatchRequest, { where: { id: bestCandidate.matchRequestId }, select: { desiredDate: true, desiredTimeSlot: true } as any }),
+      ]);
+      const slotA = (reqMr as any)?.desiredTimeSlot;
+      const slotB = (oppMr as any)?.desiredTimeSlot;
+      const resolvedSlot = (slotA && slotA !== 'ANY') ? slotA : (slotB && slotB !== 'ANY') ? slotB : (slotA || slotB || null);
+
       // 매칭 생성 (ChatRoom 없이 PENDING_ACCEPT 상태)
       const match = manager.create(Match, {
         matchRequestId: requestId,
@@ -572,6 +600,8 @@ export class MatchingService {
         pinId: pinId ?? null,
         sportType: opts.sportType as any,
         status: 'PENDING_ACCEPT' as any,
+        desiredDate: (reqMr as any)?.desiredDate ?? null,
+        desiredTimeSlot: resolvedSlot,
       });
       const savedMatch = await manager.save(Match, match);
 
@@ -637,7 +667,7 @@ export class MatchingService {
               opponentNickname: bestCandidate.nickname,
               opponentGender: bestCandidate.gender ?? '',
               opponentAge: opponentAge !== null ? String(opponentAge) : '',
-              deepLink: `/match/${savedMatch.id}/accept`,
+              deepLink: `/matches/${savedMatch.id}/accept`,
             },
           },
           {
@@ -650,7 +680,7 @@ export class MatchingService {
               opponentNickname: (requester as any)?.nickname ?? '',
               opponentGender: (requester as any)?.gender ?? '',
               opponentAge: requesterAge !== null ? String(requesterAge) : '',
-              deepLink: `/match/${savedMatch.id}/accept`,
+              deepLink: `/matches/${savedMatch.id}/accept`,
             },
           },
         ]);
@@ -701,10 +731,13 @@ export class MatchingService {
 
     if (opponentAcceptance?.accepted === true) {
       // 양측 수락! → Match status를 CHAT으로, ChatRoom 생성
+      let createdChatRoomId: string | undefined;
+
       await this.dataSource.transaction(async (manager) => {
         // ChatRoom 생성
         const chatRoom = manager.create(ChatRoom, { roomType: 'MATCH' as any });
         const savedChatRoom = await manager.save(ChatRoom, chatRoom);
+        createdChatRoomId = savedChatRoom.id;
 
         // Match 상태 CHAT으로 변경 + chatRoomId 연결
         await manager.update(Match, matchId, {
@@ -762,7 +795,7 @@ export class MatchingService {
         }
       });
 
-      return { status: 'MATCHED', message: '매칭이 확정되었습니다!' };
+      return { status: 'MATCHED', message: '매칭이 확정되었습니다!', chatRoomId: createdChatRoomId };
     }
 
     // 상대가 아직 응답 안 했으면 대기 알림
@@ -957,7 +990,7 @@ export class MatchingService {
           await manager.save(ScoreHistory, manager.create(ScoreHistory, {
             sportsProfileId: (acceptorProfile as any).id,
             gameId: null,
-            changeType: ScoreChangeType.NO_SHOW_PENALTY,
+            changeType: ScoreChangeType.NO_SHOW_COMPENSATION,
             scoreBefore: acceptorScoreBefore,
             scoreChange: 5,
             scoreAfter: acceptorNewScore,
@@ -1055,11 +1088,14 @@ export class MatchingService {
   // ─────────────────────────────────────
 
   async listMatchRequests(userId: string, query: ListMatchRequestsQuery) {
-    const { status, sportType, cursor, limit } = query;
+    const { status, sportType, cursor } = query;
+    const limit = Math.min(Math.max(Number(query.limit) || 20, 1), 100);
 
     const qb = this.matchRequestRepo
       .createQueryBuilder('mr')
       .leftJoinAndSelect('mr.sportsProfile', 'sp')
+      .leftJoin('pins', 'p', 'p.id = mr.pin_id')
+      .addSelect('p.name', 'pinName')
       .where('mr.requesterId = :userId', { userId });
 
     if (status) qb.andWhere('mr.status = :status', { status });
@@ -1068,13 +1104,21 @@ export class MatchingService {
 
     qb.orderBy('mr.createdAt', 'DESC').take(limit + 1);
 
-    const requests = await qb.getMany();
+    const rawAndEntities = await qb.getRawAndEntities();
+    const requests = rawAndEntities.entities;
+    const rawRows = rawAndEntities.raw;
 
     const hasMore = requests.length > limit;
     const items = hasMore ? requests.slice(0, limit) : requests;
+    const rawItems = hasMore ? rawRows.slice(0, limit) : rawRows;
     const nextCursor = hasMore ? items[items.length - 1].createdAt.toISOString() : null;
 
-    return { items, nextCursor, hasMore };
+    const result = items.map((req, idx) => ({
+      ...req,
+      pinName: rawItems[idx]?.pinName ?? null,
+    }));
+
+    return { items: result, nextCursor, hasMore };
   }
 
   // ─────────────────────────────────────
@@ -1082,16 +1126,26 @@ export class MatchingService {
   // ─────────────────────────────────────
 
   async listMatches(userId: string, query: ListMatchesQuery) {
-    const { status, cursor, limit } = query;
+    const { status, cursor } = query;
+    const limit = Math.min(Math.max(Number(query.limit) || 20, 1), 100);
 
     const qb = this.matchRepo
       .createQueryBuilder('match')
       .leftJoinAndSelect('match.requesterProfile', 'rp')
-      .leftJoinAndSelect('rp.user', 'rpUser')
+      .leftJoin('rp.user', 'rpUser')
+      .addSelect(['rpUser.id', 'rpUser.nickname', 'rpUser.profileImageUrl'])
       .leftJoinAndSelect('match.opponentProfile', 'op')
-      .leftJoinAndSelect('op.user', 'opUser')
+      .leftJoin('op.user', 'opUser')
+      .addSelect(['opUser.id', 'opUser.nickname', 'opUser.profileImageUrl'])
       .leftJoin(MatchRequest, 'mr', 'mr.id = match.matchRequestId')
       .addSelect('mr.isCasual', 'isCasual')
+      .addSelect('mr.desired_date', 'mr_desired_date')
+      .addSelect('mr.desired_time_slot', 'mr_desired_time_slot')
+      .addSelect('mr.pin_id', 'mr_pin_id')
+      .leftJoin('pins', 'pin', 'pin.id = mr.pin_id')
+      .addSelect('pin.name', 'pin_name')
+      .leftJoin(Game, 'game', 'game.match_id = match.id')
+      .addSelect(['game.winnerProfileId', 'game.resultStatus'])
       .where('(rp.userId = :userId OR op.userId = :userId)', { userId });
 
     if (status) qb.andWhere('match.status = :status', { status });
@@ -1107,11 +1161,53 @@ export class MatchingService {
     const items = hasMore ? matches.slice(0, limit) : matches;
     const rawItems = hasMore ? rawRows.slice(0, limit) : rawRows;
 
+    // PENDING_ACCEPT 매칭의 수락 정보를 일괄 조회
+    const pendingMatchIds = items
+      .filter((m) => (m.status as string) === 'PENDING_ACCEPT')
+      .map((m) => m.id);
+    let acceptancesMap = new Map<string, MatchAcceptance[]>();
+    if (pendingMatchIds.length > 0) {
+      const allAcceptances = await this.matchAcceptanceRepo.find({
+        where: pendingMatchIds.map((id) => ({ matchId: id })),
+      });
+      for (const acc of allAcceptances) {
+        const list = acceptancesMap.get(acc.matchId) ?? [];
+        list.push(acc);
+        acceptancesMap.set(acc.matchId, list);
+      }
+    }
+
     // 각 매칭에서 상대방 정보 추출
     const result = items.map((match, idx) => {
       const isRequester = (match.requesterProfile as any).userId === userId;
       const opponent = isRequester ? match.opponentProfile : match.requesterProfile;
       const isCasual = rawItems[idx]?.isCasual === true;
+
+      // 완료된 매칭의 승패 정보
+      const winnerProfileId = rawItems[idx]?.game_winner_profile_id ?? null;
+      const gameResultStatus = rawItems[idx]?.game_result_status ?? null;
+      const myProfileId = isRequester
+        ? (match.requesterProfile as any).id
+        : (match.opponentProfile as any).id;
+      let gameResult: string | null = null; // WIN | LOSS | DRAW
+      if (match.status === 'COMPLETED' && winnerProfileId) {
+        gameResult = winnerProfileId === myProfileId ? 'WIN' : 'LOSS';
+      } else if (match.status === 'COMPLETED' && gameResultStatus === 'VERIFIED' && !winnerProfileId) {
+        gameResult = 'DRAW';
+      }
+
+      // PENDING_ACCEPT 상태일 때만 myAcceptance 포함
+      let myAcceptance: { accepted: boolean | null; expiresAt: Date | null } | null = null;
+      if ((match.status as string) === 'PENDING_ACCEPT') {
+        const accs = acceptancesMap.get(match.id) ?? [];
+        const myAcc = accs.find((a) => a.userId === userId);
+        if (myAcc) {
+          myAcceptance = {
+            accepted: myAcc.accepted ?? null,
+            expiresAt: myAcc.expiresAt ?? null,
+          };
+        }
+      }
 
       return {
         id: match.id,
@@ -1128,6 +1224,11 @@ export class MatchingService {
         scheduledDate: match.scheduledDate,
         chatRoomId: match.chatRoomId,
         createdAt: match.createdAt,
+        gameResult,
+        pinName: rawItems[idx]?.pin_name ?? null,
+        desiredDate: match.desiredDate ?? rawItems[idx]?.mr_desired_date ?? null,
+        desiredTimeSlot: (match as any).desiredTimeSlot ?? rawItems[idx]?.mr_desired_time_slot ?? null,
+        ...(myAcceptance !== null ? { myAcceptance } : {}),
       };
     });
 
@@ -1166,14 +1267,121 @@ export class MatchingService {
     const opponentProfile = isRequester ? match.opponentProfile : match.requesterProfile;
     const myProfile = isRequester ? match.requesterProfile : match.opponentProfile;
 
-    // matchRequest에서 isCasual 조회
+    // matchRequest에서 isCasual, desiredDate, desiredTimeSlot 조회 + 핀 이름 단일 쿼리로 통합
     let isCasual = false;
+    let desiredDate: string | null = null;
+    let desiredTimeSlot: string | null = null;
+    let pinName: string | null = null;
+
     if (match.matchRequestId) {
-      const mr = await this.matchRequestRepo.findOne({
-        where: { id: match.matchRequestId },
-        select: { isCasual: true } as any,
-      });
-      isCasual = (mr as any)?.isCasual === true;
+      const mrRows = await this.dataSource.query<
+        Array<{
+          isCasual: boolean;
+          desiredDate: string | null;
+          desiredTimeSlot: string | null;
+          pinName: string | null;
+        }>
+      >(
+        `SELECT
+          mr.is_casual AS "isCasual",
+          mr.desired_date AS "desiredDate",
+          mr.desired_time_slot AS "desiredTimeSlot",
+          p.name AS "pinName"
+        FROM match_requests mr
+        LEFT JOIN pins p ON p.id = mr.pin_id
+        WHERE mr.id = $1::uuid
+        LIMIT 1`,
+        [match.matchRequestId],
+      );
+
+      if (mrRows.length > 0) {
+        isCasual = mrRows[0].isCasual === true;
+        desiredDate = mrRows[0].desiredDate ?? null;
+        desiredTimeSlot = mrRows[0].desiredTimeSlot ?? null;
+        pinName = mrRows[0].pinName ?? null;
+      }
+
+      // 상대 매칭 요청의 시간대 확인: ANY(하루종일) vs 구체적 시간 → 구체적 시간 우선
+      // matchRequestId는 항상 매칭의 requester 것이므로, 상대는 항상 opponentProfile
+      if (desiredTimeSlot === 'ANY' || desiredTimeSlot === null) {
+        const opponentProfileId = match.opponentProfile.id;
+        const opponentMr = await this.dataSource.query<
+          Array<{ desiredTimeSlot: string | null }>
+        >(
+          `SELECT mr.desired_time_slot AS "desiredTimeSlot"
+           FROM match_requests mr
+           WHERE mr.sports_profile_id = $1::uuid
+             AND mr.status = 'MATCHED'
+             AND mr.sport_type = $2
+           ORDER BY mr.updated_at DESC
+           LIMIT 1`,
+          [opponentProfileId, match.sportType],
+        );
+        const oppSlot = opponentMr[0]?.desiredTimeSlot ?? null;
+        if (oppSlot && oppSlot !== 'ANY') {
+          desiredTimeSlot = oppSlot;
+        }
+      }
+    } else if (match.pinId) {
+      // matchRequestId가 없는 경우: 양쪽 매칭 요청에서 시간대 조회
+      const bothMr = await this.dataSource.query<
+        Array<{
+          desiredDate: string | null;
+          desiredTimeSlot: string | null;
+          pinName: string | null;
+          isCasual: boolean;
+        }>
+      >(
+        `SELECT
+          mr.is_casual AS "isCasual",
+          mr.desired_date AS "desiredDate",
+          mr.desired_time_slot AS "desiredTimeSlot",
+          p.name AS "pinName"
+        FROM match_requests mr
+        LEFT JOIN pins p ON p.id = mr.pin_id
+        WHERE mr.sports_profile_id IN ($1::uuid, $2::uuid)
+          AND mr.status = 'MATCHED'
+          AND mr.sport_type = $3
+        ORDER BY mr.updated_at DESC
+        LIMIT 2`,
+        [match.requesterProfile.id, match.opponentProfile.id, match.sportType],
+      );
+
+      if (bothMr.length > 0) {
+        pinName = bothMr[0].pinName ?? null;
+        desiredDate = bothMr[0].desiredDate ?? null;
+        isCasual = bothMr[0].isCasual === true;
+        // 구체적 시간 우선: ANY가 아닌 것을 선택
+        const specificSlot = bothMr.find(r => r.desiredTimeSlot && r.desiredTimeSlot !== 'ANY');
+        desiredTimeSlot = specificSlot?.desiredTimeSlot ?? bothMr[0].desiredTimeSlot ?? null;
+      } else {
+        // 매칭 요청 없으면 핀 이름만
+        const pinRows = await this.dataSource.query<Array<{ name: string }>>(
+          `SELECT name FROM pins WHERE id = $1::uuid LIMIT 1`,
+          [match.pinId],
+        );
+        pinName = pinRows[0]?.name ?? null;
+      }
+    }
+
+    // 상대와의 만남 횟수 조회 (완료된 매칭 수)
+    const myUserId = userId;
+    const opponentUserId = (opponentProfile as any).user?.id;
+    let encounterCount = 0;
+    if (opponentUserId) {
+      const result = await this.matchRepo
+        .createQueryBuilder('m')
+        .leftJoin('m.requesterProfile', 'rp')
+        .leftJoin('rp.user', 'ru')
+        .leftJoin('m.opponentProfile', 'op')
+        .leftJoin('op.user', 'ou')
+        .where('m.status = :status', { status: 'COMPLETED' })
+        .andWhere(
+          '((ru.id = :myId AND ou.id = :oppId) OR (ru.id = :oppId AND ou.id = :myId))',
+          { myId: myUserId, oppId: opponentUserId },
+        )
+        .getCount();
+      encounterCount = result;
     }
 
     // 수락 상태 정보 조회 (PENDING_ACCEPT 상태에서만 의미 있음)
@@ -1205,9 +1413,28 @@ export class MatchingService {
       };
     }
 
+    // Game 조회 (결과 제출 여부 포함)
+    const game = await this.dataSource.getRepository(Game).findOne({
+      where: { matchId },
+      select: { id: true, requesterClaimedResult: true, opponentClaimedResult: true } as any,
+    });
+    const myResultSubmitted = game
+      ? (isRequester ? game.requesterClaimedResult != null : game.opponentClaimedResult != null)
+      : false;
+    const opponentClaimedResult = game
+      ? (isRequester ? game.opponentClaimedResult : game.requesterClaimedResult)
+      : null;
+
     return {
       ...match,
+      gameId: game?.id ?? null,
+      myResultSubmitted,
+      opponentClaimedResult,
       isCasual,
+      pinName,
+      encounterCount,
+      desiredDate: match.desiredDate ?? desiredDate,
+      desiredTimeSlot: (match as any).desiredTimeSlot ?? desiredTimeSlot,
       myAcceptance,
       opponentAcceptance,
       timeRemainingSeconds,
@@ -1228,6 +1455,9 @@ export class MatchingService {
         matchMessage: (opponentProfile as any).matchMessage ?? null,
         gamesPlayed: (opponentProfile as any).gamesPlayed ?? 0,
         sportType: (opponentProfile as any).sportType,
+        displayScore: (opponentProfile as any).displayScore ?? null,
+        isPlacement: (opponentProfile as any).isPlacement ?? false,
+        placementGamesRemaining: (opponentProfile as any).placementGamesRemaining ?? null,
       },
     };
   }

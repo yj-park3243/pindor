@@ -6,12 +6,14 @@ import {
   UpdateDateColumn,
   ManyToOne,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import { SportType, RequestType, TimeSlot, MatchRequestStatus } from './enums.js';
 import type { User } from './user.entity.js';
 import type { SportsProfile } from './sports-profile.entity.js';
 import type { Pin } from './pin.entity.js';
 
+@Index(['requesterId', 'status', 'expiresAt'])
 @Entity('match_requests')
 export class MatchRequest {
   @PrimaryGeneratedColumn('uuid')

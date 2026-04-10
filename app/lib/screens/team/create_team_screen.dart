@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../config/theme.dart';
 import '../../providers/team_provider.dart';
 import '../../repositories/team_repository.dart';
+import '../../widgets/common/app_toast.dart';
 
 /// 팀 생성 화면
 class CreateTeamScreen extends ConsumerStatefulWidget {
@@ -41,9 +42,7 @@ class _CreateTeamScreenState extends ConsumerState<CreateTeamScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedSport == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('종목을 선택해주세요.')),
-      );
+      AppToast.warning('종목을 선택해주세요.');
       return;
     }
 
@@ -65,9 +64,7 @@ class _CreateTeamScreenState extends ConsumerState<CreateTeamScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('팀 생성 실패: ${e.toString()}')),
-        );
+        AppToast.error('팀 생성 실패: ${e.toString()}');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -106,12 +103,12 @@ class _CreateTeamScreenState extends ConsumerState<CreateTeamScreen> {
                     decoration: BoxDecoration(
                       color: isSelected
                           ? AppTheme.primaryColor
-                          : AppTheme.primaryColor.withOpacity(0.06),
+                          : AppTheme.primaryColor.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
                         color: isSelected
                             ? AppTheme.primaryColor
-                            : const Color(0xFFE5E7EB),
+                            : const Color(0xFF2A2A2A),
                         width: isSelected ? 2 : 1,
                       ),
                     ),

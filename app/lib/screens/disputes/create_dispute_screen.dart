@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../config/theme.dart';
 import '../../repositories/dispute_repository.dart';
 import '../../repositories/upload_repository.dart';
+import '../../widgets/common/app_toast.dart';
 
 /// 의의 제기 접수 화면
 class CreateDisputeScreen extends ConsumerStatefulWidget {
@@ -34,9 +35,7 @@ class _CreateDisputeScreenState extends ConsumerState<CreateDisputeScreen> {
 
   Future<void> _pickImages() async {
     if (_imageUrls.length >= 3) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('최대 3장까지 첨부 가능합니다.')),
-      );
+      AppToast.warning('최대 3장까지 첨부 가능합니다.');
       return;
     }
 
@@ -56,9 +55,7 @@ class _CreateDisputeScreenState extends ConsumerState<CreateDisputeScreen> {
       setState(() => _imageUrls.addAll(urls));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('이미지 업로드에 실패했습니다.')),
-        );
+        AppToast.error('이미지 업로드에 실패했습니다.');
       }
     } finally {
       if (mounted) setState(() => _isUploading = false);
@@ -70,16 +67,12 @@ class _CreateDisputeScreenState extends ConsumerState<CreateDisputeScreen> {
     final content = _contentController.text.trim();
 
     if (title.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('제목을 입력해주세요.')),
-      );
+      AppToast.warning('제목을 입력해주세요.');
       return;
     }
 
     if (content.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('내용을 입력해주세요.')),
-      );
+      AppToast.warning('내용을 입력해주세요.');
       return;
     }
 
@@ -97,16 +90,12 @@ class _CreateDisputeScreenState extends ConsumerState<CreateDisputeScreen> {
       );
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('의의 제기가 접수되었습니다.')),
-        );
+        AppToast.success('의의 제기가 접수되었습니다.');
         Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('접수 실패: ${e.toString()}')),
-        );
+        AppToast.error('접수 실패: ${e.toString()}');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -116,10 +105,10 @@ class _CreateDisputeScreenState extends ConsumerState<CreateDisputeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         title: const Text('의의 제기'),
-        backgroundColor: const Color(0xFFF8F9FA),
+        backgroundColor: const Color(0xFF0A0A0A),
         elevation: 0,
       ),
       body: SingleChildScrollView(
@@ -207,7 +196,7 @@ class _CreateDisputeScreenState extends ConsumerState<CreateDisputeScreen> {
                   width: double.infinity,
                   height: 100,
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: const Color(0xFF1E1E1E),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: AppTheme.primaryColor.withOpacity(0.3),
@@ -292,10 +281,10 @@ class _CreateDisputeScreenState extends ConsumerState<CreateDisputeScreen> {
                         width: 90,
                         height: 90,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF3F4F6),
+                          color: const Color(0xFF2A2A2A),
                           borderRadius: BorderRadius.circular(12),
                           border:
-                              Border.all(color: const Color(0xFFE5E7EB)),
+                              Border.all(color: const Color(0xFF2A2A2A)),
                         ),
                         child: _isUploading
                             ? const Center(

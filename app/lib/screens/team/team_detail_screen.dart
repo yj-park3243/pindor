@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import '../../config/theme.dart';
 import '../../models/team.dart';
 import '../../providers/auth_provider.dart';
@@ -13,6 +12,7 @@ import '../../widgets/common/error_view.dart';
 import '../../widgets/team/team_member_tile.dart';
 import '../../widgets/team/team_match_card.dart';
 import '../team/team_board_screen.dart';
+import '../../widgets/common/app_toast.dart';
 
 /// 팀 상세 화면
 class TeamDetailScreen extends ConsumerWidget {
@@ -107,10 +107,56 @@ class _TeamDetailViewState extends ConsumerState<_TeamDetailView> {
             child: Container(
               color: Theme.of(context).scaffoldBackgroundColor,
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-              child: AdaptiveSegmentedControl(
-                labels: _tabs,
-                selectedIndex: _tabIndex,
-                onValueChanged: (index) => setState(() => _tabIndex = index),
+              child: Container(
+                height: 40,
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2A2A2A),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: List.generate(_tabs.length, (i) {
+                    final selected = _tabIndex == i;
+                    return Expanded(
+                      child: GestureDetector(
+                        onTap: () => setState(() => _tabIndex = i),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          decoration: BoxDecoration(
+                            color: selected
+                                ? Theme.of(context).primaryColor
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(8),
+                            boxShadow: selected
+                                ? [
+                                    BoxShadow(
+                                      color: Theme.of(context)
+                                          .primaryColor
+                                          .withOpacity(0.25),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ]
+                                : null,
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            _tabs[i],
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: selected
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                              color: selected
+                                  ? Colors.white
+                                  : const Color(0xFF9CA3AF),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
               ),
             ),
           ),
@@ -132,22 +178,97 @@ class _TeamDetailViewState extends ConsumerState<_TeamDetailView> {
   }
 
   Future<void> _showLeaveTeamDialog(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showModalBottomSheet<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('팀 나가기'),
-        content: const Text('정말 이 팀을 나가시겠습니까?\n탈퇴 후에는 다시 가입 요청을 해야 합니다.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('취소'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: AppTheme.errorColor),
-            child: const Text('나가기'),
-          ),
-        ],
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: EdgeInsets.fromLTRB(
+            24, 20, 24, MediaQuery.of(ctx).padding.bottom + 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFF2A2A2A),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.exit_to_app_outlined,
+                  color: Colors.red, size: 28),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '팀 나가기',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              '정말 이 팀을 나가시겠습니까?\n탈퇴 후에는 다시 가입 요청을 해야 합니다.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: Color(0xFF9CA3AF),
+                height: 1.6,
+              ),
+            ),
+            const SizedBox(height: 28),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      side: const BorderSide(color: Color(0xFF2A2A2A)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text('취소',
+                        style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF9CA3AF))),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      elevation: 0,
+                    ),
+                    child: const Text('나가기',
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w700)),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
 
@@ -156,16 +277,12 @@ class _TeamDetailViewState extends ConsumerState<_TeamDetailView> {
         await ref.read(teamRepositoryProvider).leaveTeam(widget.teamId);
         ref.invalidate(myTeamsProvider);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('팀을 탈퇴했습니다.')),
-          );
+          AppToast.success('팀을 탈퇴했습니다.');
           context.pop();
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('팀 탈퇴에 실패했습니다: $e')),
-          );
+          AppToast.error('팀 탈퇴에 실패했습니다: $e');
         }
       }
     }
@@ -195,7 +312,7 @@ class _TeamHeader extends StatelessWidget {
             width: 72,
             height: 72,
             decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withOpacity(0.1),
+              color: AppTheme.primaryColor.withOpacity(0.2),
               borderRadius: BorderRadius.circular(16),
             ),
             child: team.logoUrl != null
@@ -242,7 +359,7 @@ class _TeamHeader extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '${team.wins}승 ${team.losses}패 ${team.draws}무  |  ${team.currentMembers}/${team.maxMembers}명',
+                  '${team.currentMembers}/${team.maxMembers}명',
                   style: const TextStyle(
                     fontSize: 13,
                     color: AppTheme.textSecondary,
@@ -288,7 +405,7 @@ class _InfoChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: AppTheme.primaryColor.withOpacity(0.1),
+        color: AppTheme.primaryColor.withOpacity(0.2),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(

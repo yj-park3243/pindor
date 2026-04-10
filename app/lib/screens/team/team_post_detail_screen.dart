@@ -8,6 +8,7 @@ import '../../providers/team_provider.dart';
 import '../../repositories/team_repository.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/error_view.dart';
+import '../../widgets/common/app_toast.dart';
 
 /// 팀 게시글 상세 + 댓글 화면
 class TeamPostDetailScreen extends ConsumerWidget {
@@ -102,9 +103,7 @@ class _PostDetailContentState extends ConsumerState<_PostDetailContent> {
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('댓글 전송 실패: ${e.toString()}')),
-        );
+        AppToast.error('댓글 전송 실패: ${e.toString()}');
       }
     } finally {
       if (mounted) setState(() => _isSendingComment = false);
@@ -152,7 +151,7 @@ class _PostDetailContentState extends ConsumerState<_PostDetailContent> {
                   children: [
                     CircleAvatar(
                       radius: 14,
-                      backgroundColor: Colors.grey.shade200,
+                      backgroundColor: const Color(0xFF2A2A2A),
                       child: Text(
                         widget.post.author?.nickname.isNotEmpty == true
                             ? widget.post.author!.nickname[0].toUpperCase()
@@ -325,7 +324,7 @@ class _CommentItem extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 16,
-                backgroundColor: Colors.grey.shade200,
+                backgroundColor: const Color(0xFF2A2A2A),
                 child: Text(
                   nickname.isNotEmpty ? nickname[0].toUpperCase() : '?',
                   style: const TextStyle(
@@ -422,7 +421,7 @@ class _ReplyItem extends StatelessWidget {
           const SizedBox(width: 6),
           CircleAvatar(
             radius: 14,
-            backgroundColor: Colors.grey.shade200,
+            backgroundColor: const Color(0xFF2A2A2A),
             child: Text(
               nickname.isNotEmpty ? nickname[0].toUpperCase() : '?',
               style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
@@ -483,9 +482,9 @@ class _CommentInputBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFF1E1E1E),
         border: const Border(
-          top: BorderSide(color: Color(0xFFE5E7EB)),
+          top: BorderSide(color: Color(0xFF2A2A2A)),
         ),
         boxShadow: [
           BoxShadow(
@@ -501,7 +500,7 @@ class _CommentInputBar extends StatelessWidget {
           children: [
             if (replyToNickname != null)
               Container(
-                color: const Color(0xFFF3F4F6),
+                color: const Color(0xFF2A2A2A),
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 child: Row(
@@ -538,7 +537,7 @@ class _CommentInputBar extends StatelessWidget {
                           borderSide: BorderSide.none,
                         ),
                         filled: true,
-                        fillColor: const Color(0xFFF3F4F6),
+                        fillColor: const Color(0xFF2A2A2A),
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16,
                           vertical: 10,

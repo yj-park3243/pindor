@@ -3,13 +3,13 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/auth_provider.dart';
+import '../widgets/common/app_toast.dart';
 import '../screens/auth/splash_screen.dart';
 import '../screens/auth/onboarding_screen.dart';
 import '../screens/auth/login_screen.dart';
 import '../screens/auth/profile_setup_screen.dart';
 import '../screens/auth/sport_profile_setup_screen.dart';
 import '../screens/auth/location_setup_screen.dart';
-import '../screens/auth/pin_sport_setup_screen.dart';
 import '../screens/main_tab_screen.dart';
 import '../screens/home/home_screen.dart';
 import '../screens/home/quick_match_screen.dart';
@@ -125,11 +125,14 @@ class AppRoutes {
   static const String teamPostDetail = '/teams/:id/board/:postId';
 }
 
+final _rootNavigatorKey = AppToast.navigatorKey;
+
 /// go_router 인스턴스 프로바이더
 final routerProvider = Provider<GoRouter>((ref) {
   final notifier = _AuthChangeNotifier(ref);
 
   return GoRouter(
+    navigatorKey: _rootNavigatorKey,
     initialLocation: AppRoutes.splash,
     debugLogDiagnostics: false,
     refreshListenable: notifier,
@@ -150,7 +153,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         AppRoutes.profileSetup,
         AppRoutes.sportProfileSetup,
         AppRoutes.locationSetup,
-        AppRoutes.pinSportSetup,
       ];
 
       final isPublicRoute = publicRoutes.any((r) => location.startsWith(r));
@@ -163,15 +165,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       // 인증된 사용자가 로그인 화면 접근 시
       if (isAuthenticated && location == AppRoutes.login) {
         return AppRoutes.home;
-      }
-
-      // 인증됐지만 초기 설정 미완료 → 설정 플로우로 강제 이동
-      final isSetupRoute = location.startsWith('/setup');
-      if (isAuthenticated && !isSetupRoute) {
-        final user = authState.valueOrNull?.user;
-        if (user != null && user.sportsProfiles.isEmpty) {
-          return AppRoutes.profileSetup;
-        }
       }
 
       return null;
@@ -202,10 +195,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.locationSetup,
         builder: (context, state) => const LocationSetupScreen(),
       ),
-      GoRoute(
-        path: AppRoutes.pinSportSetup,
-        builder: (context, state) => const PinSportSetupScreen(),
-      ),
 
       // ─── 메인 탭 쉘 라우트 ───
       ShellRoute(
@@ -226,8 +215,17 @@ final routerProvider = Provider<GoRouter>((ref) {
           // 매칭 탭
           GoRoute(
             path: AppRoutes.matchList,
-            builder: (context, state) => const MatchListScreen(),
+            builder: (context, state) {
+              final extra = state.extra as Map<String, dynamic>?;
+              final initialTab = extra?['initialTab'] as int? ?? 0;
+              return MatchListScreen(initialTab: initialTab);
+            },
             routes: [
+              GoRoute(
+                path: 'create',
+                parentNavigatorKey: _rootNavigatorKey,
+                builder: (context, state) => const CreateMatchScreen(),
+              ),
               GoRoute(
                 path: 'requests',
                 builder: (context, state) => const MatchRequestListScreen(),
@@ -240,25 +238,12 @@ final routerProvider = Provider<GoRouter>((ref) {
                 routes: [
                   GoRoute(
                     path: 'accept',
+                    parentNavigatorKey: _rootNavigatorKey,
                     builder: (context, state) => MatchAcceptScreen(
                       matchId: state.pathParameters['matchId']!,
                     ),
                   ),
                 ],
-              ),
-            ],
-          ),
-
-          // 채팅 탭
-          GoRoute(
-            path: AppRoutes.chatList,
-            builder: (context, state) => const ChatListScreen(),
-            routes: [
-              GoRoute(
-                path: ':roomId',
-                builder: (context, state) => ChatRoomScreen(
-                  roomId: state.pathParameters['roomId']!,
-                ),
               ),
             ],
           ),
@@ -366,6 +351,20 @@ final routerProvider = Provider<GoRouter>((ref) {
         ],
       ),
 
+      // ─── 채팅 (탭 외부 — 바텀 네비 없음) ───
+      GoRoute(
+        path: AppRoutes.chatList,
+        builder: (context, state) => const ChatListScreen(),
+        routes: [
+          GoRoute(
+            path: ':roomId',
+            builder: (context, state) => ChatRoomScreen(
+              roomId: state.pathParameters['roomId']!,
+            ),
+          ),
+        ],
+      ),
+
       // ─── 설정 (탭 외부 — 바텀 네비 없음) ───
       GoRoute(
         path: '/profile/settings',
@@ -396,12 +395,6 @@ final routerProvider = Provider<GoRouter>((ref) {
             ),
           ),
         ],
-      ),
-
-      // ─── 매칭 생성 (탭 외부 — 바텀 네비 없음) ───
-      GoRoute(
-        path: AppRoutes.createMatch,
-        builder: (context, state) => const CreateMatchScreen(),
       ),
 
       // ─── 팀 매칭 상세 (탭 외부) ───

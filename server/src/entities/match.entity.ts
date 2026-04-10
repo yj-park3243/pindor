@@ -6,11 +6,15 @@ import {
   UpdateDateColumn,
   ManyToOne,
   JoinColumn,
+  Index,
 } from 'typeorm';
-import { SportType, MatchStatus } from './enums.js';
+import { SportType, MatchStatus, TimeSlot } from './enums.js';
 import type { SportsProfile } from './sports-profile.entity.js';
 import type { Pin } from './pin.entity.js';
 
+@Index(['status', 'createdAt'])
+@Index(['requesterProfileId', 'status'])
+@Index(['opponentProfileId', 'status'])
 @Entity('matches')
 export class Match {
   @PrimaryGeneratedColumn('uuid')
@@ -30,6 +34,12 @@ export class Match {
 
   @Column({ name: 'sport_type', type: 'enum', enum: SportType, enumName: 'SportType' })
   sportType!: SportType;
+
+  @Column({ name: 'desired_date', type: 'date', nullable: true })
+  desiredDate!: Date | null;
+
+  @Column({ name: 'desired_time_slot', type: 'enum', enum: TimeSlot, enumName: 'TimeSlot', nullable: true })
+  desiredTimeSlot!: TimeSlot | null;
 
   @Column({ name: 'scheduled_date', type: 'date', nullable: true })
   scheduledDate!: Date | null;

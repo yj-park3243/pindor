@@ -43,7 +43,7 @@ class UserAvatar extends StatelessWidget {
                     : AppTheme.textDisabled,
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: Colors.white,
+                  color: const Color(0xFF1E1E1E),
                   width: 1.5,
                 ),
               ),
@@ -60,7 +60,7 @@ class UserAvatar extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         border: Border.all(
-          color: Colors.grey.shade200,
+          color: const Color(0xFF2A2A2A),
           width: 2,
         ),
       ),
@@ -69,6 +69,8 @@ class UserAvatar extends StatelessWidget {
             ? CachedNetworkImage(
                 imageUrl: imageUrl!,
                 fit: BoxFit.cover,
+                memCacheWidth: (size * 2).toInt(),
+                memCacheHeight: (size * 2).toInt(),
                 placeholder: (context, url) => _buildPlaceholder(),
                 errorWidget: (context, url, error) => _buildPlaceholder(),
               )

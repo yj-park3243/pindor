@@ -7,6 +7,7 @@ import { User } from '../../entities/user.entity.js';
 import { ChatRoom } from '../../entities/chat-room.entity.js';
 import { Match } from '../../entities/match.entity.js';
 import { Message } from '../../entities/message.entity.js';
+import { ChatService } from './chat.service.js';
 
 // ─────────────────────────────────────
 // 타입 정의
@@ -20,10 +21,33 @@ interface SendMessageData {
   roomId: string;
   content: string;
   messageType: 'TEXT' | 'IMAGE' | 'LOCATION';
+  extraData?: Record<string, unknown>;
 }
 
 interface TypingData {
   roomId: string;
+}
+
+// ─────────────────────────────────────
+// 읽음 처리 헬퍼 (JOIN_ROOM / MARK_READ 공용)
+// ─────────────────────────────────────
+
+async function _markReadAndNotify(
+  roomId: string,
+  userId: string,
+  io: Server,
+  chatService: ChatService,
+): Promise<void> {
+  const readMessageIds = await chatService.markMessagesRead(userId, roomId);
+  if (readMessageIds.length === 0) return;
+
+  // 채팅방의 모든 소켓(상대방 포함)에 읽음 이벤트 전송
+  // 각 앱 클라이언트는 readByUserId를 통해 자신이 보낸 메시지인지 판단
+  io.to(`room:${roomId}`).emit('MESSAGES_READ', {
+    roomId,
+    readByUserId: userId,
+    messageIds: readMessageIds,
+  });
 }
 
 // ─────────────────────────────────────
@@ -41,6 +65,7 @@ export function setupSocketGateway(io: Server, redis: Redis): void {
   const chatRoomRepo = AppDataSource.getRepository(ChatRoom);
   const matchRepo = AppDataSource.getRepository(Match);
   const messageRepo = AppDataSource.getRepository(Message);
+  const chatService = new ChatService();
 
   // ─── 인증 미들웨어 ───
   io.use(async (socket: Socket, next) => {
@@ -129,6 +154,9 @@ export function setupSocketGateway(io: Server, redis: Redis): void {
         await redis.set(`user_active_room:${userId}`, data.roomId, 'EX', 3600);
 
         socket.emit('ROOM_JOINED', { roomId: data.roomId });
+
+        // 입장 시 자동으로 읽음 처리
+        await _markReadAndNotify(data.roomId, userId, io, chatService);
       } catch (err) {
         console.error('[WS] JOIN_ROOM error:', err);
         socket.emit('ERROR', { code: 'INTERNAL_ERROR', message: '오류가 발생했습니다.' });
@@ -145,7 +173,8 @@ export function setupSocketGateway(io: Server, redis: Redis): void {
     // ─── 메시지 전송 ───
     socket.on('SEND_MESSAGE', async (data: SendMessageData): Promise<void> => {
       try {
-        if (!data.roomId || !data.content) {
+        // LOCATION 타입은 content 없이 extraData로 전송
+        if (!data.roomId || (data.messageType !== 'LOCATION' && !data.content)) {
           socket.emit('ERROR', { code: 'INVALID_DATA', message: '필수 데이터가 없습니다.' });
           return;
         }
@@ -155,12 +184,22 @@ export function setupSocketGateway(io: Server, redis: Redis): void {
           return;
         }
 
+        // LOCATION 타입: extraData 검증
+        if (data.messageType === 'LOCATION') {
+          const extra = data.extraData ?? {};
+          if (!extra.latitude || !extra.longitude) {
+            socket.emit('ERROR', { code: 'INVALID_DATA', message: '위치 데이터가 없습니다.' });
+            return;
+          }
+        }
+
         // DB 저장
         const newMessage = messageRepo.create({
           chatRoomId: data.roomId,
           senderId: userId,
           messageType: data.messageType as any,
-          content: data.content,
+          content: data.messageType === 'LOCATION' ? '위치를 공유했습니다' : data.content,
+          extraData: data.extraData ?? {},
         });
         const savedMessage = await messageRepo.save(newMessage);
 
@@ -184,6 +223,8 @@ export function setupSocketGateway(io: Server, redis: Redis): void {
           sender: message.sender,
           content: message.content,
           messageType: message.messageType,
+          extraData: message.extraData,
+          readAt: message.readAt,
           createdAt: message.createdAt,
         });
 
@@ -202,14 +243,24 @@ export function setupSocketGateway(io: Server, redis: Redis): void {
               ? match.opponentProfile.userId
               : match.requesterProfile.userId;
 
+          const notifType =
+            data.messageType === 'IMAGE'
+              ? 'CHAT_IMAGE'
+              : data.messageType === 'LOCATION'
+              ? 'CHAT_LOCATION'
+              : 'CHAT_MESSAGE';
+          const notifBody =
+            data.messageType === 'IMAGE'
+              ? '사진을 보냈습니다'
+              : data.messageType === 'LOCATION'
+              ? '위치를 공유했습니다'
+              : data.content.substring(0, 100);
+
           // socket.io를 통해 알림 전송 (user:${opponentUserId} 룸)
           io.to(`user:${opponentUserId}`).emit('notification', {
-            type: data.messageType === 'IMAGE' ? 'CHAT_IMAGE' : 'CHAT_MESSAGE',
+            type: notifType,
             title: message.sender.nickname,
-            body:
-              data.messageType === 'IMAGE'
-                ? '사진을 보냈습니다'
-                : data.content.substring(0, 100),
+            body: notifBody,
             data: {
               roomId: data.roomId,
               senderId: userId,
@@ -224,12 +275,9 @@ export function setupSocketGateway(io: Server, redis: Redis): void {
             'push_notification',
             JSON.stringify({
               userId: opponentUserId,
-              type: data.messageType === 'IMAGE' ? 'CHAT_IMAGE' : 'CHAT_MESSAGE',
+              type: notifType,
               title: message.sender.nickname,
-              body:
-                data.messageType === 'IMAGE'
-                  ? '사진을 보냈습니다'
-                  : data.content.substring(0, 100),
+              body: notifBody,
               data: {
                 roomId: data.roomId,
                 senderId: userId,
@@ -242,6 +290,15 @@ export function setupSocketGateway(io: Server, redis: Redis): void {
       } catch (err) {
         console.error('[WS] SEND_MESSAGE error:', err);
         socket.emit('ERROR', { code: 'INTERNAL_ERROR', message: '메시지 전송에 실패했습니다.' });
+      }
+    });
+
+    // ─── 읽음 처리 ───
+    socket.on('MARK_READ', async (data: JoinRoomData): Promise<void> => {
+      try {
+        await _markReadAndNotify(data.roomId, userId, io, chatService);
+      } catch (err) {
+        console.error('[WS] MARK_READ error:', err);
       }
     });
 

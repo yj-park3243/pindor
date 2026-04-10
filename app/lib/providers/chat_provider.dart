@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/chat_room.dart';
 import '../models/message.dart';
+import '../providers/auth_provider.dart';
 import '../repositories/chat_repository.dart';
 import '../core/network/socket_service.dart';
 import '../core/offline/offline_queue_service.dart';
@@ -11,10 +12,15 @@ import '../core/offline/offline_queue_service.dart';
 ///
 /// 1. 로컬 DB에서 즉시 반환 (있을 때)
 /// 2. 항상 백그라운드로 API 갱신 (새 채팅방 누락 방지)
+/// 3. keepAlive 유지하되, 30분 후 자동 만료하여 스테일 데이터 방지
 final chatRoomListProvider =
     FutureProvider.autoDispose<List<ChatRoom>>((ref) async {
-  // 채팅방 목록은 앱 전역에서 유지
-  ref.keepAlive();
+  // 채팅방 목록은 앱 전역에서 유지하되, 30분 후 자동 만료
+  final link = ref.keepAlive();
+  Timer(const Duration(minutes: 30), () {
+    link.close();
+  });
+
   final repo = ref.read(chatRepositoryProvider);
 
   final hasCache = await repo.hasChatRoomsCache();
@@ -31,6 +37,46 @@ final chatRoomListProvider =
   return repo.fetchAndCacheChatRooms();
 });
 
+// ─── 타이핑 상태 프로바이더 ────────────────────────────
+
+/// roomId별 타이핑 중인 userId 집합을 관리
+/// { roomId: Set<userId> }
+class SocketTypingNotifier extends AutoDisposeFamilyNotifier<bool, String> {
+  Timer? _clearTimer;
+
+  @override
+  bool build(String roomId) {
+    final subscription = SocketService.instance.onTyping.listen((data) {
+      if (data['roomId'] == roomId) {
+        state = true;
+        _resetTimer();
+      }
+    });
+
+    ref.onDispose(() {
+      subscription.cancel();
+      _clearTimer?.cancel();
+    });
+
+    return false;
+  }
+
+  void _resetTimer() {
+    _clearTimer?.cancel();
+    _clearTimer = Timer(const Duration(seconds: 3), () {
+      state = false;
+    });
+  }
+}
+
+/// roomId별 상대방 타이핑 여부 (true: 타이핑 중)
+final socketTypingProvider =
+    NotifierProvider.autoDispose.family<SocketTypingNotifier, bool, String>(
+  SocketTypingNotifier.new,
+);
+
+// ─── 채팅 메시지 Notifier ─────────────────────────────
+
 /// 채팅 메시지 Notifier (SWR 패턴)
 ///
 /// 1. 로컬 DB 메시지 즉시 표시
@@ -42,6 +88,7 @@ class ChatMessagesNotifier
   bool _hasMore = true;
   late String _roomId;
   StreamSubscription<Map<String, dynamic>>? _messageSubscription;
+  StreamSubscription<Map<String, dynamic>>? _messagesReadSubscription;
 
   @override
   Future<List<Message>> build(String roomId) async {
@@ -51,10 +98,16 @@ class ChatMessagesNotifier
     ref.onDispose(() {
       _messageSubscription?.cancel();
       _messageSubscription = null;
+      _messagesReadSubscription?.cancel();
+      _messagesReadSubscription = null;
       SocketService.instance.leaveRoom(roomId);
     });
 
     _setupSocketListener(roomId);
+    _setupMessagesReadListener(roomId);
+
+    // 채팅방 입장 시 읽음 처리 전송
+    SocketService.instance.sendMarkRead(roomId);
 
     final repo = ref.read(chatRepositoryProvider);
 
@@ -119,7 +172,52 @@ class ChatMessagesNotifier
           messageType: message.messageType,
           createdAt: message.createdAt,
         );
+
+        // 새 메시지 수신 시 읽음 처리 전송 (내가 현재 채팅방에 있으므로)
+        final currentUser = ref.read(currentUserProvider);
+        if (message.senderId != currentUser?.id) {
+          SocketService.instance.sendMarkRead(roomId);
+        }
       }
+    });
+  }
+
+  /// MESSAGES_READ 이벤트 수신 → 내 메시지 읽음 상태 업데이트
+  void _setupMessagesReadListener(String roomId) {
+    _messagesReadSubscription?.cancel();
+    _messagesReadSubscription =
+        SocketService.instance.onMessagesRead.listen((data) async {
+      if (data['roomId'] != roomId) return;
+
+      // 내가 읽은 경우는 이미 처리됨, 상대가 읽었을 때만 UI 업데이트
+      final currentUser = ref.read(currentUserProvider);
+      final readByUserId = data['readByUserId'] as String?;
+      if (readByUserId == currentUser?.id) return;
+
+      final rawIds = data['messageIds'];
+      if (rawIds == null) return;
+      final messageIds = (rawIds as List<dynamic>).cast<String>();
+      if (messageIds.isEmpty) return;
+
+      final readAt = DateTime.now();
+      final repo = ref.read(chatRepositoryProvider);
+
+      // 로컬 DB 읽음 처리
+      await repo.updateMessagesReadAt(messageIds, readAt);
+
+      // state에서 해당 메시지 readAt 업데이트
+      final currentMessages = state.valueOrNull;
+      if (currentMessages == null) return;
+
+      final idSet = messageIds.toSet();
+      final updated = currentMessages.map((m) {
+        if (idSet.contains(m.id) && m.readAt == null) {
+          return m.copyWithReadAt(readAt);
+        }
+        return m;
+      }).toList();
+
+      state = AsyncData(updated);
     });
   }
 
@@ -189,6 +287,52 @@ class ChatMessagesNotifier
         await ref.read(offlineQueueServiceProvider).enqueue(
           action: 'SEND_MESSAGE',
           payload: {'roomId': _roomId, 'content': imageUrl, 'messageType': 'IMAGE'},
+        );
+      }
+    }
+  }
+
+  /// 위치 메시지 전송
+  Future<void> sendLocationMessage({
+    required double latitude,
+    required double longitude,
+    String? address,
+    String? placeName,
+  }) async {
+    final extraData = <String, dynamic>{
+      'latitude': latitude,
+      'longitude': longitude,
+      if (address != null) 'address': address,
+      if (placeName != null) 'placeName': placeName,
+    };
+
+    try {
+      SocketService.instance.sendMessage(
+        _roomId,
+        '위치를 공유했습니다',
+        type: 'LOCATION',
+        extraData: extraData,
+      );
+    } catch (_) {
+      try {
+        final repo = ref.read(chatRepositoryProvider);
+        final message = await repo.sendMessage(
+          _roomId,
+          content: '위치를 공유했습니다',
+          messageType: 'LOCATION',
+          extraData: extraData,
+        );
+        final currentMessages = state.valueOrNull ?? [];
+        state = AsyncData([...currentMessages, message]);
+      } catch (_) {
+        await ref.read(offlineQueueServiceProvider).enqueue(
+          action: 'SEND_MESSAGE',
+          payload: {
+            'roomId': _roomId,
+            'content': '위치를 공유했습니다',
+            'messageType': 'LOCATION',
+            'extraData': extraData,
+          },
         );
       }
     }

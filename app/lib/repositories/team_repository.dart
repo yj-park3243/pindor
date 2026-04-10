@@ -112,7 +112,7 @@ class TeamRepository {
 
   /// 멤버 추방 (CAPTAIN 전용)
   Future<void> kickMember(String teamId, String memberId) async {
-    await _api.post('/teams/$teamId/members/$memberId/kick');
+    await _api.post('/teams/$teamId/members/$memberId/kick', body: {});
   }
 
   /// 역할 변경 (CAPTAIN 전용)

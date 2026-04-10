@@ -8,6 +8,7 @@ import '../../models/team.dart';
 import '../../providers/team_provider.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/team/team_card.dart';
+import '../../widgets/common/app_toast.dart';
 
 /// 주변 팀 탐색 화면
 class NearbyTeamsScreen extends ConsumerStatefulWidget {
@@ -244,40 +245,100 @@ class _TeamListView extends StatelessWidget {
   }
 
   void _showJoinDialog(BuildContext context, Team team) {
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('${team.name} 가입 신청'),
-        content: Column(
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: EdgeInsets.fromLTRB(
+            24, 20, 24, MediaQuery.of(ctx).padding.bottom + 20),
+        child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('${team.name}에 가입을 신청하시겠습니까?'),
-            const SizedBox(height: 12),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFF2A2A2A),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: const Color(0xFF4F46E5).withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.group_add_outlined,
+                  color: Color(0xFF4F46E5), size: 28),
+            ),
+            const SizedBox(height: 16),
             Text(
-              '${team.currentMembers}/${team.maxMembers}명',
+              '${team.name} 가입 신청',
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${team.name}에 가입을 신청하시겠습니까?\n${team.currentMembers}/${team.maxMembers}명',
+              textAlign: TextAlign.center,
               style: const TextStyle(
                 fontSize: 13,
-                color: AppTheme.textSecondary,
+                color: Color(0xFF9CA3AF),
+                height: 1.6,
               ),
+            ),
+            const SizedBox(height: 28),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      side: const BorderSide(color: Color(0xFF2A2A2A)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text('취소',
+                        style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF9CA3AF))),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      AppToast.success('${team.name}에 가입 신청을 보냈습니다.');
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF4F46E5),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      elevation: 0,
+                    ),
+                    child: const Text('신청하기',
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w700)),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('취소'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('${team.name}에 가입 신청을 보냈습니다.')),
-              );
-            },
-            child: const Text('신청하기'),
-          ),
-        ],
       ),
     );
   }

@@ -83,11 +83,17 @@ class PushNotificationService {
     _messaging.onTokenRefresh.listen(_registerToken);
 
     // 포그라운드 메시지 핸들러
-    // 소켓이 연결 중이면 소켓으로 이미 받으므로 로컬 알림은 소켓 끊겼을 때만
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       debugPrint('[Push] 포그라운드 메시지: ${message.notification?.title}');
 
-      // 소켓이 끊겼을 때 폴백으로 로컬 알림 표시
+      // MATCH_PENDING_ACCEPT는 소켓 상태와 관계없이 딥링크 처리 (소켓 유실 대비)
+      final type = message.data['type'] as String?;
+      if (type == 'MATCH_PENDING_ACCEPT') {
+        _handleDeepLink(message);
+        return;
+      }
+
+      // 기타 알림: 소켓이 끊겼을 때만 로컬 알림 표시
       if (!SocketService.instance.isConnected) {
         LocalNotificationService.instance.showFromRemoteMessage(message);
       }

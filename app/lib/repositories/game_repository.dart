@@ -38,14 +38,18 @@ class GameRepository {
   Future<void> submitGameResult(
     String gameId, {
     required String myResult,
-    required String winnerId,
+    String? winnerId,
+    int myScore = 0,
+    int opponentScore = 0,
     int? mannerScore,
   }) async {
     await _api.post(
       '/games/$gameId/result',
       body: {
-        'myResult': myResult,
-        'winnerId': winnerId,
+        'claimedResult': myResult,
+        'myScore': myScore,
+        'opponentScore': opponentScore,
+        if (winnerId != null) 'winnerId': winnerId,
         if (mannerScore != null) 'mannerScore': mannerScore,
       },
     );

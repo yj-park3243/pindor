@@ -34,7 +34,7 @@ class TeamMemberTile extends StatelessWidget {
         children: [
           CircleAvatar(
             radius: 24,
-            backgroundColor: Colors.grey.shade200,
+            backgroundColor: const Color(0xFF2A2A2A),
             backgroundImage: profileImage != null
                 ? CachedNetworkImageProvider(profileImage)
                 : null,

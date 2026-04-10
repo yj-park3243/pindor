@@ -74,7 +74,7 @@ export async function createApp(): Promise<FastifyInstance> {
       },
     },
     requestIdHeader: 'x-request-id',
-    genReqId: () => Math.random().toString(36).substring(2, 10),
+    genReqId: () => crypto.randomUUID(),
   });
 
   // ─────────────────────────────────────

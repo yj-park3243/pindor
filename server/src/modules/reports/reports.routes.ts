@@ -17,6 +17,7 @@ const createInquirySchema = z.object({
   category: z.enum(['ACCOUNT', 'MATCH', 'SCORE', 'BUG', 'SUGGESTION', 'OTHER']),
   title: z.string().min(1).max(200),
   content: z.string().min(1),
+  imageUrl: z.string().url().optional(),
 });
 
 type CreateReportDto = z.infer<typeof createReportSchema>;
@@ -114,11 +115,16 @@ export async function reportsRoutes(fastify: FastifyInstance): Promise<void> {
       const dto = createInquirySchema.parse(request.body);
       const userId = request.user.userId;
 
+      // 이미지 URL이 있으면 content 하단에 첨부
+      const contentWithImage = dto.imageUrl
+        ? `${dto.content}\n\n[첨부 이미지] ${dto.imageUrl}`
+        : dto.content;
+
       const inquiry = inquiryRepo.create({
         userId,
         category: dto.category,
         title: dto.title,
-        content: dto.content,
+        content: contentWithImage,
         status: 'OPEN',
         adminReply: null,
         resolvedAt: null,
@@ -153,6 +159,7 @@ export async function reportsRoutes(fastify: FastifyInstance): Promise<void> {
           id: true,
           category: true,
           title: true,
+          content: true,
           status: true,
           adminReply: true,
           resolvedAt: true,

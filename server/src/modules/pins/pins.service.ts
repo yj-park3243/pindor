@@ -82,12 +82,14 @@ export class PinsService {
       id: string; name: string; slug: string; level: string;
       centerLat: number; centerLng: number; userCount: number;
     }>>(
-      `SELECT id, name, slug, level,
-              ST_Y(center::geometry) AS "centerLat",
-              ST_X(center::geometry) AS "centerLng",
-              user_count AS "userCount"
-       FROM pins
-       WHERE id IN (${placeholders}) AND is_active = TRUE`,
+      `SELECT p.id, p.name, p.slug, p.level,
+              ST_Y(p.center::geometry) AS "centerLat",
+              ST_X(p.center::geometry) AS "centerLng",
+              COUNT(up.user_id)::int AS "userCount"
+       FROM pins p
+       LEFT JOIN user_pins up ON up.pin_id = p.id
+       WHERE p.id IN (${placeholders}) AND p.is_active = TRUE
+       GROUP BY p.id, p.name, p.slug, p.level, p.center`,
       ids,
     );
 
@@ -110,13 +112,15 @@ export class PinsService {
       id: string; name: string; slug: string; level: string;
       centerLat: number; centerLng: number; userCount: number;
     }>>(
-      `SELECT id, name, slug, level,
-              ST_Y(center::geometry) AS "centerLat",
-              ST_X(center::geometry) AS "centerLng",
-              user_count AS "userCount"
-       FROM pins
-       WHERE is_active = TRUE AND level = 'DONG'
-       ORDER BY name ASC`
+      `SELECT p.id, p.name, p.slug, p.level,
+              ST_Y(p.center::geometry) AS "centerLat",
+              ST_X(p.center::geometry) AS "centerLng",
+              COUNT(up.user_id)::int AS "userCount"
+       FROM pins p
+       LEFT JOIN user_pins up ON up.pin_id = p.id
+       WHERE p.is_active = TRUE AND p.level = 'DONG'
+       GROUP BY p.id, p.name, p.slug, p.level, p.center
+       ORDER BY p.name ASC`
     );
 
     return pins.map((pin) => ({
@@ -222,6 +226,13 @@ export class PinsService {
 
     if (query.category) {
       qb.andWhere('post.category = :category', { category: query.category });
+    }
+    if (query.search) {
+      const like = `%${query.search}%`;
+      qb.andWhere(
+        '(post.title ILIKE :search OR post.content ILIKE :search OR author.nickname ILIKE :search)',
+        { search: like },
+      );
     }
     if (query.cursor) {
       qb.andWhere('post.createdAt < :cursor', { cursor: new Date(query.cursor) });
@@ -485,16 +496,16 @@ export class PinsService {
     postId: string,
     opts: { cursor?: string; limit?: number } = {},
   ) {
-    const { cursor, limit = 20 } = opts;
+    const { cursor } = opts;
+    const limit = Math.min(Math.max(Number(opts.limit) || 20, 1), 100);
     const commentRepo = AppDataSource.getRepository(Comment);
 
     const qb = commentRepo
       .createQueryBuilder('comment')
       .leftJoinAndSelect('comment.author', 'author')
-      .leftJoinAndSelect('comment.replies', 'replies', 'replies.isDeleted = false')
+      .leftJoinAndSelect('comment.replies', 'replies')
       .leftJoinAndSelect('replies.author', 'repliesAuthor')
       .where('comment.postId = :postId', { postId })
-      .andWhere('comment.isDeleted = false')
       .andWhere('comment.parentId IS NULL')
       .orderBy('comment.createdAt', 'ASC')
       .addOrderBy('replies.createdAt', 'ASC')
@@ -511,6 +522,31 @@ export class PinsService {
     const nextCursor = hasMore ? items[items.length - 1].createdAt.toISOString() : null;
 
     return { items, nextCursor, hasMore };
+  }
+
+  // ─────────────────────────────────────
+  // 댓글 삭제 (소프트 삭제: 내용을 "삭제된 댓글입니다"로 변경)
+  // ─────────────────────────────────────
+
+  async softDeleteComment(
+    pinId: string,
+    postId: string,
+    commentId: string,
+    userId: string,
+  ) {
+    const commentRepo = AppDataSource.getRepository(Comment);
+
+    const comment = await commentRepo.findOne({
+      where: { id: commentId, postId, isDeleted: false },
+    });
+
+    if (!comment) throw AppError.notFound(ErrorCode.COMMENT_NOT_FOUND);
+    if (comment.authorId !== userId) throw AppError.forbidden(ErrorCode.COMMENT_NOT_AUTHOR);
+
+    await commentRepo.update(commentId, {
+      content: '삭제된 댓글입니다.',
+      isDeleted: true,
+    });
   }
 
   // ─────────────────────────────────────

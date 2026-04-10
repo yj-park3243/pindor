@@ -10,6 +10,7 @@ import '../../models/pin.dart';
 import '../../providers/pin_provider.dart';
 import '../../providers/sport_preference_provider.dart';
 import '../../widgets/map/sport_marker.dart';
+import '../../widgets/common/app_toast.dart';
 
 /// 자주 가는 핀 + 선호 종목 설정 화면 (온보딩 4단계)
 class PinSportSetupScreen extends ConsumerStatefulWidget {
@@ -130,9 +131,7 @@ class _PinSportSetupScreenState extends ConsumerState<PinSportSetupScreen> {
       if (mounted) context.go(AppRoutes.home);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('오류: ${e.toString()}')),
-        );
+        AppToast.error('오류: ${e.toString()}');
       }
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
@@ -158,10 +157,10 @@ class _PinSportSetupScreenState extends ConsumerState<PinSportSetupScreen> {
     final canSubmit = _selectedPin != null && !_isSubmitting;
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         title: const Text('자주 가는 핀 설정'),
-        backgroundColor: Colors.white,
+        backgroundColor: const Color(0xFF0A0A0A),
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
@@ -271,7 +270,7 @@ class _PinSportSetupScreenState extends ConsumerState<PinSportSetupScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: const Color(0xFF1E1E1E),
                         borderRadius: BorderRadius.circular(8),
                         boxShadow: [
                           BoxShadow(
@@ -311,7 +310,7 @@ class _PinSportSetupScreenState extends ConsumerState<PinSportSetupScreen> {
                   child: FloatingActionButton.small(
                     heroTag: 'pin_setup_location_btn',
                     onPressed: _isLocating ? null : _initLocation,
-                    backgroundColor: Colors.white,
+                    backgroundColor: const Color(0xFF0A0A0A),
                     foregroundColor: AppTheme.primaryColor,
                     elevation: 4,
                     child: _isLocating
@@ -334,7 +333,7 @@ class _PinSportSetupScreenState extends ConsumerState<PinSportSetupScreen> {
           Container(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
             decoration: const BoxDecoration(
-              color: Colors.white,
+              color: Color(0xFF1E1E1E),
               boxShadow: [
                 BoxShadow(
                   color: Color(0x15000000),
@@ -380,7 +379,7 @@ class _PinSportSetupScreenState extends ConsumerState<PinSportSetupScreen> {
                       backgroundColor: canSubmit
                           ? AppTheme.primaryColor
                           : AppTheme.textDisabled,
-                      disabledBackgroundColor: const Color(0xFFE5E7EB),
+                      disabledBackgroundColor: const Color(0xFF333333),
                     ),
                     child: _isSubmitting
                         ? const SizedBox(
@@ -420,13 +419,13 @@ class _SelectedPinBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: pin != null
-            ? AppTheme.primaryColor.withOpacity(0.06)
-            : const Color(0xFFF8F9FA),
+            ? AppTheme.primaryColor.withOpacity(0.15)
+            : const Color(0xFF1E1E1E),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: pin != null
               ? AppTheme.primaryColor.withOpacity(0.4)
-              : const Color(0xFFE5E7EB),
+              : const Color(0xFF2A2A2A),
           width: 1,
         ),
       ),
@@ -515,12 +514,12 @@ class _SportChipRow extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: isSelected
                       ? AppTheme.primaryColor
-                      : const Color(0xFFF3F4F6),
+                      : const Color(0xFF2A2A2A),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: isSelected
                         ? AppTheme.primaryColor
-                        : const Color(0xFFE5E7EB),
+                        : const Color(0xFF2A2A2A),
                     width: 1.5,
                   ),
                   boxShadow: isSelected

@@ -61,3 +61,15 @@ export const uploadRateLimitConfig = {
     },
   },
 };
+
+/**
+ * 좋아요 토글 전용 레이트 리밋 (스팸 방지)
+ */
+export const likeRateLimitConfig = {
+  config: {
+    rateLimit: {
+      max: 30,
+      timeWindow: 60000, // 1분에 30회
+    },
+  },
+};

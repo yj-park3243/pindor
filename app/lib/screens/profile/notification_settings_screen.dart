@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../config/theme.dart';
 import '../../models/notification.dart';
 import '../../repositories/notification_repository.dart';
+import '../../widgets/common/app_toast.dart';
 
 /// 알림 ON/OFF 설정 화면 (PRD SCREEN-065)
 class NotificationSettingsScreen extends ConsumerStatefulWidget {
@@ -45,15 +46,11 @@ class _NotificationSettingsScreenState
       final repo = ref.read(notificationRepositoryProvider);
       await repo.updateSettings(_settings);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('알림 설정이 저장되었습니다.')),
-        );
+        AppToast.success('알림 설정이 저장되었습니다.');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('저장에 실패했습니다: $e')),
-        );
+        AppToast.error('저장에 실패했습니다: $e');
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -94,31 +91,15 @@ class _NotificationSettingsScreenState
         children: [
           _buildSectionHeader('경기 알림'),
           _buildSwitchTile(
-            title: '매칭 성사',
-            subtitle: '매칭이 성사되면 알림을 받습니다',
-            value: _settings.matchFound,
-            onChanged: (v) =>
-                setState(() => _settings = _settings.copyWith(matchFound: v)),
-          ),
-          _buildSwitchTile(
-            title: '매칭 요청',
-            subtitle: '새로운 매칭 요청이 오면 알림을 받습니다',
-            value: _settings.matchRequest,
-            onChanged: (v) =>
-                setState(() => _settings = _settings.copyWith(matchRequest: v)),
-          ),
-          _buildSwitchTile(
             title: '게임 결과',
             subtitle: '결과 입력/인증 시 알림을 받습니다',
             value: _settings.gameResult,
             onChanged: (v) =>
                 setState(() => _settings = _settings.copyWith(gameResult: v)),
           ),
-
-          _buildSectionHeader('점수 알림'),
           _buildSwitchTile(
             title: '점수 변동',
-            subtitle: 'ELO 점수가 변경되면 알림을 받습니다',
+            subtitle: '점수가 변경되면 알림을 받습니다',
             value: _settings.scoreChange,
             onChanged: (v) =>
                 setState(() => _settings = _settings.copyWith(scoreChange: v)),

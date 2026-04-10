@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { ChatService } from './chat.service.js';
 
 const sendMessageSchema = z.object({
-  messageType: z.enum(['TEXT', 'IMAGE', 'SYSTEM', 'SCHEDULE_PROPOSAL']).default('TEXT'),
+  messageType: z.enum(['TEXT', 'IMAGE', 'SYSTEM', 'SCHEDULE_PROPOSAL', 'LOCATION']).default('TEXT'),
   content: z.string().max(500).optional(),
   imageUrl: z.string().url().optional(),
   extraData: z.record(z.unknown()).optional(),

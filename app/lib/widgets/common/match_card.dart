@@ -22,7 +22,7 @@ class MatchRequestCard extends StatelessWidget {
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: const Color(0xFF1E1E1E),
           borderRadius: BorderRadius.circular(16),
           border: Border(
             left: BorderSide(color: AppTheme.primaryColor, width: 4),
@@ -160,7 +160,7 @@ class _InfoChip extends StatelessWidget {
           : null,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: const Color(0xFFF3F4F6),
+        color: const Color(0xFF2A2A2A),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(

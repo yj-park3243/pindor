@@ -192,7 +192,7 @@ class PinRepository {
   }
 
   Future<void> toggleLike(String pinId, String postId) async {
-    await _api.post('/pins/$pinId/posts/$postId/like');
+    await _api.post('/pins/$pinId/posts/$postId/like', body: {});
   }
 }
 

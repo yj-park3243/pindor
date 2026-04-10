@@ -7,6 +7,7 @@ import '../../providers/auth_provider.dart';
 import '../../repositories/game_repository.dart';
 import '../../repositories/upload_repository.dart';
 import '../../widgets/common/loading_indicator.dart';
+import '../../widgets/common/app_toast.dart';
 
 /// 경기 결과 입력 화면 (PRD SCREEN-026)
 class GameResultInputScreen extends ConsumerStatefulWidget {
@@ -67,9 +68,7 @@ class _GameResultInputScreenState extends ConsumerState<GameResultInputScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoadingGame = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('게임 정보 로드 실패: ${e.toString()}')),
-        );
+        AppToast.error('게임 정보 로드 실패: ${e.toString()}');
       }
     }
   }
@@ -81,9 +80,7 @@ class _GameResultInputScreenState extends ConsumerState<GameResultInputScreen> {
 
   Future<void> _pickImages() async {
     if (_uploadedImageUrls.length >= 3) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('최대 3장까지 첨부 가능합니다.')),
-      );
+      AppToast.warning('최대 3장까지 첨부 가능합니다.');
       return;
     }
 
@@ -104,9 +101,7 @@ class _GameResultInputScreenState extends ConsumerState<GameResultInputScreen> {
       setState(() => _uploadedImageUrls.addAll(urls));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('이미지 업로드 실패')),
-        );
+        AppToast.error('이미지 업로드 실패');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -115,16 +110,12 @@ class _GameResultInputScreenState extends ConsumerState<GameResultInputScreen> {
 
   Future<void> _submit() async {
     if (_selectedResult == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('경기 결과를 선택해주세요')),
-      );
+      AppToast.warning('경기 결과를 선택해주세요');
       return;
     }
 
     if (_myProfileId == null || _opponentProfileId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('참가자 정보를 불러오지 못했습니다. 다시 시도해주세요.')),
-      );
+      AppToast.error('참가자 정보를 불러오지 못했습니다. 다시 시도해주세요.');
       return;
     }
 
@@ -159,9 +150,7 @@ class _GameResultInputScreenState extends ConsumerState<GameResultInputScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('오류: ${e.toString()}')),
-        );
+        AppToast.error('오류: ${e.toString()}');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -172,10 +161,10 @@ class _GameResultInputScreenState extends ConsumerState<GameResultInputScreen> {
   Widget build(BuildContext context) {
     if (_isLoadingGame) {
       return Scaffold(
-        backgroundColor: const Color(0xFFF8F9FA),
+        backgroundColor: const Color(0xFF0A0A0A),
         appBar: AppBar(
           title: const Text('경기 결과 입력'),
-          backgroundColor: const Color(0xFFF8F9FA),
+          backgroundColor: const Color(0xFF0A0A0A),
           elevation: 0,
         ),
         body: const FullScreenLoading(),
@@ -183,10 +172,10 @@ class _GameResultInputScreenState extends ConsumerState<GameResultInputScreen> {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         title: const Text('경기 결과 입력'),
-        backgroundColor: const Color(0xFFF8F9FA),
+        backgroundColor: const Color(0xFF0A0A0A),
         elevation: 0,
       ),
       body: SingleChildScrollView(
@@ -331,7 +320,7 @@ class _GameResultInputScreenState extends ConsumerState<GameResultInputScreen> {
                   width: double.infinity,
                   height: 120,
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: const Color(0xFF1E1E1E),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
                       color: AppTheme.primaryColor.withOpacity(0.3),
@@ -428,10 +417,10 @@ class _GameResultInputScreenState extends ConsumerState<GameResultInputScreen> {
                         width: 90,
                         height: 90,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF3F4F6),
+                          color: const Color(0xFF2A2A2A),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: const Color(0xFFE5E7EB),
+                            color: const Color(0xFF2A2A2A),
                           ),
                         ),
                         child: _isLoading
@@ -531,7 +520,7 @@ class _ResultButton extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(vertical: 18),
         decoration: BoxDecoration(
-          color: isSelected ? selectedColor : const Color(0xFFF3F4F6),
+          color: isSelected ? selectedColor : const Color(0xFF2A2A2A),
           borderRadius: BorderRadius.circular(14),
           boxShadow: isSelected
               ? [

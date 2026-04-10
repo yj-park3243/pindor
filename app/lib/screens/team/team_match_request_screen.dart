@@ -6,6 +6,7 @@ import '../../config/theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/team_provider.dart';
 import '../../repositories/team_repository.dart';
+import '../../widgets/common/app_toast.dart';
 
 /// 팀 매칭 요청 생성 화면 (CAPTAIN/VICE_CAPTAIN 전용)
 class TeamMatchRequestScreen extends ConsumerStatefulWidget {
@@ -52,9 +53,7 @@ class _TeamMatchRequestScreenState
       if (myMember.isEmpty || !myMember.first.isLeader) {
         setState(() => _hasPermission = false);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('방장 또는 부방장만 매칭 요청을 보낼 수 있습니다.')),
-          );
+          AppToast.warning('방장 또는 부방장만 매칭 요청을 보낼 수 있습니다.');
           context.pop();
         }
       }
@@ -82,13 +81,11 @@ class _TeamMatchRequestScreenState
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedDate == null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('날짜를 선택해주세요.')));
+      AppToast.warning('날짜를 선택해주세요.');
       return;
     }
     if (_selectedTimeSlot == null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('시간대를 선택해주세요.')));
+      AppToast.warning('시간대를 선택해주세요.');
       return;
     }
 
@@ -106,15 +103,12 @@ class _TeamMatchRequestScreenState
       ref.invalidate(teamMatchesProvider(widget.teamId));
 
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('팀 매칭 요청을 보냈습니다!')));
+        AppToast.success('팀 매칭 요청을 보냈습니다!');
         context.pop();
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('요청 실패: ${e.toString()}')),
-        );
+        AppToast.error('요청 실패: ${e.toString()}');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -152,9 +146,9 @@ class _TeamMatchRequestScreenState
                 padding: const EdgeInsets.symmetric(
                     horizontal: 16, vertical: 14),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF3F4F6),
+                  color: const Color(0xFF2A2A2A),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE5E7EB)),
+                  border: Border.all(color: const Color(0xFF2A2A2A)),
                 ),
                 child: Row(
                   children: [

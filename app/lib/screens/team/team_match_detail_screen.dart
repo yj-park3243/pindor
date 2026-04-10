@@ -9,6 +9,7 @@ import '../../providers/team_provider.dart';
 import '../../repositories/team_repository.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/error_view.dart';
+import '../../widgets/common/app_toast.dart';
 
 /// 팀 매칭 상세 화면
 class TeamMatchDetailScreen extends ConsumerWidget {
@@ -116,57 +117,151 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
     final homeScoreCtrl = TextEditingController();
     final awayScoreCtrl = TextEditingController();
 
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('경기 결과 입력'),
-        content: Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: homeScoreCtrl,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  label: Text(widget.match.homeTeam?.name ?? '홈팀'),
-                  hintText: '0',
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 12),
-              child: Text(':',
-                  style:
-                      TextStyle(fontSize: 24, fontWeight: FontWeight.w700)),
-            ),
-            Expanded(
-              child: TextField(
-                controller: awayScoreCtrl,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  label: Text(widget.match.awayTeam?.name ?? '어웨이팀'),
-                  hintText: '0',
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ],
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(ctx).viewInsets.bottom,
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('취소')),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await _submitResult(
-                int.tryParse(homeScoreCtrl.text) ?? 0,
-                int.tryParse(awayScoreCtrl.text) ?? 0,
-              );
-            },
-            child: const Text('제출'),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFF1E1E1E),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
           ),
-        ],
+          padding: EdgeInsets.fromLTRB(
+              24, 20, 24, MediaQuery.of(ctx).padding.bottom + 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2A2A2A),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF4F46E5).withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.scoreboard_outlined,
+                    color: Color(0xFF4F46E5), size: 28),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '경기 결과 입력',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                '경기 결과를 입력해주세요.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF9CA3AF),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: homeScoreCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        label: Text(widget.match.homeTeam?.name ?? '홈팀'),
+                        hintText: '0',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 14),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(':',
+                        style: TextStyle(
+                            fontSize: 24, fontWeight: FontWeight.w700)),
+                  ),
+                  Expanded(
+                    child: TextField(
+                      controller: awayScoreCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        label:
+                            Text(widget.match.awayTeam?.name ?? '어웨이팀'),
+                        hintText: '0',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 14),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 28),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: const BorderSide(color: Color(0xFF2A2A2A)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: const Text('취소',
+                          style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF9CA3AF))),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        Navigator.pop(ctx);
+                        await _submitResult(
+                          int.tryParse(homeScoreCtrl.text) ?? 0,
+                          int.tryParse(awayScoreCtrl.text) ?? 0,
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF4F46E5),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        elevation: 0,
+                      ),
+                      child: const Text('제출하기',
+                          style: TextStyle(
+                              fontSize: 15, fontWeight: FontWeight.w700)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -182,14 +277,11 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
       ref.invalidate(teamMatchDetailProvider(widget.matchId));
 
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('결과가 제출되었습니다.')));
+        AppToast.success('결과가 제출되었습니다.');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('제출 실패: ${e.toString()}')),
-        );
+        AppToast.error('제출 실패: ${e.toString()}');
       }
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
@@ -225,7 +317,7 @@ class _StatusBanner extends StatelessWidget {
         icon = Icons.sports;
         break;
       case 'COMPLETED':
-        color = const Color(0xFF6B7280);
+        color = const Color(0xFF9CA3AF);
         label = '경기 완료';
         icon = Icons.sports_score;
         break;
@@ -276,9 +368,9 @@ class _TeamsSection extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFF1E1E1E),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: const Color(0xFF2A2A2A)),
       ),
       child: Row(
         children: [
@@ -394,7 +486,7 @@ class _TeamInfo extends StatelessWidget {
       width: 48,
       height: 48,
       decoration: BoxDecoration(
-        color: AppTheme.primaryColor.withOpacity(0.1),
+        color: AppTheme.primaryColor.withOpacity(0.2),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Center(
@@ -421,9 +513,9 @@ class _ScheduleCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFF1E1E1E),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: const Color(0xFF2A2A2A)),
       ),
       child: Column(
         children: [
@@ -493,9 +585,9 @@ class _MessageCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8F9FA),
+        color: const Color(0xFF1E1E1E),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: const Color(0xFF2A2A2A)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

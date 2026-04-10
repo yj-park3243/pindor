@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/notification.dart';
 import '../repositories/notification_repository.dart';
@@ -19,7 +20,9 @@ class NotificationListNotifier
     _cursor = result['meta']?['cursor'] as String?;
     _hasMore = result['meta']?['hasMore'] as bool? ?? false;
 
-    return (result['data'] as List<dynamic>)
+    final data = result['data'];
+    if (data is! List) return [];
+    return data
         .map((e) => AppNotification.fromJson(e as Map<String, dynamic>))
         .toList();
   }
@@ -40,7 +43,11 @@ class NotificationListNotifier
 
       final current = state.valueOrNull ?? [];
       state = AsyncData([...current, ...newNotifications]);
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint('[NotificationProvider] loadMore failed: $e\n$st');
+      // 페이지네이션 에러는 현재 목록을 유지하며 조용히 처리
+      // (state를 AsyncError로 전환하면 전체 목록이 사라지므로 의도적으로 유지)
+    }
   }
 
   /// 단건 읽음 처리

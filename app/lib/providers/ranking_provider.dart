@@ -1,17 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/ranking_entry.dart';
-import '../models/pin.dart';
 import '../repositories/ranking_repository.dart';
-
-/// 현재 위치 기반 핀 목록
-final nearbyPinsProvider = FutureProvider.autoDispose
-    .family<List<Pin>, ({double lat, double lng})>(
-  (ref, coords) async {
-    final repo = ref.read(rankingRepositoryProvider);
-    return repo.getNearbyPins(
-        latitude: coords.lat, longitude: coords.lng);
-  },
-);
 
 /// 핀 랭킹 프로바이더
 final pinRankingProvider =

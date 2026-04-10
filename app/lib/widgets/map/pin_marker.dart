@@ -24,7 +24,7 @@ class PinMarkerWidget extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected ? AppTheme.primaryColor : Colors.white,
+          color: isSelected ? AppTheme.primaryColor : const Color(0xFF1E1E1E),
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
@@ -37,7 +37,7 @@ class PinMarkerWidget extends StatelessWidget {
           border: Border.all(
             color: isSelected
                 ? AppTheme.primaryColor
-                : Colors.grey.shade300,
+                : const Color(0xFF2A2A2A),
             width: 1.5,
           ),
         ),

@@ -17,10 +17,10 @@ class NoticeDetailScreen extends ConsumerWidget {
     final noticeAsync = ref.watch(noticeDetailProvider(noticeId));
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         title: const Text('공지사항'),
-        backgroundColor: Colors.white,
+        backgroundColor: const Color(0xFF0A0A0A),
         elevation: 0,
       ),
       body: noticeAsync.when(
@@ -101,9 +101,9 @@ class NoticeDetailScreen extends ConsumerWidget {
                 const Divider(height: 1),
                 const SizedBox(height: 20),
 
-                // 본문
+                // 본문 (리터럴 \n을 실제 줄바꿈으로 치환)
                 SelectableText(
-                  notice.content,
+                  notice.content.replaceAll(r'\n', '\n'),
                   style: const TextStyle(
                     fontSize: 15,
                     color: AppTheme.textPrimary,

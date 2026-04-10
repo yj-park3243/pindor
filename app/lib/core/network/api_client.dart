@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import '../../config/app_config.dart';
@@ -144,6 +145,9 @@ class _AuthInterceptor extends Interceptor {
   final Dio _dio;
   final ApiClient _client;
 
+  /// 토큰 갱신이 진행 중일 때 대기 중인 요청들이 결과를 기다리는 Completer
+  Completer<String>? _refreshCompleter;
+
   _AuthInterceptor(this._storage, this._dio, this._client);
 
   @override
@@ -175,46 +179,68 @@ class _AuthInterceptor extends Interceptor {
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
-    if (err.response?.statusCode == 401 && !_client._isRefreshing) {
-      _client._isRefreshing = true;
+    if (err.response?.statusCode != 401) {
+      return handler.next(err);
+    }
 
-      try {
-        final refreshToken = await _storage.getRefreshToken();
-        if (refreshToken == null) {
-          await _storage.clearTokens();
+    // 이미 갱신 중인 경우: Completer가 완료될 때까지 대기
+    if (_client._isRefreshing) {
+      if (_refreshCompleter != null) {
+        try {
+          final newToken = await _refreshCompleter!.future;
+          err.requestOptions.headers['Authorization'] = 'Bearer $newToken';
+          final retryResponse = await _dio.fetch(err.requestOptions);
+          return handler.resolve(retryResponse);
+        } catch (_) {
           return handler.next(err);
         }
-
-        // 토큰 갱신 요청
-        final refreshDio = Dio(BaseOptions(baseUrl: AppConfig.apiBaseUrl));
-        final response = await refreshDio.post(
-          '/auth/refresh',
-          data: {'refreshToken': refreshToken},
-        );
-
-        final newAccessToken = response.data['data']['accessToken'] as String;
-        final newRefreshToken = response.data['data']['refreshToken'] as String?;
-
-        await _storage.saveAccessToken(newAccessToken);
-        if (newRefreshToken != null) {
-          await _storage.saveRefreshToken(newRefreshToken);
-        }
-
-        // 소켓 재연결
-        SocketService.instance.connect(newAccessToken);
-
-        // 원래 요청 재시도
-        err.requestOptions.headers['Authorization'] = 'Bearer $newAccessToken';
-        final retryResponse = await _dio.fetch(err.requestOptions);
-        return handler.resolve(retryResponse);
-      } catch (e) {
-        await _storage.clearTokens();
-        handler.next(err);
-      } finally {
-        _client._isRefreshing = false;
       }
-    } else {
+      return handler.next(err);
+    }
+
+    _client._isRefreshing = true;
+    _refreshCompleter = Completer<String>();
+
+    try {
+      final refreshToken = await _storage.getRefreshToken();
+      if (refreshToken == null) {
+        await _storage.clearTokens();
+        _refreshCompleter!.completeError('no_refresh_token');
+        return handler.next(err);
+      }
+
+      // 토큰 갱신 요청
+      final refreshDio = Dio(BaseOptions(baseUrl: AppConfig.apiBaseUrl));
+      final response = await refreshDio.post(
+        '/auth/refresh',
+        data: {'refreshToken': refreshToken},
+      );
+
+      final newAccessToken = response.data['data']['accessToken'] as String;
+      final newRefreshToken = response.data['data']['refreshToken'] as String?;
+
+      await _storage.saveAccessToken(newAccessToken);
+      if (newRefreshToken != null) {
+        await _storage.saveRefreshToken(newRefreshToken);
+      }
+
+      // 대기 중인 요청들에게 새 토큰 전달
+      _refreshCompleter!.complete(newAccessToken);
+
+      // 소켓 재연결
+      SocketService.instance.connect(newAccessToken);
+
+      // 원래 요청 재시도
+      err.requestOptions.headers['Authorization'] = 'Bearer $newAccessToken';
+      final retryResponse = await _dio.fetch(err.requestOptions);
+      return handler.resolve(retryResponse);
+    } catch (e) {
+      await _storage.clearTokens();
+      _refreshCompleter!.completeError(e);
       handler.next(err);
+    } finally {
+      _refreshCompleter = null;
+      _client._isRefreshing = false;
     }
   }
 }

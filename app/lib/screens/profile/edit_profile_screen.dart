@@ -8,6 +8,7 @@ import '../../config/theme.dart';
 import '../../providers/user_provider.dart';
 import '../../repositories/upload_repository.dart';
 import '../../widgets/common/loading_indicator.dart';
+import '../../widgets/common/app_toast.dart';
 
 /// 프로필 수정 화면 (PRD SCREEN-061)
 class EditProfileScreen extends ConsumerStatefulWidget {
@@ -52,6 +53,10 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
 
     setState(() => _isSaving = true);
     try {
+      // 이전 프로필 이미지 URL 기억 (캐시 제거용)
+      final currentUser = ref.read(userNotifierProvider).valueOrNull;
+      final oldImageUrl = currentUser?.profileImageUrl;
+
       String? profileImageUrl;
       if (_newProfileImage != null) {
         final uploadRepo = ref.read(uploadRepositoryProvider);
@@ -63,17 +68,22 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
             profileImageUrl: profileImageUrl,
           );
 
+      // 이전 이미지 캐시 제거 후 최신 유저 상태 재조회
+      if (oldImageUrl != null) {
+        await CachedNetworkImage.evictFromCache(oldImageUrl);
+      }
+      if (profileImageUrl != null) {
+        await CachedNetworkImage.evictFromCache(profileImageUrl);
+      }
+      ref.invalidate(userNotifierProvider);
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('프로필이 수정되었습니다.')),
-        );
+        AppToast.success('프로필이 수정되었습니다.');
         context.pop();
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('프로필 수정에 실패했습니다: $e')),
-        );
+        AppToast.error('프로필 수정에 실패했습니다: $e');
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -142,9 +152,11 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                                     ? CachedNetworkImage(
                                         imageUrl: user.profileImageUrl!,
                                         fit: BoxFit.cover,
+                                        memCacheWidth: 192,
+                                        memCacheHeight: 192,
                                       )
                                     : Container(
-                                        color: AppTheme.primaryColor.withOpacity(0.1),
+                                        color: AppTheme.primaryColor.withOpacity(0.2),
                                         child: Center(
                                           child: Text(
                                             user.nickname.isNotEmpty
@@ -194,10 +206,12 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                   // 닉네임
                   TextFormField(
                     controller: _nicknameController,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: '닉네임',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.person_outline),
+                      filled: true,
+                      fillColor: const Color(0xFF2A2A2A),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                      prefixIcon: const Icon(Icons.person_outline),
                     ),
                     maxLength: 20,
                     validator: (v) {
@@ -221,10 +235,12 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                     TextFormField(
                       initialValue: user.email,
                       enabled: false,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: '이메일',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.email_outlined),
+                        filled: true,
+                        fillColor: const Color(0xFF1E1E1E),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                        prefixIcon: const Icon(Icons.email_outlined),
                         helperText: '이메일은 변경할 수 없습니다.',
                       ),
                     ),

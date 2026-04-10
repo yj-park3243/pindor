@@ -7,6 +7,7 @@ import {
   ManyToOne,
   OneToMany,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import { PostCategory } from './enums.js';
 import type { User } from './user.entity.js';
@@ -15,6 +16,7 @@ import type { PostImage } from './post-image.entity.js';
 import type { PostLike } from './post-like.entity.js';
 import type { Comment } from './comment.entity.js';
 
+@Index(['pinId', 'isDeleted', 'createdAt'])
 @Entity('posts')
 export class Post {
   @PrimaryGeneratedColumn('uuid')

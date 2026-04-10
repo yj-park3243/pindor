@@ -48,7 +48,7 @@ class _PinDetailSheetState extends ConsumerState<PinDetailSheet> {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.grey.shade300,
+                color: const Color(0xFF444444),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -103,57 +103,49 @@ class _PinDetailSheetState extends ConsumerState<PinDetailSheet> {
 
           const SizedBox(height: 14),
 
-          // 스포츠 선택 칩 (가로 스크롤 — 바텀시트 드래그와 충돌 방지)
-          SizedBox(
-            height: 38,
-            child: NotificationListener<ScrollNotification>(
-              onNotification: (_) => true,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-              itemCount: allSports.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemBuilder: (context, index) {
-                final sport = allSports[index];
-                final isSelected = _selectedSport == sport.value;
-                return GestureDetector(
-                  onTap: () {
-                    setState(() => _selectedSport = sport.value);
-                    ref.read(sportPreferenceProvider.notifier).select(sport.value);
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: isSelected ? AppTheme.primaryColor : const Color(0xFFF0F2F5),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: isSelected ? AppTheme.primaryColor : const Color(0xFFE0E3E8),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          sport.icon,
-                          size: 14,
-                          color: isSelected ? Colors.white : AppTheme.textSecondary,
-                        ),
-                        const SizedBox(width: 5),
-                        Text(
-                          sport.label,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: isSelected ? Colors.white : AppTheme.textPrimary,
-                          ),
-                        ),
-                      ],
+          // 스포츠 선택 칩 (Wrap으로 여러 줄 표시)
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: allSports.map((sport) {
+              final isSelected = _selectedSport == sport.value;
+              return GestureDetector(
+                onTap: () {
+                  setState(() => _selectedSport = sport.value);
+                  ref.read(sportPreferenceProvider.notifier).select(sport.value);
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isSelected ? AppTheme.primaryColor : const Color(0xFF2A2A2A),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isSelected ? AppTheme.primaryColor : const Color(0xFF2A2A2A),
                     ),
                   ),
-                );
-              },
-            ),
-            ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        sport.icon,
+                        size: 14,
+                        color: isSelected ? Colors.white : AppTheme.textSecondary,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        sport.label,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: isSelected ? Colors.white : AppTheme.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
           ),
 
           const SizedBox(height: 14),
@@ -166,8 +158,9 @@ class _PinDetailSheetState extends ConsumerState<PinDetailSheet> {
                   height: 48,
                   child: ElevatedButton.icon(
                     onPressed: () {
+                      final router = GoRouter.of(context);
                       Navigator.pop(context);
-                      context.go('/matches/create?pinId=${widget.pin.id}&pinName=${Uri.encodeComponent(widget.pin.name)}&sportType=$_selectedSport');
+                      router.push('/matches/create?pinId=${widget.pin.id}&pinName=${Uri.encodeComponent(widget.pin.name)}&sportType=$_selectedSport');
                     },
                     icon: const Icon(Icons.leaderboard, size: 17),
                     label: const Text(
@@ -189,8 +182,9 @@ class _PinDetailSheetState extends ConsumerState<PinDetailSheet> {
                   height: 48,
                   child: OutlinedButton.icon(
                     onPressed: () {
+                      final router = GoRouter.of(context);
                       Navigator.pop(context);
-                      context.go('/matches/create?pinId=${widget.pin.id}&pinName=${Uri.encodeComponent(widget.pin.name)}&sportType=$_selectedSport&casual=true');
+                      router.push('/matches/create?pinId=${widget.pin.id}&pinName=${Uri.encodeComponent(widget.pin.name)}&sportType=$_selectedSport&casual=true');
                     },
                     icon: Icon(Icons.handshake_outlined, size: 17, color: Colors.orange.shade700),
                     label: Text(

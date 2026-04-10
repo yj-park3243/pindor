@@ -2,9 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../config/router.dart';
+import '../config/theme.dart';
+import '../providers/auth_provider.dart';
 import '../providers/notification_provider.dart';
 import '../providers/socket_provider.dart';
+import '../providers/matching_provider.dart';
+import '../repositories/matching_repository.dart';
 import '../widgets/common/in_app_notification.dart';
+import '../widgets/common/app_toast.dart';
 
 /// 메인 탭 네비게이션 화면
 class MainTabScreen extends ConsumerStatefulWidget {
@@ -21,7 +26,6 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> {
     AppRoutes.home,
     AppRoutes.map,
     AppRoutes.matchList,
-    AppRoutes.chatList,
     AppRoutes.profile,
   ];
 
@@ -38,11 +42,18 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> {
           final type = data['type'] as String? ?? '';
           if (type == 'CHAT_MESSAGE' || type == 'CHAT_IMAGE') return;
 
-          // 매칭 성사 알림 — 배너 없이 즉시 수락 화면으로 이동
+          // 매칭 성사 알림 — 수락 화면으로 직접 이동
           if (type == 'MATCH_PENDING_ACCEPT') {
-            final matchId = data['data']?['matchId'] as String?;
-            if (matchId != null && mounted) {
-              context.go('/matches/$matchId/accept');
+            if (mounted) {
+              ref.read(matchingRepositoryProvider).clearLocalCache();
+              ref.invalidate(matchListProvider(null));
+              ref.invalidate(matchRequestProvider);
+              final matchId = data['data']?['matchId'] as String?;
+              if (matchId != null) {
+                context.go('/matches/$matchId/accept');
+              } else {
+                context.go(AppRoutes.matchList);
+              }
             }
             ref.read(notificationListProvider.notifier).addNotification(data);
             return;
@@ -77,9 +88,8 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> {
     if (location.startsWith('/home')) return 0;
     if (location.startsWith('/map')) return 1;
     if (location.startsWith('/matches')) return 2;
-    if (location.startsWith('/chats')) return 3;
     if (location.startsWith('/profile') || location.startsWith('/teams')) {
-      return 4;
+      return 3;
     }
     return 0;
   }
@@ -87,31 +97,38 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> {
   @override
   Widget build(BuildContext context) {
     final currentIndex = _getCurrentIndex(context);
-    final unreadCount = ref.watch(unreadNotificationCountProvider);
 
     return Scaffold(
       body: widget.child,
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: currentIndex,
-        onTap: _onTabTap,
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: Theme.of(context).primaryColor,
-        unselectedItemColor: Colors.grey,
-        selectedFontSize: 11,
-        unselectedFontSize: 11,
-        items: [
-          const BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: '홈'),
-          const BottomNavigationBarItem(icon: Icon(Icons.location_on_rounded), label: '핀'),
-          const BottomNavigationBarItem(icon: Icon(Icons.sports_rounded), label: '매칭'),
-          BottomNavigationBarItem(
-            icon: Badge(
-              isLabelVisible: unreadCount > 0,
-              label: Text('$unreadCount', style: const TextStyle(fontSize: 10)),
-              child: const Icon(Icons.chat_bubble_rounded),
-            ),
-            label: '채팅',
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: currentIndex,
+        onDestinationSelected: _onTabTap,
+        backgroundColor: const Color(0xFF1A1A1A),
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
+        indicatorColor: AppTheme.primaryColor.withValues(alpha: 0.18),
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home_rounded, color: AppTheme.primaryColor),
+            label: '홈',
           ),
-          const BottomNavigationBarItem(icon: Icon(Icons.person_rounded), label: '마이'),
+          NavigationDestination(
+            icon: Icon(Icons.location_on_outlined),
+            selectedIcon: Icon(Icons.location_on_rounded, color: AppTheme.primaryColor),
+            label: '핀',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.stadium_outlined),
+            selectedIcon: Icon(Icons.stadium, color: AppTheme.primaryColor),
+            label: '매칭',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline_rounded),
+            selectedIcon: Icon(Icons.person_rounded, color: AppTheme.primaryColor),
+            label: '마이',
+          ),
         ],
       ),
     );

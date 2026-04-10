@@ -64,6 +64,13 @@ class SportsProfile {
     this.mannerScore,
   });
 
+  static int? _toInt(dynamic v) {
+    if (v == null) return null;
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse(v.toString());
+  }
+
   factory SportsProfile.fromJson(Map<String, dynamic> json) {
     return SportsProfile(
       id: json['id'] as String,
@@ -71,16 +78,16 @@ class SportsProfile {
       sportType: json['sportType'] as String? ?? 'GOLF',
       displayName: json['displayName'] as String? ?? '',
       matchMessage: json['matchMessage'] as String?,
-      initialScore: json['initialScore'] as int? ?? 1000,
-      currentScore: json['currentScore'] as int? ?? 1000,
+      initialScore: _toInt(json['initialScore']) ?? 1000,
+      currentScore: _toInt(json['currentScore']) ?? 1000,
       tier: json['tier'] as String? ?? 'BRONZE',
       gHandicap: json['gHandicap'] != null
-          ? (json['gHandicap'] as num).toDouble()
+          ? double.tryParse(json['gHandicap'].toString())
           : null,
       isVerified: json['isVerified'] as bool? ?? false,
-      gamesPlayed: json['gamesPlayed'] as int? ?? 0,
-      wins: json['wins'] as int? ?? 0,
-      losses: json['losses'] as int? ?? 0,
+      gamesPlayed: _toInt(json['gamesPlayed']) ?? 0,
+      wins: _toInt(json['wins']) ?? 0,
+      losses: _toInt(json['losses']) ?? 0,
       isActive: json['isActive'] as bool? ?? true,
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'] as String)
@@ -88,21 +95,21 @@ class SportsProfile {
       // 승급 프로그레스 — 서버 미지원 시 null로 안전 처리
       pointsToNext: json['pointsToNext'] as int?,
       progress: json['progress'] != null
-          ? (json['progress'] as num).toDouble()
+          ? double.tryParse(json['progress'].toString())
           : null,
-      subTier: json['subTier'] as int?,
+      subTier: _toInt(json['subTier']),
       nextTierName: json['nextTierName'] as String?,
       // displayScore — 없으면 currentScore 폴백
-      displayScore: json['displayScore'] as int? ?? json['currentScore'] as int? ?? 1000,
+      displayScore: _toInt(json['displayScore']) ?? _toInt(json['currentScore']) ?? 1000,
       // 배치 게임 — 서버 미지원 시 false/null로 안전 처리
       isPlacement: json['isPlacement'] as bool? ?? false,
-      placementGamesRemaining: json['placementGamesRemaining'] as int?,
+      placementGamesRemaining: _toInt(json['placementGamesRemaining']),
       glickoRd: json['glickoRd'] != null
-          ? (json['glickoRd'] as num).toDouble()
+          ? double.tryParse(json['glickoRd'].toString())
           : null,
       // 매너 점수 — 서버 미지원 시 null로 안전 처리
       mannerScore: json['mannerScore'] != null
-          ? (json['mannerScore'] as num).toDouble()
+          ? double.tryParse(json['mannerScore'].toString())
           : null,
     );
   }

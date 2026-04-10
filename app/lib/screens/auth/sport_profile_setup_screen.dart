@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../config/router.dart';
+import '../../config/sports.dart';
 import '../../config/theme.dart';
 import '../../repositories/profile_repository.dart';
+import '../../widgets/common/app_toast.dart';
 
 /// 스포츠 프로필 설정 화면
 /// 종목 선택 (그리드), G핸디 입력, 초기 점수 표시
@@ -24,18 +26,7 @@ class _SportProfileSetupScreenState
   double _gHandicap = 20.0;
   bool _isLoading = false;
 
-  // 종목 목록 (key, 이름, 아이콘)
-  static const _sports = [
-    ('GOLF', '골프', Icons.sports_golf),
-    ('TABLE_TENNIS', '탁구', Icons.sports_tennis),
-    ('TENNIS', '테니스', Icons.sports_tennis),
-    ('BADMINTON', '배드민턴', Icons.sports_tennis),
-    ('BOWLING', '볼링', Icons.sports),
-    ('BILLIARDS', '당구', Icons.circle_outlined),
-    ('ROCK_PAPER_SCISSORS', '가위바위보', Icons.pan_tool_rounded),
-    ('ARM_WRESTLING', '팔씨름', Icons.fitness_center),
-    ('COIN_TOSS', '동전던지기', Icons.monetization_on_rounded),
-  ];
+  // allSports from config/sports.dart (서버 enum과 일치)
 
   void _updateGHandicap(double value) {
     setState(() {
@@ -54,13 +45,6 @@ class _SportProfileSetupScreenState
   }
 
   Future<void> _submit() async {
-    if (_displayNameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('프로필 이름을 입력해주세요')),
-      );
-      return;
-    }
-
     setState(() => _isLoading = true);
 
     try {
@@ -74,9 +58,7 @@ class _SportProfileSetupScreenState
       if (mounted) context.go(AppRoutes.locationSetup);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('오류: ${e.toString()}')),
-        );
+        AppToast.error('오류: ${e.toString()}');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -93,10 +75,10 @@ class _SportProfileSetupScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         title: const Text('스포츠 프로필'),
-        backgroundColor: Colors.white,
+        backgroundColor: const Color(0xFF0A0A0A),
         elevation: 0,
       ),
       body: GestureDetector(
@@ -157,32 +139,37 @@ class _SportProfileSetupScreenState
               crossAxisSpacing: 10,
               mainAxisSpacing: 10,
               childAspectRatio: 1.15,
-              children: _sports.map((sport) {
-                final isSelected = _selectedSport == sport.$1;
+              children: allSports.map((sport) {
+                final isSelected = _selectedSport == sport.value;
                 return _SportCard(
-                  key: ValueKey(sport.$1),
-                  sportKey: sport.$1,
-                  name: sport.$2,
-                  icon: sport.$3,
+                  key: ValueKey(sport.value),
+                  sportKey: sport.value,
+                  name: sport.label,
+                  icon: sport.icon,
                   isSelected: isSelected,
-                  onTap: () => setState(() => _selectedSport = sport.$1),
+                  onTap: () => setState(() => _selectedSport = sport.value),
                 );
               }).toList(),
             ),
 
             const SizedBox(height: 24),
 
-            // 프로필 이름
+            // 매칭 메시지
             const Text(
-              '프로필 이름',
+              '매칭 메시지',
               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              '상대에게 보여질 한마디 (선택)',
+              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
             ),
             const SizedBox(height: 8),
             TextField(
               controller: _displayNameController,
-              maxLength: 20,
+              maxLength: 30,
               decoration: const InputDecoration(
-                hintText: '예: 주말 골퍼',
+                hintText: '예: 한판 붙자!',
                 counterText: '',
               ),
             ),
@@ -288,7 +275,7 @@ class _SportProfileSetupScreenState
             decoration: BoxDecoration(
               color: i < 2
                   ? AppTheme.primaryColor
-                  : const Color(0xFFE5E7EB),
+                  : const Color(0xFF2A2A2A),
               borderRadius: BorderRadius.circular(3),
             ),
           ),
@@ -323,13 +310,13 @@ class _SportCard extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         decoration: BoxDecoration(
           color: isSelected
-              ? AppTheme.primaryColor.withOpacity(0.08)
-              : const Color(0xFFF8F9FA),
+              ? AppTheme.primaryColor.withOpacity(0.18)
+              : const Color(0xFF1E1E1E),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: isSelected
                 ? AppTheme.primaryColor
-                : const Color(0xFFE5E7EB),
+                : const Color(0xFF2A2A2A),
             width: isSelected ? 2 : 1,
           ),
           boxShadow: isSelected

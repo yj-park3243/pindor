@@ -41,6 +41,11 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
 
       const qb = notificationRepo
         .createQueryBuilder('notification')
+        .addSelect(
+          '(SELECT COUNT(*) FROM notifications n2 WHERE n2.user_id = :userId AND n2.is_read = false)',
+          'unreadCount',
+        )
+        .setParameter('userId', userId)
         .where('notification.user_id = :userId', { userId })
         .orderBy('notification.created_at', 'DESC')
         .take(query.limit + 1);
@@ -53,15 +58,16 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
         qb.andWhere('notification.created_at < :cursor', { cursor: new Date(query.cursor) });
       }
 
-      const notifications = await qb.getMany();
+      const rawAndEntities = await qb.getRawAndEntities();
+      const notifications = rawAndEntities.entities;
+      const rawRows = rawAndEntities.raw;
 
       const hasMore = notifications.length > query.limit;
       const items = hasMore ? notifications.slice(0, query.limit) : notifications;
       const nextCursor = hasMore ? items[items.length - 1].createdAt.toISOString() : null;
 
-      const unreadCount = await notificationRepo.count({
-        where: { userId, isRead: false },
-      });
+      // unreadCount는 서브쿼리로 첫 번째 row에서 추출 (전체 미읽음 수)
+      const unreadCount = parseInt(rawRows[0]?.unreadCount ?? '0', 10);
 
       return reply.send({
         success: true,

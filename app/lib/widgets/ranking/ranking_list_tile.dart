@@ -22,13 +22,13 @@ class RankingListTile extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
         color: isMe
-            ? AppTheme.primaryColor.withOpacity(0.06)
-            : Colors.white,
+            ? AppTheme.primaryColor.withOpacity(0.1)
+            : const Color(0xFF1E1E1E),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isMe
               ? AppTheme.primaryColor.withOpacity(0.3)
-              : const Color(0xFFE5E7EB),
+              : const Color(0xFF2A2A2A),
           width: 1,
         ),
       ),
@@ -82,7 +82,7 @@ class RankingListTile extends StatelessWidget {
           ],
         ),
         subtitle: Text(
-          '${entry.gamesPlayed}경기 · ${entry.wins}승 ${entry.losses}패',
+          '${entry.gamesPlayed}경기',
           style: const TextStyle(
             fontSize: 12,
             color: AppTheme.textSecondary,

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import '../../config/theme.dart';
 import '../../providers/team_provider.dart';
+import '../../widgets/common/app_toast.dart';
 
 /// 팀 게시글 작성 화면
 class TeamCreatePostScreen extends ConsumerStatefulWidget {
@@ -52,15 +53,12 @@ class _TeamCreatePostScreenState
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('게시글이 작성되었습니다.')));
+        AppToast.success('게시글이 작성되었습니다.');
         context.pop();
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('작성 실패: ${e.toString()}')),
-        );
+        AppToast.error('작성 실패: ${e.toString()}');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -95,7 +93,7 @@ class _TeamCreatePostScreenState
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: const BoxDecoration(
                 border: Border(
-                  bottom: BorderSide(color: Color(0xFFE5E7EB)),
+                  bottom: BorderSide(color: Color(0xFF2A2A2A)),
                 ),
               ),
               child: Row(

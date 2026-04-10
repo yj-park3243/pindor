@@ -130,7 +130,6 @@ async function main() {
     { name: '안양역', slug: 'gyeonggi-anyang-station', lat: 37.4027, lng: 126.9221, level: 'DONG' as PinLevel, regionCode: '4117110100' },
     { name: '범계역', slug: 'gyeonggi-anyang-beomgye', lat: 37.3903, lng: 126.9530, level: 'DONG' as PinLevel, regionCode: '4117310100' },
     // 남양주시
-    { name: '다산신도시', slug: 'gyeonggi-namyangju-dasan', lat: 37.6118, lng: 127.1540, level: 'DONG' as PinLevel, regionCode: '4136010100' },
     { name: '마석역', slug: 'gyeonggi-namyangju-maseok', lat: 37.6505, lng: 127.2075, level: 'DONG' as PinLevel, regionCode: '4136010200' },
     // 화성시
     { name: '동탄역', slug: 'gyeonggi-hwaseong-dongtan', lat: 37.2009, lng: 127.0971, level: 'DONG' as PinLevel, regionCode: '4159010100' },
@@ -179,7 +178,6 @@ async function main() {
     { name: '동성로', slug: 'daegu-dongseongro', lat: 35.8690, lng: 128.5963, level: 'DONG' as PinLevel, regionCode: '2711010200' },
     { name: '수성못', slug: 'daegu-suseongmot', lat: 35.8283, lng: 128.6180, level: 'DONG' as PinLevel, regionCode: '2726010100' },
     // 인천광역시
-    { name: '인천역 차이나타운', slug: 'incheon-chinatown', lat: 37.4738, lng: 126.6172, level: 'DONG' as PinLevel, regionCode: '2811010100' },
     { name: '부평역', slug: 'incheon-bupyeong', lat: 37.4900, lng: 126.7235, level: 'DONG' as PinLevel, regionCode: '2823710100' },
     { name: '송도 센트럴파크', slug: 'incheon-songdo', lat: 37.3815, lng: 126.6610, level: 'DONG' as PinLevel, regionCode: '2818510100' },
     // 광주광역시

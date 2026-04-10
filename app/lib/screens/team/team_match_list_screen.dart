@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import '../../config/theme.dart';
 import '../../providers/team_provider.dart';
 import '../../widgets/common/loading_indicator.dart';
@@ -36,11 +35,55 @@ class _TeamMatchListScreenState extends ConsumerState<TeamMatchListScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: AdaptiveSegmentedControl(
-              labels: _tabs,
-              selectedIndex: _selectedIndex,
-              onValueChanged: (index) =>
-                  setState(() => _selectedIndex = index),
+            child: Container(
+              height: 40,
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                color: const Color(0xFF2A2A2A),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: List.generate(_tabs.length, (i) {
+                  final selected = _selectedIndex == i;
+                  return Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _selectedIndex = i),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? AppTheme.primaryColor
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                          boxShadow: selected
+                              ? [
+                                  BoxShadow(
+                                    color: AppTheme.primaryColor
+                                        .withOpacity(0.25),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ]
+                              : null,
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          _tabs[i],
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: selected
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                            color: selected
+                                ? Colors.white
+                                : const Color(0xFF9CA3AF),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
             ),
           ),
           Expanded(

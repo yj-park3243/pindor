@@ -7,53 +7,209 @@ import '../../providers/matching_provider.dart';
 import '../../repositories/matching_repository.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/error_view.dart';
+import '../../widgets/common/app_toast.dart';
 
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 import '../../widgets/common/user_avatar.dart';
+import '../../providers/auth_provider.dart';
+import '../../repositories/game_repository.dart';
+import '../../repositories/upload_repository.dart';
 import 'opponent_profile_sheet.dart';
 
-/// 노쇼 신고 확인 다이얼로그
+/// 노쇼 신고 확인 바텀시트
 void _showNoshowConfirmDialog(
     BuildContext context, WidgetRef ref, String matchId) {
-  showDialog(
+  showModalBottomSheet(
     context: context,
-    builder: (ctx) => AlertDialog(
-      title: const Text('노쇼 신고'),
-      content: const Text(
-        '상대방이 약속 장소에 나타나지 않았나요?\n\n'
-        '노쇼 신고 시:\n'
-        '  • 상대방: -30점 + 7일 매칭 제한\n'
-        '  • 2회 적발 시 영구 정지\n'
-        '  • 나: +15점 보상\n\n'
-        '허위 신고 시 제재를 받을 수 있습니다.',
+    backgroundColor: Colors.transparent,
+    builder: (ctx) => Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx),
-          child: const Text('취소'),
-        ),
-        ElevatedButton(
-          onPressed: () async {
-            Navigator.pop(ctx);
-            try {
-              await ref.read(matchingRepositoryProvider).reportNoshow(matchId);
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('노쇼 신고가 접수되었습니다.')),
-                );
-                context.go('/matches');
-              }
-            } catch (e) {
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('신고 실패: $e')),
-                );
-              }
-            }
-          },
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-          child: const Text('신고하기', style: TextStyle(color: Colors.white)),
-        ),
-      ],
+      padding: EdgeInsets.fromLTRB(
+          24, 20, 24, MediaQuery.of(ctx).padding.bottom + 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: const Color(0xFF2A2A2A),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: Colors.red.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.report_outlined, color: Colors.red, size: 28),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            '노쇼 신고',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            '상대방: -30점 + 7일 매칭 제한\n나: +15점 보상\n\n허위 신고 시 제재를 받을 수 있습니다.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              color: Color(0xFF9CA3AF),
+              height: 1.6,
+            ),
+          ),
+          const SizedBox(height: 28),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    side: const BorderSide(color: Color(0xFF2A2A2A)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('취소',
+                      style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF9CA3AF))),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    try {
+                      await ref
+                          .read(matchingRepositoryProvider)
+                          .reportNoshow(matchId);
+                      if (context.mounted) {
+                        AppToast.success('노쇼 신고가 접수되었습니다.');
+                        ref.invalidate(matchListProvider(null));
+                        context.go('/matches');
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        AppToast.error('신고 실패: $e');
+                      }
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    elevation: 0,
+                  ),
+                  child: const Text('신고하기',
+                      style: TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w700)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// 경기 포기 확인 바텀시트
+void _showForfeitConfirmDialog(
+    BuildContext context, WidgetRef ref, String matchId) {
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: Colors.transparent,
+    builder: (ctx) => Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+          24, 20, 24, MediaQuery.of(ctx).padding.bottom + 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 36, height: 4,
+            decoration: BoxDecoration(color: const Color(0xFF2A2A2A), borderRadius: BorderRadius.circular(2)),
+          ),
+          const SizedBox(height: 20),
+          Container(
+            width: 56, height: 56,
+            decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), shape: BoxShape.circle),
+            child: const Icon(Icons.flag_rounded, color: Colors.orange, size: 28),
+          ),
+          const SizedBox(height: 16),
+          const Text('경기 포기', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Colors.white)),
+          const SizedBox(height: 8),
+          const Text(
+            '포기하면 본인의 패배로 기록됩니다.\n점수가 하락할 수 있습니다. 정말 포기하시겠습니까?',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13, color: Color(0xFF9CA3AF), height: 1.6),
+          ),
+          const SizedBox(height: 28),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    side: const BorderSide(color: Color(0xFF2A2A2A)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('취소', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF9CA3AF))),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    try {
+                      await ref.read(matchingRepositoryProvider).forfeitMatch(matchId);
+                      if (context.mounted) {
+                        AppToast.info('경기를 포기했습니다. 패배로 기록됩니다.');
+                        ref.invalidate(matchListProvider(null));
+                        context.go('/matches');
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        AppToast.error('포기 처리 실패: $e');
+                      }
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    elevation: 0,
+                  ),
+                  child: const Text('포기하기', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     ),
   );
 }
@@ -71,15 +227,25 @@ class MatchDetailScreen extends ConsumerWidget {
 
     return matchAsync.when(
       loading: () => const Scaffold(
-        backgroundColor: Color(0xFFF8F9FA),
+        backgroundColor: Color(0xFF0A0A0A),
         body: FullScreenLoading(),
       ),
       error: (e, _) => Scaffold(
-        backgroundColor: const Color(0xFFF8F9FA),
+        backgroundColor: const Color(0xFF0A0A0A),
         appBar: AppBar(
           title: const Text('매칭 상세'),
-          backgroundColor: const Color(0xFFF8F9FA),
+          backgroundColor: const Color(0xFF0A0A0A),
           elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+            onPressed: () {
+              if (context.canPop()) {
+                context.pop();
+              } else {
+                context.go('/matches');
+              }
+            },
+          ),
         ),
         body: ErrorView(
           message: '매칭 정보를 불러올 수 없습니다.',
@@ -87,32 +253,51 @@ class MatchDetailScreen extends ConsumerWidget {
         ),
       ),
       data: (match) {
-        // PENDING_ACCEPT / CHAT / CONFIRMED 상태에서 뒤로가기 차단
-        final shouldLock =
-            match.isPendingAccept || match.isChat || match.isConfirmed;
+        final shouldLock = false;
         // 노쇼 신고 가능 상태: CHAT 또는 CONFIRMED
         final shouldShowNoshow = match.isChat || match.isConfirmed;
 
         return PopScope(
           canPop: !shouldLock,
           child: Scaffold(
-            backgroundColor: const Color(0xFFF8F9FA),
+            backgroundColor: const Color(0xFF0A0A0A),
             appBar: AppBar(
               title: const Text('매칭 상세'),
-              backgroundColor: const Color(0xFFF8F9FA),
+              backgroundColor: const Color(0xFF0A0A0A),
               elevation: 0,
-              automaticallyImplyLeading: !shouldLock,
+              leading: shouldLock
+                  ? null
+                  : IconButton(
+                      icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+                      onPressed: () {
+                        if (context.canPop()) {
+                          context.pop();
+                        } else {
+                          context.go('/matches');
+                        }
+                      },
+                    ),
               actions: [
                 if (shouldShowNoshow)
                   PopupMenuButton<String>(
                     onSelected: (value) {
                       if (value == 'noshow') {
-                        // _MatchDetailContent의 메서드 접근을 위해 별도 키 사용 대신
-                        // GlobalKey를 통하지 않고 직접 dialog를 여기서 표시
                         _showNoshowConfirmDialog(context, ref, matchId);
+                      } else if (value == 'forfeit') {
+                        _showForfeitConfirmDialog(context, ref, matchId);
                       }
                     },
                     itemBuilder: (ctx) => [
+                      const PopupMenuItem(
+                        value: 'forfeit',
+                        child: Row(
+                          children: [
+                            Icon(Icons.flag_rounded, color: Colors.orange, size: 18),
+                            SizedBox(width: 8),
+                            Text('경기 포기'),
+                          ],
+                        ),
+                      ),
                       const PopupMenuItem(
                         value: 'noshow',
                         child: Row(
@@ -208,7 +393,7 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
                     height: 52,
                     child: ElevatedButton.icon(
                       onPressed: () =>
-                          context.go('/chats/${match.chatRoomId}'),
+                          context.push('/chats/${match.chatRoomId}'),
                       icon: const Icon(Icons.chat_bubble_rounded, size: 18),
                       label: const Text('채팅하기'),
                       style: ElevatedButton.styleFrom(
@@ -220,65 +405,34 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
                   const SizedBox(height: 10),
                 ],
 
-                // 경기 확정 (채팅 중일 때)
-                if (match.isChat) ...[
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: OutlinedButton.icon(
-                      onPressed: () => _showConfirmMatchDialog(context),
-                      icon: const Icon(Icons.check_circle_outline_rounded,
-                          size: 18),
-                      label: const Text('경기 확정'),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                ],
-
-                // 결과 입력 (확정 후)
-                if (match.isConfirmed && match.gameId != null) ...[
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: ElevatedButton.icon(
-                      onPressed: () =>
-                          context.go('/games/${match.gameId}/result'),
-                      icon: const Icon(Icons.assignment_rounded, size: 18),
-                      label: const Text('결과 입력'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.secondaryColor,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                ],
-
-                // 상대 프로필 보기
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: OutlinedButton.icon(
-                    onPressed: () =>
-                        _showOpponentProfile(context, match.opponent),
-                    icon: const Icon(Icons.person_outline_rounded, size: 18),
-                    label: const Text('상대 프로필 보기'),
-                  ),
-                ),
-
                 // 승부 결과 입력 버튼 (CHAT / CONFIRMED 상태에서 표시)
-                // 포기 버튼은 제거 — 매칭 성사 후 승/패/무만 존재
                 if (match.isChat || match.isConfirmed) ...[
                   const SizedBox(height: 10),
                   SizedBox(
                     width: double.infinity,
                     height: 52,
                     child: ElevatedButton.icon(
-                      onPressed: () => _navigateToGameResult(context, match),
-                      icon: const Icon(Icons.emoji_events_rounded, size: 18),
-                      label: const Text('승부 결과 입력'),
+                      onPressed: match.myResultSubmitted
+                          ? null
+                          : () => _showGameResultSheet(context, match),
+                      icon: Icon(
+                        match.myResultSubmitted
+                            ? Icons.check_circle_rounded
+                            : Icons.emoji_events_rounded,
+                        size: 18,
+                      ),
+                      label: Text(match.myResultSubmitted
+                          ? '결과 제출 완료 (상대 대기중)'
+                          : '승부 결과 입력'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.secondaryColor,
-                        foregroundColor: Colors.white,
+                        backgroundColor: match.myResultSubmitted
+                            ? const Color(0xFF2A2A2A)
+                            : AppTheme.secondaryColor,
+                        foregroundColor: match.myResultSubmitted
+                            ? AppTheme.textSecondary
+                            : Colors.white,
+                        disabledBackgroundColor: const Color(0xFF2A2A2A),
+                        disabledForegroundColor: AppTheme.textSecondary,
                       ),
                     ),
                   ),
@@ -341,15 +495,255 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
     );
   }
 
-  /// 승부 결과 입력 화면 이동
-  void _navigateToGameResult(BuildContext context, Match match) {
-    if (match.gameId != null) {
-      context.go('/games/${match.gameId}/result');
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('아직 경기가 생성되지 않았습니다.')),
-      );
-    }
+  /// 승부 결과 입력 바텀시트
+  void _showGameResultSheet(BuildContext context, Match match) {
+    String? selectedResult; // WIN | LOSS | DRAW
+    int mannerScore = 3;
+    bool isSubmitting = false;
+    final List<File> photos = [];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) {
+          final canSubmit = selectedResult != null && photos.isNotEmpty && !isSubmitting;
+
+          return Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+            child: Container(
+              decoration: const BoxDecoration(
+                color: Color(0xFF1E1E1E),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              padding: EdgeInsets.fromLTRB(24, 20, 24, MediaQuery.of(ctx).padding.bottom + 20),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(width: 36, height: 4, decoration: BoxDecoration(color: const Color(0xFF2A2A2A), borderRadius: BorderRadius.circular(2))),
+                    const SizedBox(height: 20),
+                    const Text('승부 결과 입력', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white)),
+                    const SizedBox(height: 8),
+                    Text('vs ${match.opponent.nickname}', style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
+                    const SizedBox(height: 24),
+
+                    // 승/무/패 버튼
+                    Row(
+                      children: [
+                        _resultButton(ctx, '승리', 'WIN', Icons.emoji_events_rounded, Colors.blue, selectedResult, (v) => setSheetState(() => selectedResult = v)),
+                        const SizedBox(width: 10),
+                        _resultButton(ctx, '무승부', 'DRAW', Icons.handshake_rounded, const Color(0xFF6B7280), selectedResult, (v) => setSheetState(() => selectedResult = v)),
+                        const SizedBox(width: 10),
+                        _resultButton(ctx, '패배', 'LOSS', Icons.sentiment_dissatisfied_rounded, Colors.red, selectedResult, (v) => setSheetState(() => selectedResult = v)),
+                      ],
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // 사진 촬영 (필수, 최대 2장)
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('사진 첨부 (필수)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textSecondary)),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        // 촬영한 사진들
+                        ...photos.asMap().entries.map((entry) {
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 10),
+                            child: Stack(
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: Image.file(entry.value, width: 72, height: 72, fit: BoxFit.cover),
+                                ),
+                                Positioned(
+                                  top: -4, right: -4,
+                                  child: GestureDetector(
+                                    onTap: () => setSheetState(() => photos.removeAt(entry.key)),
+                                    child: Container(
+                                      width: 22, height: 22,
+                                      decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                                      child: const Icon(Icons.close, size: 14, color: Colors.white),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                        // 추가 버튼 (2장 미만일 때)
+                        if (photos.length < 2)
+                          GestureDetector(
+                            onTap: () async {
+                              final picker = ImagePicker();
+                              final xFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70, maxWidth: 1200, maxHeight: 1200);
+                              if (xFile != null) {
+                                setSheetState(() => photos.add(File(xFile.path)));
+                              }
+                            },
+                            child: Container(
+                              width: 72, height: 72,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF2A2A2A),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: const Color(0xFF3A3A3A)),
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.camera_alt_rounded, size: 24, color: AppTheme.textSecondary),
+                                  const SizedBox(height: 2),
+                                  Text('${photos.length}/2', style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    if (photos.isEmpty) ...[
+                      const SizedBox(height: 6),
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text('카메라로 결과 사진을 찍어주세요', style: TextStyle(fontSize: 11, color: AppTheme.textDisabled)),
+                      ),
+                    ],
+
+                    const SizedBox(height: 20),
+
+                    // 매너 점수
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('매너 점수', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textSecondary)),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(5, (i) {
+                        final score = i + 1;
+                        return GestureDetector(
+                          onTap: () => setSheetState(() => mannerScore = score),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: Icon(
+                              score <= mannerScore ? Icons.star_rounded : Icons.star_outline_rounded,
+                              size: 32,
+                              color: score <= mannerScore ? Colors.amber : const Color(0xFF2A2A2A),
+                            ),
+                          ),
+                        );
+                      }),
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // 제출 버튼
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: ElevatedButton(
+                        onPressed: !canSubmit
+                            ? null
+                            : () async {
+                                setSheetState(() => isSubmitting = true);
+                                try {
+                                  final uploadRepo = ref.read(uploadRepositoryProvider);
+
+                                  // 사진 업로드
+                                  final imageUrls = await uploadRepo.uploadGameProofs(
+                                    photos.map((p) => p.path).toList(),
+                                  );
+
+                                  // matchId로 gameId 조회
+                                  final matchDetail = await ref.read(matchingRepositoryProvider).getMatchDetail(match.id);
+                                  final gameId = matchDetail.gameId;
+                                  if (gameId == null) {
+                                    AppToast.error('경기 정보를 찾을 수 없습니다.');
+                                    return;
+                                  }
+                                  final gameRepo = ref.read(gameRepositoryProvider);
+                                  final currentUser = ref.read(currentUserProvider);
+                                  final game = await gameRepo.getGameDetail(gameId);
+                                  final isRequester = game.requesterUserId == currentUser?.id;
+                                  final myProfileId = isRequester ? game.requesterProfileId : game.opponentProfileId;
+                                  final oppProfileId = isRequester ? game.opponentProfileId : game.requesterProfileId;
+                                  String? winnerId;
+                                  if (selectedResult == 'WIN') winnerId = myProfileId;
+                                  if (selectedResult == 'LOSS') winnerId = oppProfileId;
+
+                                  // 결과 제출
+                                  await gameRepo.submitGameResult(
+                                    gameId,
+                                    myResult: selectedResult!,
+                                    winnerId: winnerId,
+                                    mannerScore: mannerScore,
+                                  );
+
+                                  // 증빙 사진 업로드
+                                  if (imageUrls.isNotEmpty) {
+                                    await gameRepo.uploadProofUrls(gameId, imageUrls);
+                                  }
+
+                                  if (ctx.mounted) Navigator.pop(ctx);
+                                  if (context.mounted) {
+                                    AppToast.success('결과가 제출되었습니다.');
+                                    ref.invalidate(matchDetailProvider(match.id));
+                                    ref.invalidate(matchListProvider(null));
+                                  }
+                                } catch (e) {
+                                  if (ctx.mounted) {
+                                    setSheetState(() => isSubmitting = false);
+                                    AppToast.error('결과 제출 실패: $e');
+                                  }
+                                }
+                              },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.secondaryColor,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: const Color(0xFF2A2A2A),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        child: isSubmitting
+                            ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
+                            : const Text('결과 제출', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _resultButton(BuildContext context, String label, String value, IconData icon, Color color, String? selected, void Function(String) onTap) {
+    final isSelected = selected == value;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => onTap(value),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          decoration: BoxDecoration(
+            color: isSelected ? color.withOpacity(0.15) : const Color(0xFF2A2A2A),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: isSelected ? color : Colors.transparent, width: 2),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, size: 28, color: isSelected ? color : AppTheme.textSecondary),
+              const SizedBox(height: 6),
+              Text(label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: isSelected ? color : AppTheme.textSecondary)),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _showOpponentProfile(BuildContext context, MatchOpponent opponent) {
@@ -369,208 +763,369 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
     final venueController = TextEditingController();
     bool isSubmitting = false;
 
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
-          title: const Text('경기 확정'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '경기 날짜',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                InkWell(
-                  onTap: () async {
-                    final date = await showDatePicker(
-                      context: dialogContext,
-                      initialDate: DateTime.now(),
-                      firstDate: DateTime.now(),
-                      lastDate: DateTime.now().add(const Duration(days: 365)),
-                    );
-                    if (date != null) {
-                      setDialogState(() => selectedDate = date);
-                    }
-                  },
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 14),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: const Color(0xFFE5E7EB)),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      selectedDate != null
-                          ? '${selectedDate!.year}-${selectedDate!.month.toString().padLeft(2, '0')}-${selectedDate!.day.toString().padLeft(2, '0')}'
-                          : '날짜를 선택해주세요',
-                      style: TextStyle(
-                        color: selectedDate != null
-                            ? AppTheme.textPrimary
-                            : AppTheme.textDisabled,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+            ),
+            child: Container(
+              decoration: const BoxDecoration(
+                color: Color(0xFF1E1E1E),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              padding: EdgeInsets.fromLTRB(
+                  24, 20, 24, MediaQuery.of(sheetContext).padding.bottom + 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Handle bar
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2A2A2A),
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  '경기 시간',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                InkWell(
-                  onTap: () async {
-                    final time = await showTimePicker(
-                      context: dialogContext,
-                      initialTime: TimeOfDay.now(),
-                    );
-                    if (time != null) {
-                      setDialogState(() => selectedTime = time);
-                    }
-                  },
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 14),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: const Color(0xFFE5E7EB)),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      selectedTime != null
-                          ? '${selectedTime!.hour.toString().padLeft(2, '0')}:${selectedTime!.minute.toString().padLeft(2, '0')}'
-                          : '시간을 선택해주세요',
-                      style: TextStyle(
-                        color: selectedTime != null
-                            ? AppTheme.textPrimary
-                            : AppTheme.textDisabled,
+                  const SizedBox(height: 20),
+                  // Icon
+                  Center(
+                    child: Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor.withOpacity(0.2),
+                        shape: BoxShape.circle,
                       ),
+                      child: Icon(Icons.sports_score_outlined,
+                          color: AppTheme.primaryColor, size: 28),
                     ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  '장소',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: venueController,
-                  decoration: const InputDecoration(
-                    hintText: '장소명을 입력해주세요',
-                    border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 14),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('취소'),
-            ),
-            ElevatedButton(
-              onPressed: isSubmitting
-                  ? null
-                  : () async {
-                      if (selectedDate == null ||
-                          selectedTime == null ||
-                          venueController.text.trim().isEmpty) {
-                        ScaffoldMessenger.of(dialogContext).showSnackBar(
-                          const SnackBar(
-                              content: Text('날짜, 시간, 장소를 모두 입력해주세요.')),
-                        );
-                        return;
-                      }
-
-                      setDialogState(() => isSubmitting = true);
-
-                      try {
-                        final repo = ref.read(matchingRepositoryProvider);
-                        final dateStr =
-                            '${selectedDate!.year}-${selectedDate!.month.toString().padLeft(2, '0')}-${selectedDate!.day.toString().padLeft(2, '0')}';
-                        final timeStr =
-                            '${selectedTime!.hour.toString().padLeft(2, '0')}:${selectedTime!.minute.toString().padLeft(2, '0')}';
-
-                        await repo.confirmMatch(
-                          widget.matchId,
-                          scheduledDate: dateStr,
-                          scheduledTime: timeStr,
-                          venueName: venueController.text.trim(),
-                        );
-
-                        if (dialogContext.mounted) {
-                          Navigator.pop(dialogContext);
-                        }
-
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('경기가 확정되었습니다.')),
-                          );
-                          ref.invalidate(matchDetailProvider(widget.matchId));
-                        }
-                      } catch (e) {
-                        setDialogState(() => isSubmitting = false);
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                                content: Text('경기 확정 실패: ${e.toString()}')),
-                          );
-                        }
-                      }
-                    },
-              child: isSubmitting
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
+                  const SizedBox(height: 16),
+                  const Center(
+                    child: Text(
+                      '경기 확정',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
                         color: Colors.white,
                       ),
-                    )
-                  : const Text('확정'),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  // 경기 날짜
+                  const Text(
+                    '경기 날짜',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  InkWell(
+                    onTap: () async {
+                      final date = await showDatePicker(
+                        context: sheetContext,
+                        initialDate: DateTime.now(),
+                        firstDate: DateTime.now(),
+                        lastDate:
+                            DateTime.now().add(const Duration(days: 365)),
+                      );
+                      if (date != null) {
+                        setSheetState(() => selectedDate = date);
+                      }
+                    },
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 14),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: const Color(0xFF2A2A2A)),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        selectedDate != null
+                            ? '${selectedDate!.year}-${selectedDate!.month.toString().padLeft(2, '0')}-${selectedDate!.day.toString().padLeft(2, '0')}'
+                            : '날짜를 선택해주세요',
+                        style: TextStyle(
+                          color: selectedDate != null
+                              ? AppTheme.textPrimary
+                              : AppTheme.textDisabled,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // 경기 시간
+                  const Text(
+                    '경기 시간',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  InkWell(
+                    onTap: () async {
+                      final time = await showTimePicker(
+                        context: sheetContext,
+                        initialTime: TimeOfDay.now(),
+                      );
+                      if (time != null) {
+                        setSheetState(() => selectedTime = time);
+                      }
+                    },
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 14),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: const Color(0xFF2A2A2A)),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        selectedTime != null
+                            ? '${selectedTime!.hour.toString().padLeft(2, '0')}:${selectedTime!.minute.toString().padLeft(2, '0')}'
+                            : '시간을 선택해주세요',
+                        style: TextStyle(
+                          color: selectedTime != null
+                              ? AppTheme.textPrimary
+                              : AppTheme.textDisabled,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // 장소
+                  const Text(
+                    '장소',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: venueController,
+                    decoration: InputDecoration(
+                      hintText: '장소명을 입력해주세요',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide:
+                            const BorderSide(color: Color(0xFF2A2A2A)),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 14),
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  // 버튼 영역
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(sheetContext),
+                          style: OutlinedButton.styleFrom(
+                            padding:
+                                const EdgeInsets.symmetric(vertical: 14),
+                            side:
+                                const BorderSide(color: Color(0xFF2A2A2A)),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: const Text('취소',
+                              style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF9CA3AF))),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: isSubmitting
+                              ? null
+                              : () async {
+                                  if (selectedDate == null ||
+                                      selectedTime == null ||
+                                      venueController.text.trim().isEmpty) {
+                                    AppToast.warning('날짜, 시간, 장소를 모두 입력해주세요.');
+                                    return;
+                                  }
+
+                                  setSheetState(() => isSubmitting = true);
+
+                                  try {
+                                    final repo =
+                                        ref.read(matchingRepositoryProvider);
+                                    final dateStr =
+                                        '${selectedDate!.year}-${selectedDate!.month.toString().padLeft(2, '0')}-${selectedDate!.day.toString().padLeft(2, '0')}';
+                                    final timeStr =
+                                        '${selectedTime!.hour.toString().padLeft(2, '0')}:${selectedTime!.minute.toString().padLeft(2, '0')}';
+
+                                    await repo.confirmMatch(
+                                      widget.matchId,
+                                      scheduledDate: dateStr,
+                                      scheduledTime: timeStr,
+                                      venueName: venueController.text.trim(),
+                                    );
+
+                                    if (sheetContext.mounted) {
+                                      Navigator.pop(sheetContext);
+                                    }
+
+                                    if (mounted) {
+                                      AppToast.success('경기가 확정되었습니다.');
+                                      ref.invalidate(matchDetailProvider(
+                                          widget.matchId));
+                                      ref.invalidate(matchListProvider(null));
+                                    }
+                                  } catch (e) {
+                                    setSheetState(
+                                        () => isSubmitting = false);
+                                    if (mounted) {
+                                      AppToast.error('경기 확정 실패: ${e.toString()}');
+                                    }
+                                  }
+                                },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primaryColor,
+                            foregroundColor: Colors.white,
+                            padding:
+                                const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                            elevation: 0,
+                          ),
+                          child: isSubmitting
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text('확정하기',
+                                  style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ],
-        ),
+          );
+        },
       ),
     ).then((_) => venueController.dispose());
   }
 
   Future<void> _cancelMatch(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showModalBottomSheet<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('매칭 취소'),
-        content: const Text('이 매칭을 취소하시겠습니까?\n취소 후에는 되돌릴 수 없습니다.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('아니오'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: AppTheme.errorColor),
-            child: const Text('취소하기'),
-          ),
-        ],
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: EdgeInsets.fromLTRB(
+            24, 20, 24, MediaQuery.of(ctx).padding.bottom + 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFF2A2A2A),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: AppTheme.errorColor.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.cancel_outlined,
+                  color: AppTheme.errorColor, size: 28),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '매칭 취소',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              '이 매칭을 취소하시겠습니까?\n취소 후에는 되돌릴 수 없습니다.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                color: Color(0xFF9CA3AF),
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 28),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      side: const BorderSide(color: Color(0xFF2A2A2A)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text('아니오',
+                        style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF9CA3AF))),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.errorColor,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      elevation: 0,
+                    ),
+                    child: const Text('취소하기',
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w700)),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
 
@@ -582,17 +1137,14 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
       await repo.cancelMatch(widget.matchId, reason: '사용자 취소');
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('매칭이 취소되었습니다.')),
-        );
+        AppToast.success('매칭이 취소되었습니다.');
+        ref.invalidate(matchListProvider(null));
         // 매칭 목록으로 이동하고 목록 갱신
         context.go('/matches');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('취소 실패: ${e.toString()}')),
-        );
+        AppToast.error('취소 실패: ${e.toString()}');
       }
       if (mounted) setState(() => _isCancelling = false);
     }
@@ -644,23 +1196,6 @@ class _VSHeader extends StatelessWidget {
                     color: Colors.white,
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    match.sportTypeDisplayName,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
                   ),
                 ),
               ],
@@ -735,17 +1270,14 @@ class _StatusBanner extends StatelessWidget {
         icon = Icons.hourglass_top_rounded;
         break;
       case 'CHAT':
-        color = AppTheme.primaryColor;
-        label = '채팅 진행 중';
-        icon = Icons.chat_bubble_rounded;
-        break;
+        return const SizedBox.shrink();
       case 'CONFIRMED':
         color = AppTheme.secondaryColor;
         label = '경기 확정됨';
         icon = Icons.check_circle_rounded;
         break;
       case 'COMPLETED':
-        color = const Color(0xFF6B7280);
+        color = const Color(0xFF9CA3AF);
         label = '경기 완료';
         icon = Icons.sports_score_rounded;
         break;
@@ -787,13 +1319,44 @@ class _MatchInfoCard extends StatelessWidget {
 
   const _MatchInfoCard({required this.match});
 
+  String _formatMatchDateTime(String? dateRaw, String? timeSlot) {
+    String datePart = '';
+    if (dateRaw != null) {
+      try {
+        final d = dateRaw.length >= 10 ? dateRaw.substring(0, 10) : dateRaw;
+        final parts = d.split('-');
+        if (parts.length == 3) {
+          final month = int.parse(parts[1]);
+          final day = int.parse(parts[2]);
+          final date = DateTime(int.parse(parts[0]), month, day);
+          final now = DateTime.now();
+          final today = DateTime(now.year, now.month, now.day);
+          final diff = date.difference(today).inDays;
+          final dayLabel = diff == 0 ? ' (오늘)' : diff == 1 ? ' (내일)' : '';
+          datePart = '${month}월 ${day}일$dayLabel';
+        }
+      } catch (_) {
+        datePart = dateRaw;
+      }
+    }
+    String timePart = '';
+    if (timeSlot != null && timeSlot != 'ANY') {
+      timePart = match.desiredTimeSlotDisplayName;
+    } else if (timeSlot == 'ANY') {
+      timePart = '하루종일';
+    }
+    if (datePart.isNotEmpty && timePart.isNotEmpty) return '$datePart · $timePart';
+    if (datePart.isNotEmpty) return datePart;
+    return timePart;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFF1E1E1E),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
@@ -810,26 +1373,42 @@ class _MatchInfoCard extends StatelessWidget {
             label: '종목',
             value: match.sportTypeDisplayName,
           ),
-          if (match.scheduledDate != null) ...[
+          if (match.pinName != null) ...[
+            const Divider(height: 20),
+            _InfoRow(
+              icon: Icons.location_on_rounded,
+              label: '핀',
+              value: match.pinName!,
+            ),
+          ],
+          if (match.desiredDate != null) ...[
             const Divider(height: 20),
             _InfoRow(
               icon: Icons.calendar_today_rounded,
-              label: '경기 날짜',
+              label: '경기 일시',
+              value: _formatMatchDateTime(match.desiredDate, match.desiredTimeSlot),
+            ),
+          ],
+          if (match.scheduledDate != null) ...[
+            const Divider(height: 20),
+            _InfoRow(
+              icon: Icons.event_available_rounded,
+              label: '확정 날짜',
               value: match.scheduledDate!,
             ),
           ],
           if (match.scheduledTime != null) ...[
             const Divider(height: 20),
             _InfoRow(
-              icon: Icons.access_time_rounded,
-              label: '경기 시간',
+              icon: Icons.schedule_rounded,
+              label: '확정 시간',
               value: match.scheduledTime!,
             ),
           ],
           if (match.venueName != null) ...[
             const Divider(height: 20),
             _InfoRow(
-              icon: Icons.location_on_rounded,
+              icon: Icons.place_rounded,
               label: '장소',
               value: match.venueName!,
             ),
@@ -856,7 +1435,7 @@ class _InfoRow extends StatelessWidget {
           width: 36,
           height: 36,
           decoration: BoxDecoration(
-            color: AppTheme.primaryColor.withOpacity(0.08),
+            color: AppTheme.primaryColor.withOpacity(0.18),
             shape: BoxShape.circle,
           ),
           child: Icon(icon, size: 18, color: AppTheme.primaryColor),

@@ -8,6 +8,7 @@ import '../../config/sports.dart';
 import '../../config/theme.dart';
 import '../../models/pin.dart';
 import '../../models/sports_profile.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../providers/profile_provider.dart';
 import '../../providers/pin_provider.dart';
@@ -15,9 +16,9 @@ import '../../providers/sport_preference_provider.dart';
 import '../../widgets/map/sport_marker.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/score_display.dart';
+import '../../widgets/common/fullscreen_image_viewer.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'dart:convert';
 
 /// 자주 가는 핀을 SharedPreferences에 영속 저장하는 프로바이더
@@ -52,7 +53,7 @@ class SelectedPinNotifier extends Notifier<Pin?> {
 }
 
 final selectedPinProvider =
-    NotifierProvider<SelectedPinNotifier, Pin?>(SelectedPinNotifier.new);
+NotifierProvider<SelectedPinNotifier, Pin?>(SelectedPinNotifier.new);
 
 /// 내 프로필 메인 화면 (PRD SCREEN-060)
 class ProfileScreen extends ConsumerWidget {
@@ -64,23 +65,11 @@ class ProfileScreen extends ConsumerWidget {
     final profilesAsync = ref.watch(sportsProfilesProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         title: const Text('내 프로필'),
-        backgroundColor: const Color(0xFFF8F9FA),
+        backgroundColor: const Color(0xFF0A0A0A),
         elevation: 0,
-        actions: [
-          IconButton(
-            onPressed: () => context.push('/profile/edit'),
-            icon: const Icon(Icons.edit_outlined),
-            tooltip: '프로필 수정',
-          ),
-          IconButton(
-            onPressed: () => context.push('/profile/settings'),
-            icon: const Icon(Icons.settings_outlined),
-            tooltip: '설정',
-          ),
-        ],
       ),
       body: userAsync.when(
         loading: () => const FullScreenLoading(),
@@ -89,7 +78,9 @@ class ProfileScreen extends ConsumerWidget {
         ),
         data: (user) {
           if (user == null) {
-            return const Center(child: Text('사용자 정보를 불러올 수 없습니다.'));
+            return _ErrorBody(
+              onRetry: () => ref.invalidate(userNotifierProvider),
+            );
           }
 
           final primaryProfile = user.primarySportsProfile;
@@ -111,12 +102,6 @@ class ProfileScreen extends ConsumerWidget {
                     isPlacement: primaryProfile?.isPlacement ?? false,
                     placementGamesRemaining: primaryProfile?.placementGamesRemaining,
                   ),
-
-                  const SizedBox(height: 16),
-
-                  // ─── 전적 요약 ───
-                  if (primaryProfile != null)
-                    _RecordSummary(profile: primaryProfile),
 
                   const SizedBox(height: 16),
 
@@ -158,12 +143,12 @@ class ProfileScreen extends ConsumerWidget {
   }
 }
 
-class _ErrorBody extends StatelessWidget {
+class _ErrorBody extends ConsumerWidget {
   final VoidCallback onRetry;
   const _ErrorBody({required this.onRetry});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -174,6 +159,17 @@ class _ErrorBody extends StatelessWidget {
           const Text('프로필을 불러올 수 없습니다.'),
           const SizedBox(height: 16),
           ElevatedButton(onPressed: onRetry, child: const Text('다시 시도')),
+          const SizedBox(height: 12),
+          TextButton(
+            onPressed: () async {
+              await ref.read(authStateProvider.notifier).logout();
+              if (context.mounted) context.go('/login');
+            },
+            child: const Text(
+              '로그아웃',
+              style: TextStyle(color: AppTheme.textSecondary),
+            ),
+          ),
         ],
       ),
     );
@@ -208,49 +204,67 @@ class _ProfileHeader extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [
             AppTheme.primaryColor.withOpacity(0.12),
-            AppTheme.primaryColor.withOpacity(0.04),
+            AppTheme.primaryColor.withOpacity(0.12),
           ],
         ),
       ),
       child: Column(
         children: [
-          // 아바타
-          Container(
-            width: 96,
-            height: 96,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: AppTheme.primaryColor, width: 3),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.primaryColor.withOpacity(0.2),
-                  blurRadius: 16,
-                  spreadRadius: 2,
-                ),
-              ],
-            ),
-            child: ClipOval(
-              child: profileImageUrl != null
-                  ? CachedNetworkImage(
-                      imageUrl: profileImageUrl!,
-                      fit: BoxFit.cover,
-                      placeholder: (_, __) => Container(
-                        color: AppTheme.primaryColor.withOpacity(0.1),
-                      ),
-                    )
-                  : Container(
-                      color: AppTheme.primaryColor.withOpacity(0.1),
-                      child: Center(
-                        child: Text(
-                          nickname.isNotEmpty ? nickname[0] : '?',
-                          style: const TextStyle(
-                            fontSize: 40,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.primaryColor,
-                          ),
+          // 아바타 (탭 시 풀스크린 뷰어)
+          GestureDetector(
+            onTap: profileImageUrl != null
+                ? () => showFullscreenImage(context, [profileImageUrl!])
+                : null,
+            child: Container(
+              width: 96,
+              height: 96,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: AppTheme.primaryColor, width: 3),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.primaryColor.withOpacity(0.2),
+                    blurRadius: 16,
+                    spreadRadius: 2,
+                  ),
+                ],
+              ),
+              child: ClipOval(
+                child: profileImageUrl != null
+                    ? CachedNetworkImage(
+                  imageUrl: profileImageUrl!,
+                  fit: BoxFit.cover,
+                  placeholder: (_, __) => Container(
+                    color: AppTheme.primaryColor.withOpacity(0.2),
+                  ),
+                  errorWidget: (_, __, ___) => Container(
+                    color: AppTheme.primaryColor.withOpacity(0.2),
+                    child: Center(
+                      child: Text(
+                        nickname.isNotEmpty ? nickname[0] : '?',
+                        style: const TextStyle(
+                          fontSize: 40,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.primaryColor,
                         ),
                       ),
                     ),
+                  ),
+                )
+                    : Container(
+                  color: AppTheme.primaryColor.withOpacity(0.2),
+                  child: Center(
+                    child: Text(
+                      nickname.isNotEmpty ? nickname[0] : '?',
+                      style: const TextStyle(
+                        fontSize: 40,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.primaryColor,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 18),
@@ -274,9 +288,9 @@ class _ProfileHeader extends StatelessWidget {
           else
             Container(
               padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
               decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withOpacity(0.1),
+                color: AppTheme.primaryColor.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: AppTheme.primaryColor.withOpacity(0.4)),
               ),
@@ -304,16 +318,11 @@ class _RecordSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final winRate = profile.gamesPlayed > 0
-        ? (profile.wins / profile.gamesPlayed * 100).toStringAsFixed(1)
-        : '0.0';
-    final draws = profile.gamesPlayed - profile.wins - profile.losses;
-
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFF1E1E1E),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
@@ -340,30 +349,6 @@ class _RecordSummary extends StatelessWidget {
               _StatBox(
                   label: '전체',
                   value: '${profile.gamesPlayed}'),
-              _StatDivider(),
-              _StatBox(
-                label: '승',
-                value: '${profile.wins}',
-                color: AppTheme.secondaryColor,
-              ),
-              _StatDivider(),
-              _StatBox(
-                label: '무',
-                value: '${draws > 0 ? draws : 0}',
-                color: AppTheme.textSecondary,
-              ),
-              _StatDivider(),
-              _StatBox(
-                label: '패',
-                value: '${profile.losses}',
-                color: AppTheme.errorColor,
-              ),
-              _StatDivider(),
-              _StatBox(
-                label: '승률',
-                value: '$winRate%',
-                color: AppTheme.primaryColor,
-              ),
             ],
           ),
         ],
@@ -412,7 +397,7 @@ class _StatDivider extends StatelessWidget {
     return Container(
       width: 1,
       height: 32,
-      color: const Color(0xFFE5E7EB),
+      color: const Color(0xFF2A2A2A),
     );
   }
 }
@@ -433,7 +418,7 @@ class _SportProfileSection extends StatelessWidget {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 24),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: const Color(0xFF1E1E1E),
             borderRadius: BorderRadius.circular(16),
           ),
           child: const Center(
@@ -451,73 +436,114 @@ class _SportProfileSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.only(bottom: 10),
-            child: Text(
-              '스포츠 프로필',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  '스포츠 프로필',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                ),
+                TextButton(
+                  onPressed: () => context.push('/profile/sports'),
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text(
+                    '관리',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AppTheme.primaryColor,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           ...profiles.map((p) {
-            return Container(
-              margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                border: Border(
-                  left: BorderSide(color: AppTheme.primaryColor, width: 3.5),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
+            return GestureDetector(
+              onTap: () => context.push('/profile/sports'),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E1E1E),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border(
+                    left: BorderSide(color: AppTheme.primaryColor, width: 3.5),
                   ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Icon(sportIcon(p.sportType), size: 28, color: AppTheme.primaryColor),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          sportLabel(p.sportType),
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Row(
-                          children: [
-                            ScoreText(
-                              score: p.displayScore ?? p.currentScore,
-                              isPlacement: p.isPlacement,
-                              placementGamesRemaining: p.placementGamesRemaining,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: AppTheme.textSecondary,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.04),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Icon(sportIcon(p.sportType), size: 28, color: AppTheme.primaryColor),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            sportLabel(p.sportType),
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
                             ),
-                            Text(
-                              ' · ${p.gamesPlayed}전 ${p.wins}승 ${p.losses}패',
-                              style: const TextStyle(
+                          ),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              ScoreText(
+                                score: p.displayScore ?? p.currentScore,
+                                isPlacement: p.isPlacement,
+                                placementGamesRemaining: p.placementGamesRemaining,
                                 fontSize: 12,
+                                fontWeight: FontWeight.w500,
                                 color: AppTheme.textSecondary,
                               ),
-                            ),
-                          ],
-                        ),
-                      ],
+                              Text(
+                                ' · ${p.gamesPlayed}경기',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppTheme.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             );
           }),
+          const SizedBox(height: 4),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => context.push('/profile/sports'),
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('종목 추가'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppTheme.primaryColor,
+                side: BorderSide(color: AppTheme.primaryColor.withValues(alpha: 0.5)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -568,27 +594,20 @@ class _ProfileMenu extends ConsumerWidget {
         subtitle: '문의 및 신고 접수',
         onTap: () => context.push('/profile/inquiry'),
       ),
+    ];
+
+    final accountItems = [
+      _MenuItem(
+        icon: Icons.edit_outlined,
+        label: '프로필 수정',
+        subtitle: '닉네임, 프로필 사진 변경',
+        onTap: () => context.push('/profile/edit'),
+      ),
       _MenuItem(
         icon: Icons.settings_outlined,
         label: '설정',
-        subtitle: '앱 환경 설정',
+        subtitle: '알림, 캐시, 로그아웃',
         onTap: () => context.push('/profile/settings'),
-      ),
-      _MenuItem(
-        icon: Icons.privacy_tip_outlined,
-        label: '개인정보 처리방침',
-        onTap: () => launchUrl(
-          Uri.parse('https://pins.kr/privacy.html'),
-          mode: LaunchMode.externalApplication,
-        ),
-      ),
-      _MenuItem(
-        icon: Icons.description_outlined,
-        label: '이용약관',
-        onTap: () => launchUrl(
-          Uri.parse('https://pins.kr/terms.html'),
-          mode: LaunchMode.externalApplication,
-        ),
       ),
     ];
 
@@ -603,6 +622,12 @@ class _ProfileMenu extends ConsumerWidget {
 
         // ─── 일반 메뉴 섹션 ───
         _MenuCard(items: generalItems),
+
+        const SizedBox(height: 12),
+
+        // ─── 계정 관리 섹션 ───
+        _SectionHeader(title: '계정'),
+        _MenuCard(items: accountItems),
       ],
     );
   }
@@ -672,7 +697,7 @@ class _MenuCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFF1E1E1E),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
@@ -692,7 +717,7 @@ class _MenuCard extends StatelessWidget {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: AppTheme.primaryColor.withOpacity(0.08),
+                    color: AppTheme.primaryColor.withOpacity(0.18),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(entry.value.icon,
@@ -707,12 +732,12 @@ class _MenuCard extends StatelessWidget {
                 ),
                 subtitle: entry.value.subtitle != null
                     ? Text(
-                        entry.value.subtitle!,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: AppTheme.textSecondary,
-                        ),
-                      )
+                  entry.value.subtitle!,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppTheme.textSecondary,
+                  ),
+                )
                     : null,
                 trailing: const Icon(
                   Icons.chevron_right,
@@ -847,10 +872,10 @@ class _PinMapSelectionPageState extends ConsumerState<_PinMapSelectionPage> {
     });
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         title: const Text('자주 가는 핀 선택'),
-        backgroundColor: Colors.white,
+        backgroundColor: const Color(0xFF0A0A0A),
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.close_rounded, size: 24),
@@ -895,7 +920,7 @@ class _PinMapSelectionPageState extends ConsumerState<_PinMapSelectionPage> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: const Color(0xFF1E1E1E),
                         borderRadius: BorderRadius.circular(8),
                         boxShadow: [
                           BoxShadow(
@@ -933,18 +958,18 @@ class _PinMapSelectionPageState extends ConsumerState<_PinMapSelectionPage> {
                   child: FloatingActionButton.small(
                     heroTag: 'pin_select_location_btn',
                     onPressed: _isLocating ? null : _initLocation,
-                    backgroundColor: Colors.white,
+                    backgroundColor: const Color(0xFF0A0A0A),
                     foregroundColor: AppTheme.primaryColor,
                     elevation: 4,
                     child: _isLocating
                         ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: AppTheme.primaryColor,
-                            ),
-                          )
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppTheme.primaryColor,
+                      ),
+                    )
                         : const Icon(Icons.my_location_rounded),
                   ),
                 ),
@@ -955,7 +980,7 @@ class _PinMapSelectionPageState extends ConsumerState<_PinMapSelectionPage> {
             padding: EdgeInsets.fromLTRB(
                 20, 16, 20, MediaQuery.of(context).padding.bottom + 16),
             decoration: const BoxDecoration(
-              color: Colors.white,
+              color: Color(0xFF1E1E1E),
               boxShadow: [
                 BoxShadow(
                   color: Color(0x15000000),
@@ -972,16 +997,16 @@ class _PinMapSelectionPageState extends ConsumerState<_PinMapSelectionPage> {
                   duration: const Duration(milliseconds: 200),
                   width: double.infinity,
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
                     color: _selectedPin != null
-                        ? AppTheme.primaryColor.withOpacity(0.06)
-                        : const Color(0xFFF8F9FA),
+                        ? AppTheme.primaryColor.withOpacity(0.15)
+                        : const Color(0xFF1E1E1E),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: _selectedPin != null
                           ? AppTheme.primaryColor.withOpacity(0.4)
-                          : const Color(0xFFE5E7EB),
+                          : const Color(0xFF2A2A2A),
                     ),
                   ),
                   child: Row(
@@ -1029,7 +1054,7 @@ class _PinMapSelectionPageState extends ConsumerState<_PinMapSelectionPage> {
                     onPressed: _selectedPin != null ? _confirm : null,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppTheme.primaryColor,
-                      disabledBackgroundColor: const Color(0xFFE5E7EB),
+                      disabledBackgroundColor: const Color(0xFF333333),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -1058,7 +1083,7 @@ class _SportSelectionSheet extends ConsumerWidget {
 
     return Container(
       decoration: const BoxDecoration(
-        color: Colors.white,
+        color: Color(0xFF1E1E1E),
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: SingleChildScrollView(
@@ -1072,7 +1097,7 @@ class _SportSelectionSheet extends ConsumerWidget {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: const Color(0xFFE5E7EB),
+                color: const Color(0xFF2A2A2A),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -1100,58 +1125,58 @@ class _SportSelectionSheet extends ConsumerWidget {
               mainAxisSpacing: 12,
               crossAxisSpacing: 12,
               childAspectRatio: 1.6,
-            children: allSports.map((sport) {
-              final isSelected = currentSport == sport.value;
-              return GestureDetector(
-                onTap: () async {
-                  await ref
-                      .read(sportPreferenceProvider.notifier)
-                      .select(sport.value);
-                  if (context.mounted) {
-                    Navigator.of(context).pop();
-                  }
-                },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? AppTheme.primaryColor.withOpacity(0.1)
-                        : const Color(0xFFF8F9FA),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
+              children: allSports.map((sport) {
+                final isSelected = currentSport == sport.value;
+                return GestureDetector(
+                  onTap: () async {
+                    await ref
+                        .read(sportPreferenceProvider.notifier)
+                        .select(sport.value);
+                    if (context.mounted) {
+                      Navigator.of(context).pop();
+                    }
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    decoration: BoxDecoration(
                       color: isSelected
-                          ? AppTheme.primaryColor
-                          : const Color(0xFFE5E7EB),
-                      width: isSelected ? 2 : 1,
-                    ),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        sport.icon,
-                        size: 28,
+                          ? AppTheme.primaryColor.withOpacity(0.2)
+                          : const Color(0xFF1E1E1E),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
                         color: isSelected
                             ? AppTheme.primaryColor
-                            : AppTheme.textSecondary,
+                            : const Color(0xFF2A2A2A),
+                        width: isSelected ? 2 : 1,
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        sport.label,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          sport.icon,
+                          size: 28,
                           color: isSelected
                               ? AppTheme.primaryColor
-                              : AppTheme.textPrimary,
+                              : AppTheme.textSecondary,
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 6),
+                        Text(
+                          sport.label,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: isSelected
+                                ? AppTheme.primaryColor
+                                : AppTheme.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              );
-            }).toList(),
-          ),
+                );
+              }).toList(),
+            ),
             SizedBox(height: MediaQuery.of(context).padding.bottom + 24),
           ],
         ),

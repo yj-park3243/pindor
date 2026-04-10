@@ -10,6 +10,7 @@ export const nearbyPinsQuerySchema = z.object({
 export const listPostsQuerySchema = z.object({
   category: z.nativeEnum(PostCategory).optional(),
   sportType: z.nativeEnum(SportType).optional(),
+  search: z.string().max(100).optional(),
   cursor: z.string().optional(),
   limit: z.coerce.number().min(1).max(50).default(20),
 });

@@ -6,26 +6,31 @@ import '../../config/theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/matching_provider.dart';
 import '../../providers/notice_provider.dart';
-import '../../providers/pin_provider.dart';
+import '../../providers/notification_provider.dart';
+import '../profile/profile_screen.dart' show selectedPinProvider;
 import '../../providers/sport_preference_provider.dart';
+import '../../models/match.dart';
 import '../../models/pin.dart';
 import '../../models/post.dart';
-import '../../models/sports_profile.dart';
+import '../../repositories/matching_repository.dart';
 import '../../repositories/pin_repository.dart';
 import '../../widgets/common/loading_indicator.dart';
-import '../../widgets/common/score_display.dart';
+import '../../widgets/common/user_avatar.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
-/// 사용자의 주 핀을 가져오는 임시 프로바이더.
-/// 서울 중심 좌표로 주변 핀을 조회해 첫 번째 결과를 반환한다.
-/// 추후 실제 사용자 핀 설정과 연동 예정.
-final userPrimaryPinProvider = FutureProvider.autoDispose<Pin?>((ref) async {
-  final pins = await ref.watch(nearbyPinsListProvider((
-    lat: 37.5665,
-    lng: 126.9780,
-    radius: 5.0,
-  )).future);
-  return pins.isNotEmpty ? pins.first : null;
+/// 최근 완료된 매칭 (최대 5개) 프로바이더
+final recentCompletedMatchesProvider =
+    FutureProvider.autoDispose<List<Match>>((ref) async {
+  final repo = ref.read(matchingRepositoryProvider);
+  final matches = await repo.getMyMatches(status: 'COMPLETED', limit: 5);
+  return matches;
+});
+
+/// 사용자의 자주 가는 핀 프로바이더.
+/// 마이페이지에서 설정한 selectedPinProvider를 참조한다.
+final userPrimaryPinProvider = Provider.autoDispose<AsyncValue<Pin?>>((ref) {
+  final pin = ref.watch(selectedPinProvider);
+  return AsyncValue.data(pin);
 });
 
 /// 사용자 핀의 최신 게시글 (최대 3개) 프로바이더
@@ -46,7 +51,7 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: _PindorAppBar(
         onNotificationTap: () => context.go(AppRoutes.notifications),
       ),
@@ -55,6 +60,7 @@ class HomeScreen extends ConsumerWidget {
           ref.invalidate(matchRequestProvider);
           ref.invalidate(pendingAcceptMatchesProvider);
           ref.invalidate(userPrimaryPinProvider);
+          ref.invalidate(recentCompletedMatchesProvider);
         },
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -136,6 +142,11 @@ class HomeScreen extends ConsumerWidget {
 
               const SizedBox(height: 22),
 
+              // ─── 최근 전적 ───
+              _RecentMatchHistory(),
+
+              const SizedBox(height: 22),
+
               // ─── 게시판 최신글 ───
               _PinBoardPreview(),
 
@@ -149,7 +160,7 @@ class HomeScreen extends ConsumerWidget {
 }
 
 /// 핀돌 앱바
-class _PindorAppBar extends StatelessWidget implements PreferredSizeWidget {
+class _PindorAppBar extends ConsumerWidget implements PreferredSizeWidget {
   final VoidCallback onNotificationTap;
 
   const _PindorAppBar({required this.onNotificationTap});
@@ -158,9 +169,11 @@ class _PindorAppBar extends StatelessWidget implements PreferredSizeWidget {
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final unreadCount = ref.watch(unreadNotificationCountProvider);
+
     return AppBar(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: const Color(0xFF0A0A0A),
       elevation: 0,
       titleSpacing: 20,
       title: const Text(
@@ -184,18 +197,19 @@ class _PindorAppBar extends StatelessWidget implements PreferredSizeWidget {
               ),
               onPressed: onNotificationTap,
             ),
-            Positioned(
-              top: 10,
-              right: 10,
-              child: Container(
-                width: 8,
-                height: 8,
-                decoration: const BoxDecoration(
-                  color: AppTheme.errorColor,
-                  shape: BoxShape.circle,
+            if (unreadCount > 0)
+              Positioned(
+                top: 10,
+                right: 10,
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(
+                    color: AppTheme.errorColor,
+                    shape: BoxShape.circle,
+                  ),
                 ),
               ),
-            ),
           ],
         ),
         const SizedBox(width: 4),
@@ -219,18 +233,18 @@ class _MyPinStatusCard extends ConsumerWidget {
         loading: () => Container(
           height: 110,
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: const Color(0xFF1E1E1E),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+            border: Border.all(color: const Color(0xFF2A2A2A), width: 1),
           ),
           child: const LoadingIndicator(),
         ),
         error: (_, __) => Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: const Color(0xFF1E1E1E),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+            border: Border.all(color: const Color(0xFF2A2A2A), width: 1),
           ),
           child: const Center(
             child: Text(
@@ -244,9 +258,9 @@ class _MyPinStatusCard extends ConsumerWidget {
             return Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: const Color(0xFF1E1E1E),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+                border: Border.all(color: const Color(0xFF2A2A2A), width: 1),
               ),
               child: const Center(
                 child: Text(
@@ -267,9 +281,9 @@ class _MyPinStatusCard extends ConsumerWidget {
           return Container(
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: const Color(0xFF1E1E1E),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+              border: Border.all(color: const Color(0xFF2A2A2A), width: 1),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.04),
@@ -331,15 +345,22 @@ class _MyPinStatusCard extends ConsumerWidget {
                       const VerticalDivider(
                         width: 24,
                         thickness: 1,
-                        color: Color(0xFFE5E7EB),
+                        color: Color(0xFF2A2A2A),
                       ),
-                      _ScoreStatItem(
-                        profile: profile,
+                      _StatItem(
+                        icon: Icons.star_rounded,
+                        iconColor: AppTheme.primaryColor,
+                        label: '점수',
+                        value: profile == null
+                            ? '-'
+                            : profile.isPlacement
+                                ? '배치중'
+                                : '${profile.displayScore ?? profile.currentScore}점',
                       ),
                       const VerticalDivider(
                         width: 24,
                         thickness: 1,
-                        color: Color(0xFFE5E7EB),
+                        color: Color(0xFF2A2A2A),
                       ),
                       _StatItem(
                         icon: Icons.people_rounded,
@@ -351,50 +372,37 @@ class _MyPinStatusCard extends ConsumerWidget {
                   ),
                 ),
 
-
                 const SizedBox(height: 14),
 
-                // 전적 + 게시판 버튼
+                // 태그/버튼 행: 배치중 | 게시판
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // 전적
-                    if (profile != null)
+                    const Spacer(),
+
+                    // 배치중 태그
+                    if (profile != null && profile.isPlacement) ...[
                       Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 5),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF3F4F6),
+                          color: Colors.orange.shade50,
                           borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.orange.shade200),
                         ),
                         child: Text(
-                          '${profile.gamesPlayed}전 ${profile.wins}승 ${profile.losses}패',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textSecondary,
-                          ),
-                        ),
-                      )
-                    else
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF3F4F6),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Text(
-                          '전적 없음',
+                          '배치 중 (${5 - (profile.placementGamesRemaining ?? 5)}/5)',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
-                            color: AppTheme.textDisabled,
+                            color: Colors.orange.shade700,
                           ),
                         ),
                       ),
+                      const Spacer(),
+                    ] else
+                      const Spacer(),
 
-                    // 게시판 이동 버튼
+                    // 게시판 버튼
                     GestureDetector(
                       onTap: () =>
                           context.go('/pins/${pin.id}/board'),
@@ -402,12 +410,12 @@ class _MyPinStatusCard extends ConsumerWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 5),
                         decoration: BoxDecoration(
-                          color: AppTheme.primaryColor.withOpacity(0.1),
+                          color: AppTheme.primaryColor.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: Row(
+                        child: const Row(
                           mainAxisSize: MainAxisSize.min,
-                          children: const [
+                          children: [
                             Text(
                               '게시판',
                               style: TextStyle(
@@ -495,51 +503,6 @@ class _StatItem extends StatelessWidget {
   }
 }
 
-/// 점수 통계 셀 — 배치 게임 여부에 따라 ScoreText 또는 "-" 표시
-class _ScoreStatItem extends StatelessWidget {
-  final SportsProfile? profile;
-
-  const _ScoreStatItem({required this.profile});
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Column(
-        children: [
-          const Icon(Icons.star_rounded, size: 18, color: AppTheme.primaryColor),
-          const SizedBox(height: 4),
-          if (profile == null)
-            const Text(
-              '-',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: AppTheme.textPrimary,
-              ),
-            )
-          else
-            ScoreText(
-              score: profile!.displayScore ?? profile!.currentScore,
-              isPlacement: profile!.isPlacement,
-              placementGamesRemaining: profile!.placementGamesRemaining,
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: AppTheme.textPrimary,
-            ),
-          const SizedBox(height: 2),
-          const Text(
-            '점수',
-            style: TextStyle(
-              fontSize: 11,
-              color: AppTheme.textSecondary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// 핀 게시판 최신글 미리보기
 /// 사용자 주 핀 + 선택 종목 기반으로 최신 게시글을 표시한다.
 class _PinBoardPreview extends ConsumerWidget {
@@ -585,9 +548,9 @@ class _PinBoardPreview extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFF1E1E1E),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+        border: Border.all(color: const Color(0xFF2A2A2A), width: 1),
       ),
       child: Center(
         child: Text(
@@ -619,9 +582,9 @@ class _PinPostsList extends ConsumerWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: const Color(0xFF1E1E1E),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+            border: Border.all(color: const Color(0xFF2A2A2A), width: 1),
           ),
           child: const Center(
             child: Text(
@@ -639,9 +602,9 @@ class _PinPostsList extends ConsumerWidget {
               padding:
                   const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: const Color(0xFF1E1E1E),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+                border: Border.all(color: const Color(0xFF2A2A2A), width: 1),
               ),
               child: const Center(
                 child: Text(
@@ -655,9 +618,9 @@ class _PinPostsList extends ConsumerWidget {
         return Container(
           margin: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: const Color(0xFF1E1E1E),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+            border: Border.all(color: const Color(0xFF2A2A2A), width: 1),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.03),
@@ -889,7 +852,7 @@ class _PreviewTile extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
               decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withOpacity(0.1),
+                color: AppTheme.primaryColor.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
@@ -944,5 +907,240 @@ class _PreviewTile extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// 최근 전적 섹션
+class _RecentMatchHistory extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final matchesAsync = ref.watch(recentCompletedMatchesProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                '최근 전적',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+              ),
+              GestureDetector(
+                onTap: () => context.go(
+                  AppRoutes.matchList,
+                  extra: {'initialTab': 1},
+                ),
+                child: const Text(
+                  '전체보기',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        matchesAsync.when(
+          loading: () => const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: SizedBox(height: 100, child: LoadingIndicator()),
+          ),
+          error: (_, __) => Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _emptyMatchBox('전적을 불러올 수 없습니다.'),
+          ),
+          data: (matches) {
+            if (matches.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _emptyMatchBox('최근 전적이 없습니다.'),
+              );
+            }
+            return Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E1E1E),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFF2A2A2A), width: 1),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.03),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  for (int i = 0; i < matches.length; i++) ...[
+                    if (i > 0) const Divider(height: 1, indent: 16),
+                    _MatchHistoryTile(match: matches[i]),
+                  ],
+                ],
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _emptyMatchBox(String message) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF2A2A2A), width: 1),
+      ),
+      child: Center(
+        child: Text(
+          message,
+          style: const TextStyle(color: AppTheme.textSecondary),
+        ),
+      ),
+    );
+  }
+}
+
+/// 최근 전적 개별 타일
+class _MatchHistoryTile extends StatelessWidget {
+  final Match match;
+
+  const _MatchHistoryTile({required this.match});
+
+  @override
+  Widget build(BuildContext context) {
+    final result = match.gameResult; // WIN | LOSS | DRAW | null
+    final isWin = result == 'WIN';
+    final isLoss = result == 'LOSS';
+    final isDraw = result == 'DRAW';
+
+    Color resultColor;
+    String resultText;
+    if (isWin) {
+      resultColor = const Color(0xFF2563EB);
+      resultText = '승';
+    } else if (isLoss) {
+      resultColor = const Color(0xFFDC2626);
+      resultText = '패';
+    } else if (isDraw) {
+      resultColor = const Color(0xFF9CA3AF);
+      resultText = '무';
+    } else {
+      resultColor = const Color(0xFF9CA3AF);
+      resultText = '-';
+    }
+
+    final dateStr = _formatDate(match.completedAt ?? match.createdAt);
+
+    return InkWell(
+      onTap: () => context.go('${AppRoutes.matchList}/${match.id}'),
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            // 승/패/무 뱃지
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: resultColor.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                resultText,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: resultColor,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            // 상대 아바타
+            UserAvatar(
+              imageUrl: match.opponent.profileImageUrl,
+              size: 36,
+              nickname: match.opponent.nickname,
+            ),
+            const SizedBox(width: 10),
+            // 상대 닉네임 + 종목/날짜
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          match.opponent.nickname,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (match.isCasual) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade50,
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: Colors.orange.shade200),
+                          ),
+                          child: Text(
+                            '친선',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.orange.shade700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${match.sportTypeDisplayName} · $dateStr',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.arrow_forward_ios,
+              size: 12,
+              color: AppTheme.textDisabled,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final target = DateTime(date.year, date.month, date.day);
+    final diff = today.difference(target).inDays;
+    if (diff == 0) return '오늘';
+    if (diff == 1) return '어제';
+    if (diff < 7) return '$diff일 전';
+    return '${date.month}/${date.day}';
   }
 }

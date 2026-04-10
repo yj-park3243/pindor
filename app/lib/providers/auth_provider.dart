@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import '../core/network/api_client.dart';
 import '../core/network/socket_service.dart';
 import '../core/storage/secure_storage.dart';
@@ -139,6 +140,74 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
       final response = await _api.post(
         '/auth/google',
         body: {'idToken': idToken},
+      );
+
+      final data = response['data'] as Map<String, dynamic>;
+      final accessToken = data['accessToken'] as String;
+      final refreshToken = data['refreshToken'] as String;
+      final userData = data['user'] as Map<String, dynamic>;
+      final isNewUser = userData['isNewUser'] as bool? ?? false;
+
+      // 토큰 저장
+      await _storage.saveTokens(
+        accessToken: accessToken,
+        refreshToken: refreshToken,
+        userId: userData['id'] as String,
+      );
+
+      // 소켓 연결
+      _socket.connect(accessToken);
+
+      // 사용자 정보 불러오기 → 로컬 DB에도 저장
+      User user;
+      if (!isNewUser) {
+        final repo = ref.read(userRepositoryProvider);
+        user = (await repo.getMe())!;
+      } else {
+        user = User(
+          id: userData['id'] as String,
+          nickname: userData['nickname'] as String? ?? '',
+          status: 'ACTIVE',
+          createdAt: DateTime.now(),
+        );
+      }
+
+      return AuthState(
+        isAuthenticated: true,
+        user: user,
+        isNewUser: isNewUser,
+      );
+    });
+  }
+
+  /// Apple 로그인
+  Future<void> loginWithApple() async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      final credential = await SignInWithApple.getAppleIDCredential(
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+      );
+
+      final identityToken = credential.identityToken;
+      final authorizationCode = credential.authorizationCode;
+      if (identityToken == null) throw Exception('Apple Identity Token을 받지 못했습니다');
+
+      final fullName = [
+        credential.givenName,
+        credential.familyName,
+      ].where((s) => s != null && s.isNotEmpty).join(' ');
+
+      final response = await _api.post(
+        '/auth/apple',
+        body: {
+          'identityToken': identityToken,
+          'authorizationCode': authorizationCode,
+          if (credential.email != null) 'email': credential.email,
+          if (fullName.isNotEmpty) 'fullName': fullName,
+        },
       );
 
       final data = response['data'] as Map<String, dynamic>;

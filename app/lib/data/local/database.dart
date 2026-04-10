@@ -31,7 +31,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -44,7 +44,17 @@ class AppDatabase extends _$AppDatabase {
           );
         },
         onUpgrade: (m, from, to) async {
-          // 향후 스키마 버전업 시 마이그레이션 로직 추가
+          // v1 → v2: messages 테이블에 read_at 컬럼 추가
+          if (from < 2) {
+            await customStatement(
+              'ALTER TABLE messages ADD COLUMN read_at INTEGER',
+            );
+          }
+          if (from < 3) {
+            await customStatement(
+              'ALTER TABLE messages ADD COLUMN extra_data TEXT',
+            );
+          }
         },
       );
 

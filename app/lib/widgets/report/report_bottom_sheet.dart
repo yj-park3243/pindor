@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../config/theme.dart';
 import '../../repositories/support_repository.dart';
+import '../common/app_toast.dart';
 
 /// 신고 사유 목록
 const _reportReasons = [
@@ -55,9 +56,7 @@ class _ReportBottomSheetState extends ConsumerState<ReportBottomSheet> {
 
   Future<void> _submit() async {
     if (_selectedReason == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('신고 사유를 선택해주세요.')),
-      );
+      AppToast.warning('신고 사유를 선택해주세요.');
       return;
     }
 
@@ -74,18 +73,11 @@ class _ReportBottomSheetState extends ConsumerState<ReportBottomSheet> {
 
       if (mounted) {
         Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('신고가 접수되었습니다. 검토 후 처리됩니다.'),
-            backgroundColor: AppTheme.secondaryColor,
-          ),
-        );
+        AppToast.success('신고가 접수되었습니다. 검토 후 처리됩니다.');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('신고 접수에 실패했습니다: $e')),
-        );
+        AppToast.error('신고 접수에 실패했습니다: $e');
       }
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
@@ -98,7 +90,7 @@ class _ReportBottomSheetState extends ConsumerState<ReportBottomSheet> {
 
     return Container(
       decoration: const BoxDecoration(
-        color: Colors.white,
+        color: Color(0xFF1E1E1E),
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       padding: EdgeInsets.fromLTRB(20, 0, 20, bottomPadding + 20),
@@ -113,7 +105,7 @@ class _ReportBottomSheetState extends ConsumerState<ReportBottomSheet> {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: const Color(0xFFE5E7EB),
+                color: const Color(0xFF2A2A2A),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),

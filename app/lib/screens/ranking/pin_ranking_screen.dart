@@ -22,14 +22,14 @@ class PinRankingScreen extends ConsumerWidget {
     final currentUser = ref.watch(currentUserProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         title: rankingAsync.when(
           data: (data) => Text(data.pin.name),
           loading: () => const Text('랭킹'),
           error: (_, __) => const Text('랭킹'),
         ),
-        backgroundColor: const Color(0xFFF8F9FA),
+        backgroundColor: const Color(0xFF0A0A0A),
         elevation: 0,
       ),
       body: rankingAsync.when(
@@ -69,7 +69,7 @@ class PinRankingScreen extends ConsumerWidget {
                   Container(
                     margin: const EdgeInsets.symmetric(horizontal: 16),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: const Color(0xFF1E1E1E),
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
@@ -291,13 +291,13 @@ class _MyRankCard extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFF1E1E1E),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
             color: AppTheme.primaryColor.withOpacity(0.3), width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: AppTheme.primaryColor.withOpacity(0.08),
+            color: AppTheme.primaryColor.withOpacity(0.18),
             blurRadius: 10,
             offset: const Offset(0, 3),
           ),
@@ -309,7 +309,7 @@ class _MyRankCard extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withOpacity(0.1),
+              color: AppTheme.primaryColor.withOpacity(0.2),
               shape: BoxShape.circle,
             ),
             child: const Icon(
@@ -339,7 +339,7 @@ class _MyRankCard extends StatelessWidget {
           Container(
             width: 1,
             height: 32,
-            color: const Color(0xFFE5E7EB),
+            color: const Color(0xFF2A2A2A),
           ),
           const SizedBox(width: 16),
           Column(

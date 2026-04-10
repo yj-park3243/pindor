@@ -16,6 +16,10 @@ module.exports = {
       out_file: 'logs/api-out.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
       merge_logs: true,
+      // 무중단 배포 설정
+      listen_timeout: 5000,    // 새 프로세스 ready 대기 (5초)
+      kill_timeout: 5000,      // 기존 프로세스 graceful shutdown 대기 (5초)
+      wait_ready: false,       // listen 이벤트 대기 (process.send('ready') 불필요)
       // 재시작 정책
       max_restarts: 10,
       restart_delay: 1000,

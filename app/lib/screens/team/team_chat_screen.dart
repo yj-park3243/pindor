@@ -10,6 +10,7 @@ import '../../widgets/chat/message_bubble.dart';
 import '../../widgets/chat/chat_input_bar.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/error_view.dart';
+import '../../widgets/common/app_toast.dart';
 
 /// 팀 단체 채팅 화면
 /// chat_room_screen.dart 스타일과 동일하게 구현
@@ -59,9 +60,7 @@ class _TeamChatScreenState extends ConsumerState<TeamChatScreen> {
           .sendImageMessage(url);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('이미지 전송 실패')),
-        );
+        AppToast.error('이미지 전송 실패');
       }
     }
   }
@@ -148,7 +147,7 @@ class _TeamChatScreenState extends ConsumerState<TeamChatScreen> {
                   .sendTextMessage(text);
               _scrollToBottom();
             },
-            onSendImage: _sendImage,
+            onPlusPressed: _sendImage,
           ),
         ],
       ),
@@ -156,33 +155,104 @@ class _TeamChatScreenState extends ConsumerState<TeamChatScreen> {
   }
 
   void _showReportDialog() {
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('신고'),
-        content: Column(
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: EdgeInsets.fromLTRB(
+            24, 20, 24, MediaQuery.of(ctx).padding.bottom + 20),
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
-              title: const Text('욕설/혐오 발언'),
-              onTap: () => Navigator.pop(context),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFF2A2A2A),
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-            ListTile(
-              title: const Text('사기/허위 정보'),
-              onTap: () => Navigator.pop(context),
+            const SizedBox(height: 20),
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.report_outlined,
+                  color: Colors.red, size: 28),
             ),
-            ListTile(
-              title: const Text('스팸/광고'),
-              onTap: () => Navigator.pop(context),
+            const SizedBox(height: 16),
+            const Text(
+              '신고',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              '신고 유형을 선택해주세요.',
+              style: TextStyle(
+                fontSize: 13,
+                color: Color(0xFF9CA3AF),
+              ),
+            ),
+            const SizedBox(height: 20),
+            _buildReportOption(ctx, '욕설/혐오 발언'),
+            const SizedBox(height: 8),
+            _buildReportOption(ctx, '사기/허위 정보'),
+            const SizedBox(height: 8),
+            _buildReportOption(ctx, '스팸/광고'),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: () => Navigator.pop(ctx),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  side: const BorderSide(color: Color(0xFF2A2A2A)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Text('취소',
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF9CA3AF))),
+              ),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('취소'),
+      ),
+    );
+  }
+
+  Widget _buildReportOption(BuildContext ctx, String label) {
+    return GestureDetector(
+      onTap: () => Navigator.pop(ctx),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: const Color(0xFF2A2A2A),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFF2A2A2A)),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: Colors.white,
           ),
-        ],
+        ),
       ),
     );
   }

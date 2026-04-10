@@ -12,7 +12,7 @@ import {
   type UpdatePostDto,
   type CreateCommentDto,
 } from './pins.schema.js';
-import { requirePinParticipation } from '../../shared/middleware/pin-board-access.js';
+import { likeRateLimitConfig } from '../../shared/middleware/rate-limit.js';
 
 export async function pinsRoutes(fastify: FastifyInstance): Promise<void> {
   const pinsService = new PinsService();
@@ -144,7 +144,7 @@ export async function pinsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/pins/:pinId/posts',
     {
-      onRequest: [fastify.authenticate, requirePinParticipation],
+      onRequest: [fastify.authenticate],
       schema: {
         tags: ['Pins'],
         summary: '게시글 작성',
@@ -261,7 +261,7 @@ export async function pinsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/pins/:pinId/posts/:postId/comments',
     {
-      onRequest: [fastify.authenticate, requirePinParticipation],
+      onRequest: [fastify.authenticate],
       schema: {
         tags: ['Pins'],
         summary: '댓글 작성',
@@ -326,11 +326,45 @@ export async function pinsRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
+  // ─── DELETE /pins/:pinId/posts/:postId/comments/:commentId ───
+  fastify.delete(
+    '/pins/:pinId/posts/:postId/comments/:commentId',
+    {
+      onRequest: [fastify.authenticate],
+      schema: {
+        tags: ['Pins'],
+        summary: '댓글 삭제 (소프트 삭제)',
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: 'object',
+          properties: {
+            pinId: { type: 'string', format: 'uuid' },
+            postId: { type: 'string', format: 'uuid' },
+            commentId: { type: 'string', format: 'uuid' },
+          },
+        },
+      },
+    },
+    async (
+      request: FastifyRequest<{ Params: { pinId: string; postId: string; commentId: string } }>,
+      reply: FastifyReply,
+    ) => {
+      await pinsService.softDeleteComment(
+        request.params.pinId,
+        request.params.postId,
+        request.params.commentId,
+        request.user.userId,
+      );
+      return reply.send({ success: true, data: { message: '댓글이 삭제되었습니다.' } });
+    },
+  );
+
   // ─── POST /pins/:pinId/posts/:postId/like ───
   fastify.post(
     '/pins/:pinId/posts/:postId/like',
     {
-      onRequest: [fastify.authenticate, requirePinParticipation],
+      onRequest: [fastify.authenticate],
+      ...likeRateLimitConfig,
       schema: {
         tags: ['Pins'],
         summary: '게시글 좋아요 토글',

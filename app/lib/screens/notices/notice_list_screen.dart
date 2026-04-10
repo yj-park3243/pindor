@@ -17,10 +17,10 @@ class NoticeListScreen extends ConsumerWidget {
     final noticesAsync = ref.watch(noticeListProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         title: const Text('공지사항'),
-        backgroundColor: const Color(0xFFF8F9FA),
+        backgroundColor: const Color(0xFF0A0A0A),
         elevation: 0,
       ),
       body: noticesAsync.when(

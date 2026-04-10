@@ -5,10 +5,12 @@ class Message {
   final String senderId;
   final String senderNickname;
   final String? senderProfileImageUrl;
-  final String messageType; // TEXT | IMAGE | SYSTEM
+  final String messageType; // TEXT | IMAGE | SYSTEM | LOCATION
   final String content;
   final String? imageUrl;
+  final Map<String, dynamic>? extraData;
   final bool isRead;
+  final DateTime? readAt;
   final DateTime createdAt;
 
   const Message({
@@ -20,7 +22,9 @@ class Message {
     required this.messageType,
     required this.content,
     this.imageUrl,
+    this.extraData,
     required this.isRead,
+    this.readAt,
     required this.createdAt,
   });
 
@@ -37,7 +41,13 @@ class Message {
       messageType: json['messageType'] as String? ?? 'TEXT',
       content: json['content'] as String? ?? '',
       imageUrl: json['imageUrl'] as String?,
+      extraData: json['extraData'] != null
+          ? Map<String, dynamic>.from(json['extraData'] as Map)
+          : null,
       isRead: json['isRead'] as bool? ?? false,
+      readAt: json['readAt'] != null
+          ? DateTime.parse(json['readAt'] as String)
+          : null,
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'] as String)
           : DateTime.now(),
@@ -53,13 +63,52 @@ class Message {
         'messageType': messageType,
         'content': content,
         'imageUrl': imageUrl,
+        'extraData': extraData,
         'isRead': isRead,
+        'readAt': readAt?.toIso8601String(),
         'createdAt': createdAt.toIso8601String(),
       };
+
+  /// readAt 필드를 업데이트한 복사본 반환
+  Message copyWithReadAt(DateTime readAt) {
+    return Message(
+      id: id,
+      chatRoomId: chatRoomId,
+      senderId: senderId,
+      senderNickname: senderNickname,
+      senderProfileImageUrl: senderProfileImageUrl,
+      messageType: messageType,
+      content: content,
+      imageUrl: imageUrl,
+      extraData: extraData,
+      isRead: true,
+      readAt: readAt,
+      createdAt: createdAt,
+    );
+  }
 
   bool get isText => messageType == 'TEXT';
   bool get isImage => messageType == 'IMAGE';
   bool get isSystem => messageType == 'SYSTEM';
+  bool get isLocation => messageType == 'LOCATION';
+
+  /// 위치 메시지 데이터 파싱
+  LocationData? get locationData {
+    if (!isLocation || extraData == null) return null;
+    try {
+      final lat = (extraData!['latitude'] as num?)?.toDouble();
+      final lng = (extraData!['longitude'] as num?)?.toDouble();
+      if (lat == null || lng == null) return null;
+      return LocationData(
+        latitude: lat,
+        longitude: lng,
+        address: extraData!['address'] as String?,
+        placeName: extraData!['placeName'] as String?,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
 
   /// 소켓 수신 메시지로부터 생성
   factory Message.fromSocketData(Map<String, dynamic> data) {
@@ -73,10 +122,31 @@ class Message {
       messageType: data['messageType'] as String? ?? 'TEXT',
       content: data['content'] as String? ?? '',
       imageUrl: data['imageUrl'] as String?,
-      isRead: false,
+      extraData: data['extraData'] != null
+          ? Map<String, dynamic>.from(data['extraData'] as Map)
+          : null,
+      isRead: data['readAt'] != null,
+      readAt: data['readAt'] != null
+          ? DateTime.parse(data['readAt'] as String)
+          : null,
       createdAt: data['createdAt'] != null
           ? DateTime.parse(data['createdAt'] as String)
           : DateTime.now(),
     );
   }
+}
+
+/// 위치 메시지 데이터 클래스
+class LocationData {
+  final double latitude;
+  final double longitude;
+  final String? address;
+  final String? placeName;
+
+  const LocationData({
+    required this.latitude,
+    required this.longitude,
+    this.address,
+    this.placeName,
+  });
 }

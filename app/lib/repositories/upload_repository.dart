@@ -83,11 +83,34 @@ class UploadRepository {
       fileSize: size,
     );
 
-    return uploadToS3(
+    await uploadToS3(
       presignedUrl: presignedResult.uploadUrl,
       filePath: filePath,
       contentType: ct,
     );
+
+    return presignedResult.fileUrl;
+  }
+
+  /// 채팅 이미지 업로드 편의 메서드
+  Future<String> uploadChatImage(String filePath) async {
+    final file = File(filePath);
+    final size = await file.length();
+    final ct = _contentType(filePath);
+
+    final presignedResult = await getPresignedUrl(
+      fileType: 'CHAT_IMAGE',
+      contentType: ct,
+      fileSize: size,
+    );
+
+    await uploadToS3(
+      presignedUrl: presignedResult.uploadUrl,
+      filePath: filePath,
+      contentType: ct,
+    );
+
+    return presignedResult.fileUrl;
   }
 
   /// 게시글 이미지 업로드 편의 메서드
@@ -102,11 +125,13 @@ class UploadRepository {
       fileSize: size,
     );
 
-    return uploadToS3(
+    await uploadToS3(
       presignedUrl: presignedResult.uploadUrl,
       filePath: filePath,
       contentType: ct,
     );
+
+    return presignedResult.fileUrl;
   }
 
   /// 경기 증빙 사진 업로드
@@ -122,11 +147,13 @@ class UploadRepository {
         fileSize: size,
       );
 
-      return uploadToS3(
+      await uploadToS3(
         presignedUrl: presignedResult.uploadUrl,
         filePath: path,
         contentType: ct,
       );
+
+      return presignedResult.fileUrl;
     });
 
     return Future.wait(futures);

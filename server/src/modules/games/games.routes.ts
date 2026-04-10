@@ -108,6 +108,37 @@ export async function gamesRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
+  // ─── POST /games/:gameId/proofs ───
+  fastify.post(
+    '/games/:gameId/proofs',
+    {
+      onRequest: [fastify.authenticate],
+      schema: {
+        tags: ['Games'],
+        summary: '증빙 사진 업로드',
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: 'object',
+          properties: { gameId: { type: 'string', format: 'uuid' } },
+        },
+      },
+    },
+    async (
+      request: FastifyRequest<{
+        Params: { gameId: string };
+        Body: { imageUrls: string[] };
+      }>,
+      reply: FastifyReply,
+    ) => {
+      const { imageUrls } = request.body as { imageUrls: string[] };
+      if (!imageUrls || !Array.isArray(imageUrls) || imageUrls.length === 0) {
+        return reply.status(400).send({ success: false, error: { code: 'COMMON_001', message: 'imageUrls가 필요합니다.' } });
+      }
+      await gamesService.addProofImages(request.user.userId, request.params.gameId, imageUrls);
+      return reply.send({ success: true });
+    },
+  );
+
   // ─── GET /games/:id ───
   fastify.get(
     '/games/:id',

@@ -211,7 +211,7 @@ async function handleDelayedMatch(
           opponentNickname: (opponentProfile.user as any).nickname,
           opponentGender: (opponentProfile.user as any).gender ?? '',
           opponentAge: opponentAge !== null ? String(opponentAge) : '',
-          deepLink: `/match/${savedMatch.id}/accept`,
+          deepLink: `/matches/${savedMatch.id}/accept`,
         },
       }),
     );
@@ -228,7 +228,7 @@ async function handleDelayedMatch(
           opponentNickname: (requesterProfile.user as any).nickname,
           opponentGender: (requesterProfile.user as any).gender ?? '',
           opponentAge: requesterAge !== null ? String(requesterAge) : '',
-          deepLink: `/match/${savedMatch.id}/accept`,
+          deepLink: `/matches/${savedMatch.id}/accept`,
         },
       }),
     );
@@ -257,7 +257,6 @@ async function handleAcceptTimeout(
   // 매칭이 아직 PENDING_ACCEPT인지 확인
   const match = await matchRepo.findOne({
     where: { id: matchId },
-    relations: { acceptances: true } as any,
   });
 
   if (!match || (match.status as string) !== 'PENDING_ACCEPT') {
@@ -265,7 +264,10 @@ async function handleAcceptTimeout(
     return;
   }
 
-  const acceptances = (match as any).acceptances ?? [];
+  // acceptances 별도 조회 (Match 엔티티에 relation 없음)
+  const acceptances = await matchAcceptanceRepo.find({
+    where: { matchId },
+  });
 
   // expiresAt이 지난 MatchAcceptance 중 accepted=null인 것 찾기
   const now = new Date();

@@ -131,7 +131,7 @@ class _EmptyTeamView extends StatelessWidget {
               width: 100,
               height: 100,
               decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withOpacity(0.08),
+                color: AppTheme.primaryColor.withOpacity(0.18),
                 shape: BoxShape.circle,
               ),
               child: const Icon(

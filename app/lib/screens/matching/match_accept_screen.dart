@@ -7,8 +7,12 @@ import '../../config/theme.dart';
 import '../../models/match.dart';
 import '../../providers/matching_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../repositories/matching_repository.dart';
+import '../../widgets/common/app_toast.dart';
+import '../../widgets/common/loading_indicator.dart';
 
 /// 매칭 수락 화면 (PENDING_ACCEPT 상태)
+/// - 서버에서 직접 매칭 데이터를 가져옴 (SWR 로컬 캐시 우회)
 /// - 10분 카운트다운 타이머 (서버의 expiresAt 기준)
 /// - 수락 → 상대 응답 대기
 /// - 양측 수락 시 채팅 화면으로 자동 이동
@@ -29,15 +33,18 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
   bool _hasAccepted = false; // 내가 수락 버튼을 눌렀는지
   bool _timerStarted = false;
 
+  // 서버에서 직접 가져온 매칭 데이터 (SWR 우회)
+  Match? _match;
+  bool _isLoading = true;
+  String? _loadError;
+
   // 총 타이머 시간 — 10분 기준 (요구사항)
   static const Duration _totalDuration = Duration(minutes: 10);
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadMatchAndStartTimer();
-    });
+    _fetchMatchFromServer();
   }
 
   @override
@@ -46,11 +53,48 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
     super.dispose();
   }
 
-  Future<void> _loadMatchAndStartTimer() async {
-    final matchAsync = ref.read(matchDetailProvider(widget.matchId));
-    matchAsync.whenData((match) {
+  /// 서버에서 직접 매칭 데이터 가져오기 (SWR 로컬 캐시 우회)
+  Future<void> _fetchMatchFromServer() async {
+    try {
+      final repo = ref.read(matchingRepositoryProvider);
+      final match = await repo.getMatchDetail(widget.matchId);
+      if (!mounted) return;
+
+      // 이미 수락했거나, PENDING_ACCEPT이 아니거나, 만료됐으면 → 매칭 목록으로
+      final alreadyAccepted = match.acceptances?.any((a) => a.accepted == true) ?? false;
+      final isExpired = match.acceptances?.any((a) =>
+          a.expiresAt != null && a.expiresAt!.isBefore(DateTime.now())) ?? false;
+
+      if (alreadyAccepted || !match.isPendingAccept || isExpired) {
+        ref.invalidate(matchListProvider(null));
+        context.go(AppRoutes.matchList);
+        return;
+      }
+
+      setState(() {
+        _match = match;
+        _isLoading = false;
+      });
       _startCountdown(match);
-    });
+    } catch (e) {
+      debugPrint('[MatchAccept] Server fetch failed: $e');
+      if (!mounted) return;
+      final is404 = e.toString().contains('MATCH_002') ||
+          e.toString().contains('404') ||
+          e.toString().contains('찾을 수 없');
+      if (is404) {
+        // 매칭 없음 (만료/삭제) → 캐시 정리 후 목록 이동
+        ref.read(matchingRepositoryProvider).clearLocalCache();
+        ref.invalidate(matchListProvider(null));
+        context.go(AppRoutes.matchList);
+      } else {
+        // 서버 에러 (500 등) → 에러 화면 표시, 재시도 가능
+        setState(() {
+          _isLoading = false;
+          _loadError = e.toString();
+        });
+      }
+    }
   }
 
   void _startCountdown(Match match) {
@@ -67,7 +111,11 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
           .firstOrNull;
       expiresAt = myAcceptance?.expiresAt ?? match.acceptances!.first.expiresAt;
     }
-    expiresAt ??= DateTime.now().add(_totalDuration);
+    // fallback: 서버 expiresAt이 없으면 매칭 생성 시각 + 10분 (로컬 타이머 생성 방지)
+    if (expiresAt == null) {
+      expiresAt = match.createdAt.add(_totalDuration);
+      debugPrint('[Timer] expiresAt not found from server, using fallback: $expiresAt');
+    }
 
     _countdownTimer?.cancel();
     _updateRemaining(expiresAt);
@@ -105,13 +153,25 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
 
   Future<void> _onAccept() async {
     final notifier = ref.read(matchAcceptProvider(widget.matchId).notifier);
-    final match = await notifier.acceptMatch();
+    final success = await notifier.acceptMatch();
     if (!mounted) return;
 
-    if (match != null) {
-      setState(() => _hasAccepted = true);
-      // 폴링 시작 — 상대가 수락하면 채팅 화면으로 이동
-      notifier.startPolling();
+    if (success) {
+      final acceptState = ref.read(matchAcceptProvider(widget.matchId));
+      if (acceptState.acceptStatus == 'MATCHED') {
+        // 양측 수락 완료 → chatRoomId가 있으면 채팅방으로, 없으면 매칭 목록으로 이동
+        ref.invalidate(matchListProvider(null));
+        final chatRoomId = acceptState.chatRoomId;
+        if (chatRoomId != null && mounted) {
+          context.go('${AppRoutes.chatList}/$chatRoomId');
+        } else if (mounted) {
+          context.go(AppRoutes.matchList);
+        }
+      } else {
+        // 상대 응답 대기 → 매칭 진행중 목록으로 이동
+        ref.invalidate(matchListProvider(null));
+        context.go(AppRoutes.matchList);
+      }
     } else {
       final error = ref.read(matchAcceptProvider(widget.matchId)).error ?? '';
       _showToast('오류: $error');
@@ -120,22 +180,97 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
 
   Future<void> _onReject() async {
     // 거절 재확인 다이얼로그
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showModalBottomSheet<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('매칭 거절'),
-        content: const Text('거절하면 -15점 패널티가 적용됩니다.\n정말 거절하시겠습니까?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('취소'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(foregroundColor: AppTheme.errorColor),
-            child: const Text('거절하기'),
-          ),
-        ],
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: EdgeInsets.fromLTRB(
+            24, 20, 24, MediaQuery.of(ctx).padding.bottom + 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFF2A2A2A),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: AppTheme.errorColor.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.thumb_down_outlined,
+                  color: AppTheme.errorColor, size: 28),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '매칭 거절',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              '거절하면 -15점 패널티가 적용됩니다.\n정말 거절하시겠습니까?',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                color: Color(0xFF9CA3AF),
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 28),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      side: const BorderSide(color: Color(0xFF2A2A2A)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text('취소',
+                        style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF9CA3AF))),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.errorColor,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      elevation: 0,
+                    ),
+                    child: const Text('거절하기',
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w700)),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
 
@@ -155,136 +290,312 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
     }
   }
 
+  /// 날짜 문자열 포맷 (ISO → "4월 10일 (오늘)" 형태)
+  String _formatDate(String? raw) {
+    if (raw == null) return '';
+    try {
+      // "2026-04-10" 또는 "2026-04-10T00:00:00.000Z" → 날짜만 파싱
+      final dateStr = raw.length >= 10 ? raw.substring(0, 10) : raw;
+      final parts = dateStr.split('-');
+      if (parts.length != 3) return dateStr;
+      final year = int.parse(parts[0]);
+      final month = int.parse(parts[1]);
+      final day = int.parse(parts[2]);
+      final date = DateTime(year, month, day);
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final tomorrow = today.add(const Duration(days: 1));
+      String suffix = '';
+      if (date == today) {
+        suffix = ' (오늘)';
+      } else if (date == tomorrow) {
+        suffix = ' (내일)';
+      }
+      return '${month}월 ${day}일$suffix';
+    } catch (_) {
+      return raw;
+    }
+  }
+
   void _showToast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    AppToast.info(message);
   }
 
   @override
   Widget build(BuildContext context) {
     final acceptState = ref.watch(matchAcceptProvider(widget.matchId));
-    final matchAsync = ref.watch(matchDetailProvider(widget.matchId));
 
     // 수락 후 상태 변경 감지 (CHAT으로 전환 시 채팅 이동)
     ref.listen<MatchAcceptState>(
       matchAcceptProvider(widget.matchId),
       (prev, next) {
-        if (next.updatedMatch != null &&
-            next.updatedMatch!.status == 'CHAT' &&
+        if (prev?.updatedMatch?.status != 'CHAT' &&
+            next.updatedMatch?.status == 'CHAT' &&
             mounted) {
-          context.go(
-            AppRoutes.chatList + '/${next.updatedMatch!.chatRoomId}',
-          );
+          final chatRoomId = next.updatedMatch!.chatRoomId;
+          if (chatRoomId.isNotEmpty) {
+            context.go('${AppRoutes.chatList}/$chatRoomId');
+          } else {
+            context.go(AppRoutes.matchList);
+          }
         }
       },
     );
 
+    // 로딩 중
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF0A0A0A),
+        body: Center(child: LoadingIndicator(size: 32)),
+      );
+    }
+
+    // 서버 에러 (500 등) → 재시도 가능한 에러 화면
+    if (_loadError != null) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF0A0A0A),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, size: 48, color: AppTheme.textSecondary),
+              const SizedBox(height: 16),
+              const Text('매칭 정보를 불러올 수 없습니다', style: TextStyle(fontSize: 16, color: AppTheme.textSecondary)),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () {
+                  setState(() { _isLoading = true; _loadError = null; });
+                  _fetchMatchFromServer();
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor),
+                child: const Text('다시 시도'),
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () {
+                  ref.read(matchingRepositoryProvider).clearLocalCache();
+                  ref.invalidate(matchListProvider(null));
+                  context.go(AppRoutes.matchList);
+                },
+                child: const Text('매칭 목록으로 돌아가기', style: TextStyle(color: AppTheme.textSecondary)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final match = _match!;
+
     return PopScope(
       canPop: false, // 뒤로가기 차단 — 매칭 화면 잠금
       child: Scaffold(
-        backgroundColor: const Color(0xFFF8F9FA),
-        appBar: AppBar(
-          title: const Text('매칭 성사!'),
-          backgroundColor: const Color(0xFFF8F9FA),
-          elevation: 0,
-          automaticallyImplyLeading: false,
-        ),
-        body: matchAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.error_outline, size: 48, color: AppTheme.errorColor),
-                const SizedBox(height: 12),
-                Text('매칭 정보를 불러올 수 없습니다.\n$e',
-                    textAlign: TextAlign.center),
-              ],
-            ),
-          ),
-          data: (match) {
-            // 최초 로드 시 타이머 시작
-            if (!_timerStarted) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                _startCountdown(match);
-              });
-            }
+        backgroundColor: const Color(0xFF0A0A0A),
+        body: Builder(builder: (context) {
+            final timerColor = _remaining.inMinutes >= 5
+                ? AppTheme.primaryColor
+                : _remaining.inMinutes >= 2
+                    ? AppTheme.warningColor
+                    : AppTheme.errorColor;
+            final encounterText = match.encounterCount > 0
+                ? '${match.encounterCount}번 만난 상대'
+                : '처음 만나는 상대';
 
             return SafeArea(
-              child: SingleChildScrollView(
+              child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                 child: Column(
                   children: [
-                    // ─── 매칭 성사 헤더 ───
-                    _MatchSuccessHeader(),
-
-                    const SizedBox(height: 20),
-
-                    // ─── 상대 프로필 카드 (닉네임/랭킹/종목 표시) ───
-                    _OpponentCard(opponent: match.opponent),
-
-                    const SizedBox(height: 24),
-
-                    // ─── 타이머 ───
-                    _TimerSection(
-                      timerText: _timerText,
-                      progressRatio: _progressRatio,
-                      remaining: _remaining,
-                    ),
-
-                    const SizedBox(height: 32),
-
-                    // ─── 수락 대기 메시지 or 버튼 ───
-                    if (_hasAccepted)
-                      const _WaitingForOpponent()
-                    else
-                      _AcceptRejectButtons(
-                        isLoading: acceptState.isLoading,
-                        onAccept: _onAccept,
-                        onReject: _onReject,
-                      ),
-
-                    const SizedBox(height: 20),
-
-                    // ─── 거절 주의 안내 ───
-                    if (!_hasAccepted)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: AppTheme.warningColor.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: AppTheme.warningColor.withOpacity(0.3),
-                          ),
-                        ),
-                        child: const Row(
+                    // ─── 스크롤 영역: 상대 정보 + 매칭 정보 ───
+                    Expanded(
+                      child: SingleChildScrollView(
+                        child: Column(
                           children: [
-                            Icon(
-                              Icons.warning_amber_rounded,
-                              size: 18,
-                              color: AppTheme.warningColor,
-                            ),
-                            SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                '거절 시 -15점 패널티가 적용됩니다.',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: AppTheme.textSecondary,
+                            const SizedBox(height: 16),
+
+                            const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.sports_rounded, size: 24, color: AppTheme.primaryColor),
+                                SizedBox(width: 8),
+                                Text(
+                                  '매칭이 잡혔습니다!',
+                                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: AppTheme.primaryColor),
                                 ),
+                              ],
+                            ),
+
+                            const SizedBox(height: 24),
+
+                            // 프로필 이미지
+                            Container(
+                              width: 88,
+                              height: 88,
+                              decoration: BoxDecoration(
+                                color: AppTheme.primaryColor.withOpacity(0.2),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: AppTheme.primaryColor.withOpacity(0.4), width: 2.5),
+                              ),
+                              child: match.opponent.profileImageUrl != null
+                                  ? ClipOval(child: Image.network(match.opponent.profileImageUrl!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.person_rounded, size: 44, color: AppTheme.primaryColor)))
+                                  : const Icon(Icons.person_rounded, size: 44, color: AppTheme.primaryColor),
+                            ),
+                            const SizedBox(height: 16),
+
+                            // 닉네임
+                            Text(match.opponent.nickname, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
+
+                            // 프로필 메시지 (닉네임 바로 아래)
+                            if (match.opponent.matchMessage != null && match.opponent.matchMessage!.isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                '"${match.opponent.matchMessage!}"',
+                                style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary, fontStyle: FontStyle.italic),
+                                textAlign: TextAlign.center,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                            const SizedBox(height: 8),
+
+                            // 점수 + 경기수
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  match.opponent.isPlacement ? '배치' : '${match.opponent.displayScore ?? match.opponent.currentScore ?? 1000}점',
+                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.primaryColor),
+                                ),
+                                if (match.opponent.gamesPlayed > 0) ...[
+                                  const Text(' · ', style: TextStyle(color: AppTheme.textDisabled)),
+                                  Text('${match.opponent.gamesPlayed}경기', style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+
+                            // 만남 횟수
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(match.encounterCount > 0 ? Icons.repeat_rounded : Icons.waving_hand_rounded, size: 14, color: AppTheme.textSecondary),
+                                const SizedBox(width: 4),
+                                Text(encounterText, style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+                              ],
+                            ),
+
+                            const SizedBox(height: 24),
+
+                            // ─── 매칭 정보 카드 ───
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1E1E1E),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: const Color(0xFF2A2A2A)),
+                              ),
+                              child: Column(
+                                children: [
+                                  // 핀 + 종목 + 랭크/친선
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.location_on_rounded, size: 18, color: AppTheme.primaryColor),
+                                      const SizedBox(width: 6),
+                                      Text(match.pinName ?? '핀 정보 없음', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.textPrimary)),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(color: AppTheme.primaryColor.withOpacity(0.12), borderRadius: BorderRadius.circular(6)),
+                                        child: Text(match.sportTypeDisplayName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primaryColor)),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: match.isCasual ? Colors.orange.withOpacity(0.12) : Colors.blue.withOpacity(0.12),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(match.isCasual ? '친선' : '랭크', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: match.isCasual ? Colors.orange : Colors.blue)),
+                                      ),
+                                    ],
+                                  ),
+                                  if (match.desiredDate != null || match.scheduledDate != null) ...[
+                                    const SizedBox(height: 10),
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.schedule_rounded, size: 16, color: AppTheme.textSecondary),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          '${_formatDate(match.desiredDate ?? match.scheduledDate)}${match.desiredTimeSlot != null ? ' · ${match.desiredTimeSlotDisplayName}' : ''}',
+                                          style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                  // 프로필 메시지는 상단 닉네임 아래로 이동
+                                ],
                               ),
                             ),
                           ],
                         ),
                       ),
+                    ),
+
+                    // ─── 하단 고정: 타이머 + 버튼 ───
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.timer_outlined, size: 16, color: timerColor),
+                        const SizedBox(width: 6),
+                        Text(_timerText, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: timerColor, fontFeatures: const [FontFeature.tabularFigures()])),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(value: _progressRatio, minHeight: 5, backgroundColor: const Color(0xFF2A2A2A), valueColor: AlwaysStoppedAnimation<Color>(timerColor)),
+                    ),
+                    const SizedBox(height: 16),
+
+                    if (_hasAccepted)
+                      const _WaitingForOpponent()
+                    else
+                      Row(
+                        children: [
+                          Expanded(
+                            child: SizedBox(
+                              height: 54,
+                              child: ElevatedButton(
+                                onPressed: acceptState.isLoading ? null : _onReject,
+                                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorColor, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+                                child: const Text('거절 (-15점)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: SizedBox(
+                              height: 54,
+                              child: ElevatedButton(
+                                onPressed: acceptState.isLoading ? null : _onAccept,
+                                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+                                child: acceptState.isLoading
+                                    ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
+                                    : const Text('수락', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+
+                    const SizedBox(height: 8),
                   ],
                 ),
               ),
             );
-          },
-        ),
+          }),
       ),
     );
   }
@@ -302,7 +613,7 @@ class _MatchSuccessHeader extends StatelessWidget {
           width: 64,
           height: 64,
           decoration: BoxDecoration(
-            color: AppTheme.primaryColor.withOpacity(0.1),
+            color: AppTheme.primaryColor.withOpacity(0.2),
             shape: BoxShape.circle,
           ),
           child: const Icon(
@@ -313,7 +624,7 @@ class _MatchSuccessHeader extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         const Text(
-          '매칭 상대를 찾았습니다!',
+          '대결 상대가 나타났습니다!',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w700,
@@ -336,14 +647,19 @@ class _MatchSuccessHeader extends StatelessWidget {
 // ─── 상대 프로필 카드 (닉네임 / 랭킹 / 종목) ───
 class _OpponentCard extends StatelessWidget {
   final MatchOpponent opponent;
+  final String? pinName;
+  final int encounterCount;
 
-  const _OpponentCard({required this.opponent});
+  const _OpponentCard({
+    required this.opponent,
+    this.pinName,
+    this.encounterCount = 0,
+  });
 
   /// 배치 중 여부에 따라 랭킹 텍스트 반환
   String get _rankText {
-    if (opponent.isPlacement) return '배치 중';
-    // currentScore가 없으면 티어만 표시
-    return opponent.tier;
+    if (opponent.isPlacement) return '배치';
+    return '${opponent.displayScore ?? opponent.currentScore ?? 1000}점';
   }
 
   @override
@@ -352,10 +668,10 @@ class _OpponentCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFF1E1E1E),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: const Color(0xFFE5E7EB),
+          color: const Color(0xFF2A2A2A),
           width: 1.5,
         ),
         boxShadow: [
@@ -387,7 +703,7 @@ class _OpponentCard extends StatelessWidget {
             width: 80,
             height: 80,
             decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withOpacity(0.1),
+              color: AppTheme.primaryColor.withOpacity(0.2),
               shape: BoxShape.circle,
               border: Border.all(color: AppTheme.primaryColor.withOpacity(0.4), width: 2.5),
             ),
@@ -425,54 +741,95 @@ class _OpponentCard extends StatelessWidget {
           _InfoRow(
             items: [
               _InfoItem(
-                label: '랭킹',
+                label: '종목',
+                value: _sportDisplayName(opponent.sportType),
+              ),
+              _InfoItem(
+                label: '점수',
                 value: _rankText,
                 valueColor: opponent.isPlacement
                     ? AppTheme.textSecondary
                     : AppTheme.primaryColor,
               ),
-              _InfoItem(
-                label: '종목',
-                value: _sportDisplayName(opponent.sportType),
-              ),
-              _InfoItem(
-                label: '전적',
-                value: '${opponent.wins}승 ${opponent.losses}패',
-              ),
+              if (opponent.gamesPlayed > 0)
+                _InfoItem(
+                  label: '경기',
+                  value: '${opponent.gamesPlayed}',
+                ),
             ],
           ),
 
-          // 매칭 문구 (있을 때만 표시)
-          if (opponent.matchMessage != null && opponent.matchMessage!.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF3F4F6),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFE5E7EB)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.chat_bubble_outline, size: 14, color: AppTheme.textSecondary),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      opponent.matchMessage!,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: AppTheme.textPrimary,
-                        fontStyle: FontStyle.italic,
+          const SizedBox(height: 16),
+
+          // 핀 지역 + 만남 횟수
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFF2A2A2A),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                // 핀 지역
+                if (pinName != null) ...[
+                  Row(
+                    children: [
+                      const Icon(Icons.location_on_rounded, size: 15, color: AppTheme.primaryColor),
+                      const SizedBox(width: 8),
+                      Text(
+                        pinName!,
+                        style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary),
                       ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                // 만남 횟수
+                Row(
+                  children: [
+                    Icon(
+                      encounterCount > 0 ? Icons.people_rounded : Icons.person_add_rounded,
+                      size: 15,
+                      color: encounterCount > 0 ? const Color(0xFF10B981) : AppTheme.textSecondary,
                     ),
+                    const SizedBox(width: 8),
+                    Text(
+                      encounterCount > 0
+                          ? '$encounterCount번 만난 상대입니다'
+                          : '처음 보는 상대입니다',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: encounterCount > 0 ? const Color(0xFF10B981) : AppTheme.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+                // 매칭 문구
+                if (opponent.matchMessage != null && opponent.matchMessage!.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      const Icon(Icons.chat_bubble_outline, size: 14, color: AppTheme.textSecondary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '"${opponent.matchMessage!}"',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: AppTheme.textPrimary,
+                            fontStyle: FontStyle.italic,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
-              ),
+              ],
             ),
-          ],
+          ),
         ],
       ),
     );
@@ -516,7 +873,7 @@ class _InfoRow extends StatelessWidget {
           yield Container(
             width: 1,
             height: 30,
-            color: const Color(0xFFE5E7EB),
+            color: const Color(0xFF2A2A2A),
           );
         }
       }).toList(),
@@ -605,7 +962,7 @@ class _TimerSection extends StatelessWidget {
           child: LinearProgressIndicator(
             value: progressRatio,
             minHeight: 8,
-            backgroundColor: const Color(0xFFE5E7EB),
+            backgroundColor: const Color(0xFF2A2A2A),
             valueColor: AlwaysStoppedAnimation<Color>(_timerColor),
           ),
         ),
@@ -711,7 +1068,7 @@ class _WaitingForOpponent extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
       decoration: BoxDecoration(
-        color: AppTheme.primaryColor.withOpacity(0.06),
+        color: AppTheme.primaryColor.withOpacity(0.15),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: AppTheme.primaryColor.withOpacity(0.2),

@@ -68,3 +68,5 @@ test-client/node_modules/
 # ─── Temp / build artifacts ───
 temp/
 *.tgz
+server/tests/matching-test-results.json
+docs/data/

@@ -16,9 +16,8 @@ const allSports = [
   SportItem('TABLE_TENNIS', '탁구', Icons.sports_tennis),
   SportItem('BADMINTON', '배드민턴', Icons.sports_tennis),
   SportItem('BOWLING', '볼링', Icons.sports),
-  SportItem('SOCCER', '축구', Icons.sports_soccer),
-  SportItem('BASKETBALL', '농구', Icons.sports_basketball),
-  SportItem('BASEBALL', '야구', Icons.sports_baseball),
+  SportItem('ROCK_PAPER_SCISSORS', '가위바위보', Icons.pan_tool_rounded),
+  SportItem('ARM_WRESTLING', '팔씨름', Icons.fitness_center),
 ];
 
 String sportLabel(String value) {

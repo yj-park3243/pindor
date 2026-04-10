@@ -6,6 +6,7 @@ import '../data/local/cache_ttl_helper.dart';
 import '../data/local/database_provider.dart';
 import '../models/match_request.dart';
 import '../models/match.dart';
+import '../models/match_status_response.dart';
 
 class MatchingRepository {
   final ApiClient _api;
@@ -73,10 +74,18 @@ class MatchingRepository {
     return _dao.getMatches(status: status);
   }
 
-  /// 로컬 매칭 캐시 유무
+  /// 로컬 매칭 캐시 유무 (데이터 존재 + TTL 유효 모두 충족해야 true)
   Future<bool> hasMatchesCache() async {
     final count = await _dao.getMatchCount();
-    return count > 0;
+    if (count == 0) return false;
+    final expired = await _cache.isExpired(_cacheKey, CacheTtlHelper.matchesTtl);
+    return !expired;
+  }
+
+  /// 로컬 캐시 강제 삭제 (만료된 매칭이 잠금을 유발하는 경우 사용)
+  Future<void> clearLocalCache() async {
+    await _dao.deleteAllMatches();
+    await _cache.invalidate(_cacheKey);
   }
 
   /// TTL 만료 시만 API 호출
@@ -135,23 +144,24 @@ class MatchingRepository {
     );
   }
 
-  /// 매칭 수락
-  Future<Match> acceptMatch(String matchId) async {
-    final response = await _api.post('/matches/$matchId/accept');
-    final match = Match.fromJson(response['data'] as Map<String, dynamic>);
-    await _dao.upsertMatch(match);
-    return match;
+  /// 매칭 수락 — 서버 응답: { status: 'WAITING_OPPONENT' | 'MATCHED', message }
+  Future<Map<String, dynamic>> acceptMatch(String matchId) async {
+    final response = await _api.post('/matches/$matchId/accept', body: {});
+    await _cache.invalidate(_cacheKey); // PENDING_ACCEPT 상태 데이터가 캐시에 남지 않도록 강제 만료
+    return response['data'] as Map<String, dynamic>;
   }
 
-  /// 매칭 거절
-  Future<void> rejectMatch(String matchId) async {
-    await _api.post('/matches/$matchId/reject');
+  /// 매칭 거절 — 서버 응답: { status: 'CANCELLED', message }
+  Future<Map<String, dynamic>> rejectMatch(String matchId) async {
+    final response = await _api.post('/matches/$matchId/reject', body: {});
+    await _cache.invalidate(_cacheKey); // 거절된 매칭이 캐시에 남지 않도록 강제 만료
+    return response['data'] as Map<String, dynamic>;
   }
 
-  /// 매칭 상태 조회 (폴링용)
-  Future<Match> getMatchStatus(String matchId) async {
+  /// 매칭 상태 조회 (폴링용) — 서버는 Match 전체가 아닌 수락 상태 요약을 반환한다.
+  Future<MatchStatusResponse> getMatchStatus(String matchId) async {
     final response = await _api.get('/matches/$matchId/status');
-    return Match.fromJson(response['data'] as Map<String, dynamic>);
+    return MatchStatusResponse.fromJson(response['data'] as Map<String, dynamic>);
   }
 
   /// 활성 매칭 조회 — PENDING_ACCEPT / CHAT / CONFIRMED 상태 매칭
@@ -169,12 +179,12 @@ class MatchingRepository {
 
   /// 매칭 포기 — 패배 처리 및 점수 하락
   Future<void> forfeitMatch(String matchId) async {
-    await _api.post('/matches/$matchId/forfeit');
+    await _api.post('/matches/$matchId/forfeit', body: {});
   }
 
   /// 노쇼 신고 — 상대방이 약속 장소에 나타나지 않은 경우
   Future<void> reportNoshow(String matchId) async {
-    await _api.post('/matches/$matchId/report-noshow');
+    await _api.post('/matches/$matchId/report-noshow', body: {});
   }
 }
 

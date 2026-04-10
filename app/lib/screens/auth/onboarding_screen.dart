@@ -22,7 +22,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       title: '내 근처에서\n대결 상대를 찾아보세요',
       subtitle: '위치 기반으로 가까운 곳의 스포츠\n대결 상대를 빠르게 매칭해드립니다.',
       iconColor: AppTheme.primaryColor,
-      bgColor: Color(0xFFE8F0FE),
+      bgColor: Color(0xFF2A1A0E),
     ),
     _OnboardingPageData(
       icon: Icons.people_rounded,
@@ -30,7 +30,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       title: '실력에 맞는 상대와\n1:1 매칭',
       subtitle: 'ELO 점수 기반으로 나와 비슷한\n실력의 상대를 공정하게 연결합니다.',
       iconColor: Color(0xFFE91E63),
-      bgColor: Color(0xFFFCE4EC),
+      bgColor: Color(0xFF2A0D17),
     ),
     _OnboardingPageData(
       icon: Icons.emoji_events_rounded,
@@ -38,7 +38,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       title: '승리하고\n랭킹을 올려보세요',
       subtitle: '지역 핀 랭킹에서 실력을 증명하고\n브론즈에서 플래티넘까지 도전하세요.',
       iconColor: AppTheme.goldColor,
-      bgColor: Color(0xFFFFF8E1),
+      bgColor: Color(0xFF2A2208),
     ),
   ];
 
@@ -57,7 +57,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final isLastPage = _currentPage == _pages.length - 1;
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFF0A0A0A),
       body: SafeArea(
         child: Column(
           children: [
@@ -188,7 +188,7 @@ class _DotIndicator extends StatelessWidget {
       width: isActive ? 28 : 8,
       height: 8,
       decoration: BoxDecoration(
-        color: isActive ? color : const Color(0xFFE5E7EB),
+        color: isActive ? color : const Color(0xFF2A2A2A),
         borderRadius: BorderRadius.circular(4),
       ),
     );
@@ -261,7 +261,7 @@ class _OnboardingPage extends StatelessWidget {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: const Color(0xFF1E1E1E),
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(

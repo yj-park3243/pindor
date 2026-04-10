@@ -1,8 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:timeago/timeago.dart' as timeago;
-import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import '../../config/sports.dart';
 import '../../config/theme.dart';
 import '../../models/post.dart';
@@ -31,8 +33,11 @@ class PinBoardScreen extends ConsumerStatefulWidget {
 
 class _PinBoardScreenState extends ConsumerState<PinBoardScreen> {
   final _scrollController = ScrollController();
+  final _searchController = TextEditingController();
 
   int _tabIndex = 0;
+  String _searchQuery = '';
+  Timer? _debounceTimer;
 
   @override
   void initState() {
@@ -49,26 +54,36 @@ class _PinBoardScreenState extends ConsumerState<PinBoardScreen> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _searchController.dispose();
+    _debounceTimer?.cancel();
     super.dispose();
   }
+
+  PostListKey get _currentKey => PostListKey(
+        pinId: widget.pinId,
+        sportType: allSports[_tabIndex].value,
+        search: _searchQuery.isNotEmpty ? _searchQuery : null,
+      );
 
   void _onScroll() {
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 200) {
-      final key = PostListKey(
-        pinId: widget.pinId,
-        sportType: allSports[_tabIndex].value,
-      );
-      ref.read(postListProvider(key).notifier).loadMore();
+      ref.read(postListProvider(_currentKey).notifier).loadMore();
     }
+  }
+
+  void _onSearchChanged(String value) {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () {
+      if (mounted) {
+        setState(() => _searchQuery = value.trim());
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final key = PostListKey(
-      pinId: widget.pinId,
-      sportType: allSports[_tabIndex].value,
-    );
+    final key = _currentKey;
     final postState = ref.watch(postListProvider(key));
 
     return Scaffold(
@@ -89,15 +104,11 @@ class _PinBoardScreenState extends ConsumerState<PinBoardScreen> {
             icon: const Icon(Icons.edit_outlined),
             tooltip: '글쓰기',
             onPressed: () async {
-              final key = PostListKey(
-                pinId: widget.pinId,
-                sportType: allSports[_tabIndex].value,
-              );
               final created = await context.push<bool>(
                 '/pins/${widget.pinId}/board/posts/create',
               );
               if (created == true && mounted) {
-                ref.read(postListProvider(key).notifier).refresh();
+                ref.read(postListProvider(_currentKey).notifier).refresh();
               }
             },
           ),
@@ -107,15 +118,76 @@ class _PinBoardScreenState extends ConsumerState<PinBoardScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: AdaptiveSegmentedControl(
-              labels: allSports.map((s) => s.label).toList(),
-              selectedIndex: _tabIndex,
-              onValueChanged: (index) {
-                setState(() => _tabIndex = index);
-                ref
-                    .read(sportPreferenceProvider.notifier)
-                    .select(allSports[index].value);
-              },
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: List.generate(allSports.length, (index) {
+                final isSelected = _tabIndex == index;
+                return GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _tabIndex = index;
+                      _searchQuery = '';
+                      _searchController.clear();
+                    });
+                    ref
+                        .read(sportPreferenceProvider.notifier)
+                        .select(allSports[index].value);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? AppTheme.primaryColor
+                          : const Color(0xFF2A2A2A),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      allSports[index].label,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: isSelected
+                            ? Colors.white
+                            : AppTheme.textSecondary,
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: TextField(
+              controller: _searchController,
+              onChanged: _onSearchChanged,
+              decoration: InputDecoration(
+                hintText: '제목, 내용, 작성자 검색',
+                hintStyle: const TextStyle(
+                  fontSize: 14,
+                  color: AppTheme.textDisabled,
+                ),
+                prefixIcon: const Icon(Icons.search, size: 20),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () {
+                          _searchController.clear();
+                          _debounceTimer?.cancel();
+                          setState(() => _searchQuery = '');
+                        },
+                      )
+                    : null,
+                contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                filled: true,
+                fillColor: const Color(0xFF2A2A2A),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide.none,
+                ),
+              ),
             ),
           ),
           Expanded(child: _buildBody(postState, key)),
@@ -135,7 +207,10 @@ class _PinBoardScreenState extends ConsumerState<PinBoardScreen> {
       );
     }
     if (state.posts.isEmpty) {
-      return _EmptyBoard(sport: allSports[_tabIndex].label);
+      return _EmptyBoard(
+        sport: allSports[_tabIndex].label,
+        isSearching: _searchQuery.isNotEmpty,
+      );
     }
 
     return RefreshIndicator(
@@ -173,7 +248,9 @@ class _PinBoardScreenState extends ConsumerState<PinBoardScreen> {
 
 class _EmptyBoard extends StatelessWidget {
   final String sport;
-  const _EmptyBoard({required this.sport});
+  final bool isSearching;
+
+  const _EmptyBoard({required this.sport, this.isSearching = false});
 
   @override
   Widget build(BuildContext context) {
@@ -181,16 +258,20 @@ class _EmptyBoard extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.article_outlined, size: 56, color: Colors.grey.shade300),
+          Icon(
+            isSearching ? Icons.search_off : Icons.article_outlined,
+            size: 56,
+            color: Colors.grey.shade300,
+          ),
           const SizedBox(height: 12),
           Text(
-            '$sport 게시글이 없습니다',
+            isSearching ? '검색 결과가 없습니다' : '$sport 게시글이 없습니다',
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 6),
-          const Text(
-            '첫 번째 게시글을 작성해보세요!',
-            style: TextStyle(color: AppTheme.textSecondary),
+          Text(
+            isSearching ? '다른 검색어를 입력해보세요' : '첫 번째 게시글을 작성해보세요!',
+            style: const TextStyle(color: AppTheme.textSecondary),
           ),
         ],
       ),
@@ -248,6 +329,27 @@ class _PostListTile extends StatelessWidget {
             const SizedBox(height: 8),
             Row(
               children: [
+                // 작성자 프로필 사진
+                CircleAvatar(
+                  radius: 12,
+                  backgroundColor: AppTheme.primaryColor.withOpacity(0.12),
+                  backgroundImage: post.authorProfileImageUrl != null
+                      ? CachedNetworkImageProvider(post.authorProfileImageUrl!)
+                      : null,
+                  child: post.authorProfileImageUrl == null
+                      ? Text(
+                          post.authorNickname.isNotEmpty
+                              ? post.authorNickname[0]
+                              : '?',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: AppTheme.primaryColor,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        )
+                      : null,
+                ),
+                const SizedBox(width: 6),
                 Text(
                   post.authorNickname,
                   style: const TextStyle(

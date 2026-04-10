@@ -10,7 +10,9 @@ import {
 } from '../../entities/index.js';
 import { SocialProvider } from '../../entities/index.js';
 import { createHash } from 'crypto';
-import type { KakaoLoginDto, KakaoUserInfo, GoogleLoginDto, GoogleUserInfo, EmailRegisterDto, EmailLoginDto } from './auth.schema.js';
+import type { KakaoLoginDto, KakaoUserInfo, GoogleLoginDto, GoogleUserInfo, AppleLoginDto, EmailRegisterDto, EmailLoginDto } from './auth.schema.js';
+import { createPublicKey } from 'crypto';
+import * as jwt from 'jsonwebtoken';
 
 export class AuthService {
   constructor(private dataSource: DataSource) {}
@@ -251,6 +253,124 @@ export class AuthService {
   }
 
   // ─────────────────────────────────────
+  // Apple OAuth 로그인
+  // ─────────────────────────────────────
+
+  async appleLogin(dto: AppleLoginDto): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    user: {
+      id: string;
+      nickname: string;
+      profileImageUrl: string | null;
+      isNewUser: boolean;
+    };
+  }> {
+    const applePayload = await this.verifyAppleIdentityToken(dto.identityToken);
+
+    const providerId = applePayload.sub;
+    const email = dto.email ?? applePayload.email ?? null;
+    const nickname = dto.fullName ?? null;
+
+    const socialAccountRepo = this.dataSource.getRepository(SocialAccount);
+    const userRepo = this.dataSource.getRepository(User);
+
+    const existingSocial = await socialAccountRepo.findOne({
+      where: { provider: SocialProvider.APPLE, providerId },
+      relations: { user: true },
+    });
+
+    if (existingSocial) {
+      const user = existingSocial.user;
+      if (user.status === 'SUSPENDED') throw new AppError(ErrorCode.USER_SUSPENDED, 403);
+      if (user.status === 'WITHDRAWN') throw new AppError(ErrorCode.USER_WITHDRAWN, 403);
+
+      await userRepo.update(user.id, { lastLoginAt: new Date() });
+
+      const tokens = await issueTokenPair({ userId: user.id, email: user.email });
+      await this.storeRefreshToken(user.id, tokens.refreshToken);
+
+      return {
+        ...tokens,
+        user: {
+          id: user.id,
+          nickname: user.nickname,
+          profileImageUrl: user.profileImageUrl,
+          isNewUser: false,
+        },
+      };
+    }
+
+    // 같은 이메일로 이미 가입된 유저가 있으면 Apple 계정만 연결
+    if (email) {
+      const existingUser = await userRepo.findOne({ where: { email } });
+      if (existingUser) {
+        if (existingUser.status === 'SUSPENDED') throw new AppError(ErrorCode.USER_SUSPENDED, 403);
+        if (existingUser.status === 'WITHDRAWN') throw new AppError(ErrorCode.USER_WITHDRAWN, 403);
+
+        await socialAccountRepo.save(socialAccountRepo.create({
+          userId: existingUser.id,
+          provider: SocialProvider.APPLE,
+          providerId,
+        }));
+        await userRepo.update(existingUser.id, { lastLoginAt: new Date() });
+
+        const tokens = await issueTokenPair({ userId: existingUser.id, email: existingUser.email });
+        await this.storeRefreshToken(existingUser.id, tokens.refreshToken);
+
+        return {
+          ...tokens,
+          user: {
+            id: existingUser.id,
+            nickname: existingUser.nickname,
+            profileImageUrl: existingUser.profileImageUrl,
+            isNewUser: false,
+          },
+        };
+      }
+    }
+
+    // 완전 신규 사용자
+    const uniqueNickname = await this.generateUniqueNickname(nickname);
+
+    const user = await this.dataSource.transaction(async (manager) => {
+      const now = new Date();
+      const newUser = manager.create(User, {
+        email,
+        nickname: uniqueNickname,
+        lastLoginAt: now,
+        updatedAt: now,
+      });
+      await manager.save(User, newUser);
+
+      await manager.save(SocialAccount, manager.create(SocialAccount, {
+        userId: newUser.id,
+        provider: SocialProvider.APPLE,
+        providerId,
+      }));
+
+      await manager.save(NotificationSettings, manager.create(NotificationSettings, {
+        userId: newUser.id,
+      }));
+
+      return newUser;
+    });
+
+    const tokens = await issueTokenPair({ userId: user.id, email: user.email });
+    await this.storeRefreshToken(user.id, tokens.refreshToken);
+
+    return {
+      ...tokens,
+      user: {
+        id: user.id,
+        nickname: user.nickname,
+        profileImageUrl: user.profileImageUrl,
+        isNewUser: true,
+      },
+    };
+  }
+
+  // ─────────────────────────────────────
   // 이메일 회원가입
   // ─────────────────────────────────────
 
@@ -430,6 +550,46 @@ export class AuthService {
     }
 
     return payload;
+  }
+
+  private async verifyAppleIdentityToken(identityToken: string): Promise<{ sub: string; email?: string }> {
+    // Apple 공개 키 가져오기
+    const keysResponse = await fetch('https://appleid.apple.com/auth/keys');
+    if (!keysResponse.ok) {
+      throw new AppError(ErrorCode.AUTH_APPLE_FAILED ?? 'AUTH_APPLE_FAILED', 401, 'Apple 공개 키를 가져올 수 없습니다.');
+    }
+    const { keys } = await keysResponse.json() as { keys: Array<{ kid: string; kty: string; use: string; alg: string; n: string; e: string }> };
+
+    // JWT 헤더에서 kid 추출
+    const header = JSON.parse(Buffer.from(identityToken.split('.')[0], 'base64url').toString());
+    const appleKey = keys.find((k: { kid: string }) => k.kid === header.kid);
+    if (!appleKey) {
+      throw new AppError(ErrorCode.AUTH_APPLE_FAILED ?? 'AUTH_APPLE_FAILED', 401, 'Apple 공개 키를 찾을 수 없습니다.');
+    }
+
+    // JWK → PEM 변환
+    const publicKey = createPublicKey({
+      key: { kty: appleKey.kty, n: appleKey.n, e: appleKey.e },
+      format: 'jwk',
+    });
+
+    // JWT 검증
+    try {
+      const payload = jwt.verify(identityToken, publicKey, {
+        algorithms: ['RS256'],
+        issuer: 'https://appleid.apple.com',
+        audience: 'kr.pins',
+      }) as { sub: string; email?: string };
+
+      if (!payload.sub) {
+        throw new Error('sub missing');
+      }
+
+      return payload;
+    } catch (e) {
+      console.error('[Apple] JWT verify error:', e);
+      throw new AppError(ErrorCode.AUTH_APPLE_FAILED ?? 'AUTH_APPLE_FAILED', 401, 'Apple 인증에 실패했습니다.');
+    }
   }
 
   private async fetchKakaoUserInfo(accessToken: string): Promise<KakaoUserInfo> {

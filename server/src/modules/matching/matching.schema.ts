@@ -18,6 +18,7 @@ export const createMatchRequestSchema = z.object({
   genderPreference: z.enum(['SAME', 'ANY']).default('ANY'),
   minAge: z.number().int().min(14).max(100).optional(),
   maxAge: z.number().int().min(14).max(100).optional(),
+  ageRange: z.number().int().min(0).max(10).optional(),
   message: z.string().max(500).optional(),
   isCasual: z.boolean().optional().default(false),
 }).refine(

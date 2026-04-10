@@ -122,18 +122,28 @@ class ChatRepository {
     await _dao.upsertMessage(message);
   }
 
+  /// 읽음 처리 → 로컬 DB 업데이트
+  Future<void> updateMessagesReadAt(List<String> messageIds, DateTime readAt) async {
+    await _dao.updateMessagesReadAt(messageIds, readAt);
+  }
+
   /// HTTP 폴백 메시지 전송
   Future<Message> sendMessage(
     String roomId, {
     required String content,
     String messageType = 'TEXT',
+    Map<String, dynamic>? extraData,
   }) async {
+    final body = <String, dynamic>{
+      'messageType': messageType,
+      'content': content,
+    };
+    if (extraData != null) {
+      body['extraData'] = extraData;
+    }
     final response = await _api.post(
       '/chat-rooms/$roomId/messages',
-      body: {
-        'messageType': messageType,
-        'content': content,
-      },
+      body: body,
     );
     final message = Message.fromJson(response['data'] as Map<String, dynamic>);
     // 로컬 DB에도 저장

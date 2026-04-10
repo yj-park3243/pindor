@@ -23,7 +23,7 @@ export class SportsProfile {
   @Column({ name: 'sport_type', type: 'enum', enum: SportType, enumName: 'SportType' })
   sportType!: SportType;
 
-  @Column({ name: 'display_name', type: 'enum', enum: SportType, enumName: 'SportType', nullable: true })
+  @Column({ name: 'display_name', type: 'varchar', length: 50, nullable: true })
   displayName!: string | null;
 
   @Column({ name: 'match_message', type: 'varchar', length: 100, nullable: true })

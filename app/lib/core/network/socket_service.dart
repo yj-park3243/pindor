@@ -26,6 +26,8 @@ class SocketService {
   final _connectionStateController = StreamController<bool>.broadcast();
   final _typingController =
       StreamController<Map<String, dynamic>>.broadcast();
+  final _messagesReadController =
+      StreamController<Map<String, dynamic>>.broadcast();
 
   // ─── 스트림 공개 인터페이스 ───
   Stream<Map<String, dynamic>> get onNotification =>
@@ -33,6 +35,8 @@ class SocketService {
   Stream<Map<String, dynamic>> get onNewMessage => _messageController.stream;
   Stream<bool> get onConnectionState => _connectionStateController.stream;
   Stream<Map<String, dynamic>> get onTyping => _typingController.stream;
+  Stream<Map<String, dynamic>> get onMessagesRead =>
+      _messagesReadController.stream;
 
   bool get isConnected => _isConnected;
 
@@ -64,6 +68,14 @@ class SocketService {
   }
 
   void _registerHandlers() {
+    // 재연결 등으로 인한 중복 리스너 방지: 등록 전 이전 핸들러 제거
+    _socket!
+      ..off('notification')
+      ..off('NEW_MESSAGE')
+      ..off('USER_TYPING')
+      ..off('MESSAGES_READ')
+      ..off('ERROR');
+
     _socket!
       ..onConnect((_) {
         _isConnected = true;
@@ -105,6 +117,12 @@ class SocketService {
         _typingController.add(parsed);
       })
 
+      // 읽음 처리 수신
+      ..on('MESSAGES_READ', (data) {
+        final parsed = Map<String, dynamic>.from(data as Map);
+        _messagesReadController.add(parsed);
+      })
+
       // 소켓 에러
       ..on('ERROR', (data) {
         debugPrint('[Socket] 서버 에러: $data');
@@ -135,16 +153,21 @@ class SocketService {
     String roomId,
     String content, {
     String type = 'TEXT',
+    Map<String, dynamic>? extraData,
   }) {
     if (!_isConnected || _socket == null) {
       debugPrint('[Socket] 연결 안됨 - 메시지 전송 실패');
       throw SocketNotConnectedException();
     }
-    _socket!.emit('SEND_MESSAGE', {
+    final payload = <String, dynamic>{
       'roomId': roomId,
       'content': content,
       'messageType': type,
-    });
+    };
+    if (extraData != null) {
+      payload['extraData'] = extraData;
+    }
+    _socket!.emit('SEND_MESSAGE', payload);
   }
 
   /// 타이핑 상태 전송
@@ -169,6 +192,12 @@ class SocketService {
     }
   }
 
+  /// 읽음 처리 전송
+  void sendMarkRead(String roomId) {
+    if (!_isConnected) return;
+    _socket!.emit('MARK_READ', {'roomId': roomId});
+  }
+
   /// 리소스 정리
   void dispose() {
     _disconnect();
@@ -176,6 +205,7 @@ class SocketService {
     _messageController.close();
     _connectionStateController.close();
     _typingController.close();
+    _messagesReadController.close();
   }
 }
 

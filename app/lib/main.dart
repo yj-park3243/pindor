@@ -20,6 +20,7 @@ import 'repositories/matching_repository.dart';
 import 'providers/active_match_provider.dart';
 import 'core/offline/offline_queue_service.dart';
 import 'core/version/version_check_service.dart';
+import 'widgets/common/app_toast.dart';
 
 /// FCM 백그라운드 메시지 핸들러 (최상위 함수여야 함)
 /// 앱이 백그라운드 또는 종료 상태일 때 FCM 메시지 수신 처리
@@ -73,6 +74,10 @@ Future<void> main() async {
 
   // timeago 한국어 로케일 설정
   timeago.setLocaleMessages('ko', timeago.KoMessages());
+
+  // 이미지 메모리 캐시 한도 설정 (200MB, 최대 500장)
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 200 * 1024 * 1024;
+  PaintingBinding.instance.imageCache.maximumSize = 500;
 
   runApp(
     const ProviderScope(

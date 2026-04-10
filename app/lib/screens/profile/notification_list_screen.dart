@@ -111,7 +111,7 @@ class _NotificationTile extends StatelessWidget {
 
     return Material(
       color: isUnread
-          ? AppTheme.primaryColor.withOpacity(0.04)
+          ? AppTheme.primaryColor.withOpacity(0.12)
           : Colors.transparent,
       child: InkWell(
         onTap: onTap,

@@ -9,6 +9,7 @@ import '../../providers/pin_provider.dart';
 import '../../providers/sport_preference_provider.dart';
 import '../../screens/profile/profile_screen.dart';
 import '../../repositories/matching_repository.dart';
+import '../../widgets/common/app_toast.dart';
 
 /// "오늘 대결 나가고 싶다" 즉시 매칭 화면
 /// 즐겨찾기 핀이 기본 선택, 종목도 기본값 적용
@@ -42,9 +43,7 @@ class _QuickMatchScreenState extends ConsumerState<QuickMatchScreen> {
 
   Future<void> _createInstantMatch() async {
     if (_selectedPin == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('핀을 선택해주세요')),
-      );
+      AppToast.info('핀을 선택해주세요');
       return;
     }
 
@@ -58,19 +57,12 @@ class _QuickMatchScreenState extends ConsumerState<QuickMatchScreen> {
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('즉시 매칭 요청이 등록되었습니다!'),
-            backgroundColor: AppTheme.secondaryColor,
-          ),
-        );
+        AppToast.success('즉시 매칭 요청이 등록되었습니다!');
         context.go(AppRoutes.matchList);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('오류: ${e.toString()}')),
-        );
+        AppToast.error('오류: ${e.toString()}');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -82,10 +74,10 @@ class _QuickMatchScreenState extends ConsumerState<QuickMatchScreen> {
     final pinsAsync = ref.watch(allPinsProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         title: const Text('오늘 대결 나가고 싶다'),
-        backgroundColor: const Color(0xFFF8F9FA),
+        backgroundColor: const Color(0xFF0A0A0A),
         elevation: 0,
       ),
       body: SingleChildScrollView(
@@ -212,7 +204,7 @@ class _QuickMatchScreenState extends ConsumerState<QuickMatchScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
-                      color: isSelected ? AppTheme.primaryColor : const Color(0xFFF3F4F6),
+                      color: isSelected ? AppTheme.primaryColor : const Color(0xFF2A2A2A),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Row(
@@ -264,7 +256,7 @@ class _QuickMatchScreenState extends ConsumerState<QuickMatchScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     decoration: BoxDecoration(
-                      color: isSelected ? AppTheme.primaryColor : const Color(0xFFF3F4F6),
+                      color: isSelected ? AppTheme.primaryColor : const Color(0xFF2A2A2A),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(

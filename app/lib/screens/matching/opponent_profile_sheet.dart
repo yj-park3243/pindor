@@ -45,7 +45,7 @@ class OpponentProfileSheet extends StatelessWidget {
 
           const SizedBox(height: 20),
 
-          // 전적
+          // 총 경기
           Row(
             children: [
               Expanded(
@@ -53,24 +53,6 @@ class OpponentProfileSheet extends StatelessWidget {
                   label: '총 경기',
                   value: '${opponent.gamesPlayed}',
                   unit: '게임',
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _StatCard(
-                  label: '승',
-                  value: '${opponent.wins}',
-                  unit: '승',
-                  color: AppTheme.secondaryColor,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _StatCard(
-                  label: '패',
-                  value: '${opponent.losses}',
-                  unit: '패',
-                  color: AppTheme.errorColor,
                 ),
               ),
             ],
@@ -82,7 +64,7 @@ class OpponentProfileSheet extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: const Color(0xFFF3F4F6),
+                color: const Color(0xFF2A2A2A),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
@@ -140,7 +122,7 @@ class _StatCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12),
       decoration: BoxDecoration(
-        color: (color ?? const Color(0xFF6B7280)).withOpacity(0.08),
+        color: (color ?? const Color(0xFF9CA3AF)).withOpacity(0.08),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Column(

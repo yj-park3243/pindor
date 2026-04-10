@@ -1,3 +1,4 @@
+import { IsNull, LessThan, MoreThan, Not } from 'typeorm';
 import { AppDataSource } from '../../config/database.js';
 import { ChatRoom } from '../../entities/chat-room.entity.js';
 import { Match } from '../../entities/match.entity.js';
@@ -86,6 +87,8 @@ export class ChatService {
                 content:
                   lastMessage.messageType === 'IMAGE'
                     ? '사진을 보냈습니다'
+                    : lastMessage.messageType === 'LOCATION'
+                    ? '위치를 공유했습니다'
                     : lastMessage.content,
                 createdAt: lastMessage.createdAt,
               }
@@ -111,25 +114,20 @@ export class ChatService {
     // 채팅방 참여자 확인
     await this.validateRoomParticipant(userId, roomId);
 
-    const queryBuilder = this.messageRepo
-      .createQueryBuilder('message')
-      .leftJoinAndSelect('message.sender', 'sender')
-      .where('message.chat_room_id = :roomId', { roomId })
-      .andWhere('message.is_deleted = false');
-
+    const where: any = { chatRoomId: roomId, isDeleted: false };
     if (cursor) {
-      queryBuilder.andWhere('message.created_at < :cursor', { cursor: new Date(cursor) });
+      where.createdAt = LessThan(new Date(cursor));
     }
-
-    // after: 특정 시간 이후 메시지만 조회 (증분 fetch용)
     if (after) {
-      queryBuilder.andWhere('message.created_at > :after', { after: new Date(after) });
+      where.createdAt = MoreThan(new Date(after));
     }
 
-    const messages = await queryBuilder
-      .orderBy('message.created_at', 'DESC')
-      .take(limit + 1)
-      .getMany();
+    const messages = await this.messageRepo.find({
+      where,
+      relations: { sender: true },
+      order: { createdAt: 'DESC' },
+      take: limit + 1,
+    });
 
     const hasMore = messages.length > limit;
     const items = hasMore ? messages.slice(0, limit) : messages;
@@ -146,7 +144,7 @@ export class ChatService {
     userId: string,
     roomId: string,
     dto: {
-      messageType: 'TEXT' | 'IMAGE' | 'SYSTEM' | 'SCHEDULE_PROPOSAL';
+      messageType: 'TEXT' | 'IMAGE' | 'SYSTEM' | 'SCHEDULE_PROPOSAL' | 'LOCATION';
       content?: string;
       imageUrl?: string;
       extraData?: Record<string, unknown>;
@@ -158,6 +156,11 @@ export class ChatService {
       if (dto.content.length > 500) {
         throw AppError.badRequest(ErrorCode.CHAT_MESSAGE_TOO_LONG);
       }
+    }
+
+    // LOCATION 타입: content를 기본값으로 설정
+    if (dto.messageType === 'LOCATION' && !dto.content) {
+      dto.content = '위치를 공유했습니다';
     }
 
     const message = this.messageRepo.create({
@@ -181,6 +184,41 @@ export class ChatService {
     await this.chatRoomRepo.update(roomId, { lastMessageAt: saved.createdAt });
 
     return withSender!;
+  }
+
+  // ─────────────────────────────────────
+  // 읽음 처리
+  // ─────────────────────────────────────
+
+  /**
+   * 채팅방의 상대방이 보낸 메시지 중 읽지 않은 것을 모두 읽음 처리
+   * @returns 읽음 처리된 메시지 ID 목록
+   */
+  async markMessagesRead(userId: string, roomId: string): Promise<string[]> {
+    // read_at이 null이고 내가 보낸 메시지가 아닌 것 조회
+    const unreadMessages = await this.messageRepo.find({
+      where: {
+        chatRoomId: roomId,
+        senderId: Not(userId),
+        readAt: IsNull(),
+        isDeleted: false,
+      },
+      select: { id: true },
+    });
+
+    if (unreadMessages.length === 0) return [];
+
+    const ids = unreadMessages.map((m) => m.id);
+    const readAt = new Date();
+
+    await this.messageRepo
+      .createQueryBuilder()
+      .update(Message)
+      .set({ readAt })
+      .whereInIds(ids)
+      .execute();
+
+    return ids;
   }
 
   // ─────────────────────────────────────

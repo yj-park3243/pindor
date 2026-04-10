@@ -12,7 +12,9 @@ class NoticeRepository {
       '/notices',
       queryParameters: {'page': page, 'limit': limit},
     );
-    final data = response['data'] as List<dynamic>;
+    // GET /notices 응답 구조: { data: { items: [...], pagination: {...} } }
+    final dataMap = response['data'] as Map<String, dynamic>;
+    final data = dataMap['items'] as List<dynamic>;
     return data
         .map((e) => Notice.fromJson(e as Map<String, dynamic>))
         .toList();

@@ -18,11 +18,21 @@ class ChatListScreen extends ConsumerWidget {
     final chatRoomsAsync = ref.watch(chatRoomListProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         title: const Text('채팅'),
-        backgroundColor: const Color(0xFFF8F9FA),
+        backgroundColor: const Color(0xFF0A0A0A),
         elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/matches');
+            }
+          },
+        ),
       ),
       body: chatRoomsAsync.when(
         loading: () => const FullScreenLoading(),
@@ -72,7 +82,7 @@ class _EmptyChatState extends StatelessWidget {
               width: 100,
               height: 100,
               decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withOpacity(0.08),
+                color: AppTheme.primaryColor.withOpacity(0.18),
                 shape: BoxShape.circle,
               ),
               child: Stack(
@@ -144,7 +154,7 @@ class _ChatRoomTile extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Container(
-        color: Colors.white,
+        color: const Color(0xFF1E1E1E),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(
           children: [

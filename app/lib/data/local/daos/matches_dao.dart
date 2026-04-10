@@ -47,6 +47,11 @@ class MatchesDao extends DatabaseAccessor<AppDatabase> with _$MatchesDaoMixin {
     return row != null ? _rowToMatch(row) : null;
   }
 
+  /// 전체 매칭 삭제 (로컬 캐시 정리)
+  Future<void> deleteAllMatches() async {
+    await delete(db.matches).go();
+  }
+
   /// 매칭 배치 upsert
   Future<void> upsertMatches(List<model.Match> matches) async {
     if (matches.isEmpty) return;

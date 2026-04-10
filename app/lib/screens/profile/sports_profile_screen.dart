@@ -6,6 +6,7 @@ import '../../models/sports_profile.dart';
 import '../../providers/profile_provider.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/score_display.dart';
+import '../../widgets/common/app_toast.dart';
 
 
 /// 스포츠 프로필 관리 화면
@@ -20,10 +21,10 @@ class SportsProfileScreen extends ConsumerWidget {
     final profilesAsync = ref.watch(sportsProfilesProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         title: const Text('스포츠 프로필'),
-        backgroundColor: const Color(0xFFF8F9FA),
+        backgroundColor: const Color(0xFF0A0A0A),
         elevation: 0,
         actions: [
           IconButton(
@@ -159,15 +160,11 @@ class SportsProfileScreen extends ConsumerWidget {
                     );
                     if (ctx.mounted) {
                       Navigator.pop(ctx);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('매칭 문구가 저장되었습니다.')),
-                      );
+                      AppToast.success('매칭 문구가 저장되었습니다.');
                     }
                   } catch (e) {
                     if (ctx.mounted) {
-                      ScaffoldMessenger.of(ctx).showSnackBar(
-                        SnackBar(content: Text('저장 실패: $e')),
-                      );
+                      AppToast.error('저장 실패: $e');
                     }
                   }
                 },
@@ -188,14 +185,12 @@ class SportsProfileScreen extends ConsumerWidget {
         ?.map((p) => p.sportType)
         .toSet() ?? {};
 
-    // 추가 가능한 종목 목록
-    const allSports = ['GOLF', 'BILLIARDS', 'TENNIS', 'TABLE_TENNIS'];
-    final availableSports = allSports.where((s) => !existingTypes.contains(s)).toList();
+    // 추가 가능한 종목 목록 (config/sports.dart의 allSports 사용)
+    final allSportTypes = allSports.map((s) => s.value).toList();
+    final availableSports = allSportTypes.where((s) => !existingTypes.contains(s)).toList();
 
     if (availableSports.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('모든 종목이 이미 등록되어 있습니다.')),
-      );
+      AppToast.info('모든 종목이 이미 등록되어 있습니다.');
       return;
     }
 
@@ -307,9 +302,7 @@ class SportsProfileScreen extends ConsumerWidget {
                       if (selectedSport == 'GOLF' && handicapController.text.isNotEmpty) {
                         gHandicap = double.tryParse(handicapController.text.trim());
                         if (gHandicap != null && (gHandicap < 0 || gHandicap > 54)) {
-                          ScaffoldMessenger.of(ctx).showSnackBar(
-                            const SnackBar(content: Text('G핸디는 0~54 사이여야 합니다.')),
-                          );
+                          AppToast.warning('G핸디는 0~54 사이여야 합니다.');
                           return;
                         }
                       }
@@ -321,15 +314,11 @@ class SportsProfileScreen extends ConsumerWidget {
                         );
                         if (ctx.mounted) {
                           Navigator.pop(ctx);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('${sportLabel(selectedSport!)} 프로필이 추가되었습니다.')),
-                          );
+                          AppToast.success('${sportLabel(selectedSport!)} 프로필이 추가되었습니다.');
                         }
                       } catch (e) {
                         if (ctx.mounted) {
-                          ScaffoldMessenger.of(ctx).showSnackBar(
-                            SnackBar(content: Text('추가 실패: $e')),
-                          );
+                          AppToast.error('추가 실패: $e');
                         }
                       }
                     },
@@ -357,14 +346,10 @@ class _SportProfileCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final winRate = profile.gamesPlayed > 0
-        ? (profile.wins / profile.gamesPlayed * 100).toStringAsFixed(1)
-        : '-';
-
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFF1E1E1E),
         borderRadius: BorderRadius.circular(16),
         border: Border(left: BorderSide(color: AppTheme.primaryColor, width: 4)),
         boxShadow: [
@@ -412,17 +397,13 @@ class _SportProfileCard extends StatelessWidget {
             ),
           ),
 
-          // 전적 바
+          // 경기 수
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _Stat('경기', '${profile.gamesPlayed}'),
-                _Stat('승', '${profile.wins}', color: AppTheme.secondaryColor),
-                _Stat('패', '${profile.losses}', color: AppTheme.errorColor),
-                _Stat('무', '${profile.gamesPlayed - profile.wins - profile.losses}'),
-                _Stat('승률', '$winRate%', color: AppTheme.primaryColor),
               ],
             ),
           ),

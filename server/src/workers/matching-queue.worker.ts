@@ -295,6 +295,7 @@ export async function processMatchingQueue(): Promise<void> {
 
       try {
         let matchCreated = false;
+        let createdMatchId = '';
 
         await AppDataSource.transaction(async (manager) => {
           // 최신 상태 확인 (race condition 방지)
@@ -320,14 +321,22 @@ export async function processMatchingQueue(): Promise<void> {
           });
           const savedChatRoom = await manager.save(ChatRoom, chatRoom);
 
+          // 시간대 resolve: ANY가 아닌 쪽 우선
+          const slotA = pairA.desiredTimeSlot;
+          const slotB = pairB.desiredTimeSlot;
+          const resolvedSlot = (slotA && slotA !== 'ANY') ? slotA : (slotB && slotB !== 'ANY') ? slotB : (slotA || slotB || null);
+
           // Match 생성 (PENDING_ACCEPT 상태)
           const match = manager.create(Match, {
+            matchRequestId: pairA.id,
             requesterProfileId: pairA.sportsProfileId,
             opponentProfileId: pairB.sportsProfileId,
             pinId: pairA.pinId,
             sportType: pairA.sportType as any,
             status: 'PENDING_ACCEPT' as any,
             chatRoomId: savedChatRoom.id,
+            desiredDate: pairA.createdAt,
+            desiredTimeSlot: resolvedSlot as any,
           });
           const savedMatch = await manager.save(Match, match);
 
@@ -377,6 +386,7 @@ export async function processMatchingQueue(): Promise<void> {
           );
 
           matchCreated = true;
+          createdMatchId = savedMatch.id;
         });
 
         if (matchCreated) {
@@ -407,7 +417,7 @@ export async function processMatchingQueue(): Promise<void> {
                 type: 'MATCH_PENDING_ACCEPT',
                 title: '매칭 상대를 찾았습니다!',
                 body: '10분 내에 수락 여부를 결정해 주세요.',
-                data: { deepLink: '/matches' },
+                data: { matchId: createdMatchId, deepLink: `/matches/${createdMatchId}/accept` },
               }),
             ),
             redis.publish(
@@ -417,7 +427,7 @@ export async function processMatchingQueue(): Promise<void> {
                 type: 'MATCH_PENDING_ACCEPT',
                 title: '매칭 상대를 찾았습니다!',
                 body: '10분 내에 수락 여부를 결정해 주세요.',
-                data: { deepLink: '/matches' },
+                data: { matchId: createdMatchId, deepLink: `/matches/${createdMatchId}/accept` },
               }),
             ),
           ]);
@@ -434,14 +444,60 @@ export async function processMatchingQueue(): Promise<void> {
 }
 
 // ─────────────────────────────────────
+// BullMQ 이벤트 기반 매칭 큐
+// ─────────────────────────────────────
+
+import { Queue, Worker } from 'bullmq';
+import IORedis from 'ioredis';
+
+const redisConnection = new IORedis(process.env.REDIS_URL || 'redis://localhost:6379', {
+  maxRetriesPerRequest: null,
+});
+
+// 매칭 요청 시 즉시 처리할 큐
+export const matchingQueue = new Queue('matching-process', {
+  connection: redisConnection,
+  defaultJobOptions: {
+    removeOnComplete: 100,
+    removeOnFail: 50,
+  },
+});
+
+// 매칭 요청 생성 시 호출 — 즉시 매칭 시도 트리거
+export async function triggerMatchingProcess(pinId: string, sportType: string): Promise<void> {
+  await matchingQueue.add('process', { pinId, sportType }, {
+    jobId: `match-${pinId}-${sportType}-${Date.now()}`,
+  });
+}
+
+// ─────────────────────────────────────
 // 독립 실행 모드 (PM2 worker로 직접 실행 시)
 // ─────────────────────────────────────
 
 if (process.env.STANDALONE_WORKER === 'true') {
-  console.info('[MatchingQueueWorker] Starting in standalone mode (10s interval)');
+  console.info('[MatchingQueueWorker] Starting in event-driven mode with 60s fallback');
 
-  processMatchingQueue().catch(console.error);
+  // BullMQ Worker — 매칭 요청 이벤트 즉시 처리
+  const worker = new Worker('matching-process', async () => {
+    await processMatchingQueue();
+  }, {
+    connection: redisConnection,
+    concurrency: 1, // 동시 처리 1개 (매칭 충돌 방지)
+    limiter: {
+      max: 1,
+      duration: 2000, // 최소 2초 간격 (연속 트리거 방어)
+    },
+  });
+
+  worker.on('failed', (job, err) => {
+    console.error(`[MatchingQueueWorker] Job ${job?.id} failed:`, err.message);
+  });
+
+  // 60초 fallback 폴링 (이벤트 누락 대비)
   setInterval(() => {
     processMatchingQueue().catch(console.error);
-  }, 10000);
+  }, 60000);
+
+  // 초기 실행
+  processMatchingQueue().catch(console.error);
 }

@@ -147,7 +147,6 @@ const METRO_PINS: PinData[] = [
   { name: '부천역', slug: 'bucheon-station', lat: 37.4837, lng: 126.7838, level: 'DONG', parentSlug: 'gyeonggi' },
   { name: '안산중앙역', slug: 'ansan-jungang', lat: 37.3185, lng: 126.8328, level: 'DONG', parentSlug: 'gyeonggi' },
   { name: '안양역', slug: 'anyang-station', lat: 37.4017, lng: 126.9234, level: 'DONG', parentSlug: 'gyeonggi' },
-  { name: '도농역(다산)', slug: 'donong-dasan', lat: 37.6117, lng: 127.1554, level: 'DONG', parentSlug: 'gyeonggi' },
   { name: '동탄역', slug: 'dongtan-station', lat: 37.2003, lng: 127.0975, level: 'DONG', parentSlug: 'gyeonggi' },
   { name: '평택역', slug: 'pyeongtaek-station', lat: 36.9910, lng: 127.0858, level: 'DONG', parentSlug: 'gyeonggi' },
   { name: '의정부역', slug: 'uijeongbu-station', lat: 37.7383, lng: 127.0458, level: 'DONG', parentSlug: 'gyeonggi' },
@@ -161,7 +160,6 @@ const METRO_PINS: PinData[] = [
 const REGIONAL_PINS: PinData[] = [
   // 인천
   { name: '부평역', slug: 'bupyeong-station', lat: 37.4897, lng: 126.7231, level: 'DONG', parentSlug: 'incheon' },
-  { name: '인천역(차이나타운)', slug: 'incheon-chinatown', lat: 37.4737, lng: 126.6176, level: 'DONG', parentSlug: 'incheon' },
   { name: '송도(센트럴파크)', slug: 'songdo-central', lat: 37.3815, lng: 126.6610, level: 'DONG', parentSlug: 'incheon' },
   // 부산
   { name: '서면역', slug: 'seomyeon-station', lat: 35.1579, lng: 129.0589, level: 'DONG', parentSlug: 'busan' },

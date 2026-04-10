@@ -12,6 +12,7 @@ export enum ErrorCode {
   AUTH_UNAUTHORIZED = 'AUTH_006',
   AUTH_FORBIDDEN = 'AUTH_007',
   AUTH_GOOGLE_FAILED = 'AUTH_008',
+  AUTH_APPLE_FAILED = 'AUTH_009',
 
   // 사용자 (USER_)
   USER_NOT_FOUND = 'USER_001',
@@ -139,6 +140,7 @@ export class AppError extends Error {
       [ErrorCode.AUTH_UNAUTHORIZED]: '인증이 필요합니다.',
       [ErrorCode.AUTH_FORBIDDEN]: '접근 권한이 없습니다.',
       [ErrorCode.AUTH_GOOGLE_FAILED]: 'Google 인증에 실패했습니다.',
+      [ErrorCode.AUTH_APPLE_FAILED]: 'Apple 인증에 실패했습니다.',
       [ErrorCode.USER_NOT_FOUND]: '사용자를 찾을 수 없습니다.',
       [ErrorCode.USER_NICKNAME_TAKEN]: '이미 사용 중인 닉네임입니다.',
       [ErrorCode.USER_SUSPENDED]: '정지된 계정입니다.',

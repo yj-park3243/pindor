@@ -15,6 +15,12 @@ class Match {
   final DateTime createdAt;
   final List<MatchAcceptance>? acceptances;
   final bool isCasual; // true = 친선 게임, false = 랭크 게임
+  final String? gameResult; // WIN | LOSS | DRAW (완료된 매칭만)
+  final String? pinName; // 매칭 핀 지역명
+  final int encounterCount; // 상대와의 이전 만남 횟수
+  final String? desiredDate; // 매칭 요청 희망 날짜
+  final String? desiredTimeSlot; // 매칭 요청 희망 시간대
+  final bool myResultSubmitted; // 내가 결과를 이미 제출했는지
 
   const Match({
     required this.id,
@@ -32,6 +38,12 @@ class Match {
     required this.createdAt,
     this.acceptances,
     this.isCasual = false,
+    this.gameResult,
+    this.pinName,
+    this.encounterCount = 0,
+    this.desiredDate,
+    this.desiredTimeSlot,
+    this.myResultSubmitted = false,
   });
 
   factory Match.fromJson(Map<String, dynamic> json) {
@@ -56,10 +68,14 @@ class Match {
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'] as String)
           : DateTime.now(),
-      acceptances: (json['acceptances'] as List<dynamic>?)
-          ?.map((e) => MatchAcceptance.fromJson(e as Map<String, dynamic>))
-          .toList(),
+      acceptances: _parseAcceptances(json),
       isCasual: json['isCasual'] as bool? ?? false,
+      gameResult: json['gameResult'] as String?,
+      pinName: json['pinName'] as String?,
+      encounterCount: json['encounterCount'] as int? ?? 0,
+      desiredDate: json['desiredDate'] as String?,
+      desiredTimeSlot: json['desiredTimeSlot'] as String?,
+      myResultSubmitted: json['myResultSubmitted'] as bool? ?? false,
     );
   }
 
@@ -79,7 +95,29 @@ class Match {
         'createdAt': createdAt.toIso8601String(),
         'acceptances': acceptances?.map((e) => e.toJson()).toList(),
         'isCasual': isCasual,
+        if (gameResult != null) 'gameResult': gameResult,
+        if (pinName != null) 'pinName': pinName,
+        'encounterCount': encounterCount,
+        if (desiredDate != null) 'desiredDate': desiredDate,
+        if (desiredTimeSlot != null) 'desiredTimeSlot': desiredTimeSlot,
       };
+
+  /// 서버 응답의 acceptances 배열 또는 myAcceptance 단일 객체 모두 처리
+  static List<MatchAcceptance>? _parseAcceptances(Map<String, dynamic> json) {
+    // 배열로 내려오는 경우
+    final list = json['acceptances'] as List<dynamic>?;
+    if (list != null && list.isNotEmpty) {
+      return list
+          .map((e) => MatchAcceptance.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    // 서버가 myAcceptance 단일 객체로 내려주는 경우
+    final myAcc = json['myAcceptance'] as Map<String, dynamic>?;
+    if (myAcc != null) {
+      return [MatchAcceptance.fromJson(myAcc)];
+    }
+    return null;
+  }
 
   bool get isPendingAccept => status == 'PENDING_ACCEPT';
   bool get isChat => status == 'CHAT';
@@ -87,6 +125,22 @@ class Match {
   bool get isCompleted => status == 'COMPLETED';
   bool get isCancelled => status == 'CANCELLED';
   bool get isDisputed => status == 'DISPUTED';
+
+  /// 희망 시간대 표시 텍스트
+  String get desiredTimeSlotDisplayName {
+    switch (desiredTimeSlot) {
+      case 'DAWN': return '새벽 (0~3시)';
+      case 'EARLY_MORNING': return '이른 아침 (3~6시)';
+      case 'MORNING': return '오전 (6~9시)';
+      case 'LATE_MORNING': return '오전 늦게 (9~12시)';
+      case 'AFTERNOON': return '오후 (12~15시)';
+      case 'LATE_AFTERNOON': return '오후 늦게 (15~18시)';
+      case 'EVENING': return '저녁 (18~21시)';
+      case 'NIGHT': return '밤 (21~24시)';
+      case 'ANY': return '하루종일';
+      default: return desiredTimeSlot ?? '';
+    }
+  }
 
   /// 경기 확정 가능 여부
   bool get canConfirm => isChat;

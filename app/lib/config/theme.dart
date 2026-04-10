@@ -6,27 +6,29 @@ class AppTheme {
   AppTheme._();
 
   // ─── 브랜드 색상 ───
-  static const Color primaryColor = Color(0xFF1A73E8);
-  static const Color primaryDark = Color(0xFF1557B0);
-  static const Color primaryLight = Color(0xFF4A9EF8);
+  static const Color primaryColor = Color(0xFFEA733A);   // 오렌지
+  static const Color primaryDark = Color(0xFFD4612A);
+  static const Color primaryLight = Color(0xFFFF8F5A);
 
-  static const Color secondaryColor = Color(0xFF34A853);
-  static const Color errorColor = Color(0xFFEA4335);
-  static const Color warningColor = Color(0xFFFBBC04);
+  static const Color secondaryColor = Color(0xFF22C55E); // 그린 (성공)
+  static const Color acceptColor = Color(0xFF2563EB);    // 블루 (수락)
+  static const Color rejectColor = Color(0xFFEF4444);    // 레드 (거절/삭제)
+  static const Color errorColor = Color(0xFFEF4444);
+  static const Color warningColor = Color(0xFFF59E0B);
 
-  // ─── 배경/표면 색상 ───
-  static const Color backgroundLight = Color(0xFFF8F9FA);
-  static const Color surfaceLight = Color(0xFFFFFFFF);
-  static const Color cardLight = Color(0xFFFFFFFF);
+  // ─── 배경/표면 색상 (다크 테마 기본값) ───
+  static const Color backgroundLight = Color(0xFF0A0A0A); // 거의 블랙
+  static const Color surfaceLight = Color(0xFF1A1A1A);
+  static const Color cardLight = Color(0xFF1E1E1E);
 
-  static const Color backgroundDark = Color(0xFF121212);
-  static const Color surfaceDark = Color(0xFF1E1E1E);
-  static const Color cardDark = Color(0xFF2C2C2C);
+  static const Color backgroundDark = Color(0xFF0A0A0A);
+  static const Color surfaceDark = Color(0xFF1A1A1A);
+  static const Color cardDark = Color(0xFF1E1E1E);
 
   // ─── 텍스트 색상 ───
-  static const Color textPrimary = Color(0xFF1A1A1A);
-  static const Color textSecondary = Color(0xFF6B7280);
-  static const Color textDisabled = Color(0xFFBDBDBD);
+  static const Color textPrimary = Color(0xFFFFFFFF);     // 화이트
+  static const Color textSecondary = Color(0xFF9CA3AF);   // 라이트 그레이
+  static const Color textDisabled = Color(0xFF4B5563);    // 다크 그레이
   static const Color textOnPrimary = Color(0xFFFFFFFF);
 
   // ─── 티어 색상 (7단계) ───
@@ -59,21 +61,21 @@ class AppTheme {
     }
   }
 
-  // ─── 라이트 테마 ───
+  // ─── 라이트 테마 (실제로는 다크 스타일) ───
   static ThemeData get lightTheme {
     final colorScheme = ColorScheme.fromSeed(
       seedColor: primaryColor,
-      brightness: Brightness.light,
+      brightness: Brightness.dark,
       primary: primaryColor,
       secondary: secondaryColor,
       error: errorColor,
-      background: backgroundLight,
       surface: surfaceLight,
     );
 
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
+      scaffoldBackgroundColor: backgroundLight,
       // fontFamily: 'Pretendard', // 추후 폰트 에셋 추가 시 활성화
 
       // AppBar 테마
@@ -81,14 +83,14 @@ class AppTheme {
         elevation: 0,
         scrolledUnderElevation: 1,
         backgroundColor: surfaceLight,
-        foregroundColor: textPrimary,
+        foregroundColor: Colors.white,
         titleTextStyle: TextStyle(
           // fontFamily: 'Pretendard', // 추후 폰트 에셋 추가 시 활성화
           fontSize: 18,
           fontWeight: FontWeight.w600,
-          color: textPrimary,
+          color: Colors.white,
         ),
-        iconTheme: IconThemeData(color: textPrimary),
+        iconTheme: IconThemeData(color: Colors.white),
       ),
 
       // 카드 테마
@@ -97,7 +99,7 @@ class AppTheme {
         color: cardLight,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: Color(0xFFE5E7EB), width: 1),
+          side: const BorderSide(color: Color(0xFF2A2A2A), width: 1),
         ),
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       ),
@@ -150,14 +152,14 @@ class AppTheme {
       // 입력 필드 테마
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: Colors.white,
+        fillColor: const Color(0xFF1E1E1E),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFE5E7EB), width: 1),
+          borderSide: const BorderSide(color: Color(0xFF333333), width: 1),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -181,9 +183,9 @@ class AppTheme {
         ),
       ),
 
-      // BottomNavigationBar 테마
+      // BottomNavigationBar 테마 (레거시)
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-        backgroundColor: surfaceLight,
+        backgroundColor: Color(0xFF111111),
         selectedItemColor: primaryColor,
         unselectedItemColor: textSecondary,
         elevation: 8,
@@ -198,6 +200,34 @@ class AppTheme {
           fontSize: 11,
           fontWeight: FontWeight.w400,
         ),
+      ),
+
+      // NavigationBar 테마 (Material 3)
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: const Color(0xFF1A1A1A),
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
+        indicatorColor: primaryColor.withValues(alpha: 0.18),
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return const IconThemeData(color: primaryColor, size: 24);
+          }
+          return const IconThemeData(color: textSecondary, size: 24);
+        }),
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: primaryColor,
+            );
+          }
+          return const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w400,
+            color: textSecondary,
+          );
+        }),
       ),
 
       // 텍스트 테마
@@ -290,12 +320,13 @@ class AppTheme {
 
       // Chip 테마
       chipTheme: ChipThemeData(
-        backgroundColor: const Color(0xFFF3F4F6),
-        selectedColor: primaryColor.withOpacity(0.15),
+        backgroundColor: const Color(0xFF2A2A2A),
+        selectedColor: primaryColor.withOpacity(0.25),
         labelStyle: const TextStyle(
           // fontFamily: 'Pretendard', // 추후 폰트 에셋 추가 시 활성화
           fontSize: 13,
           fontWeight: FontWeight.w500,
+          color: textPrimary,
         ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
@@ -305,14 +336,14 @@ class AppTheme {
 
       // Divider 테마
       dividerTheme: const DividerThemeData(
-        color: Color(0xFFE5E7EB),
+        color: Color(0xFF2A2A2A),
         thickness: 1,
         space: 1,
       ),
 
       // SnackBar 테마
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: const Color(0xFF323232),
+        backgroundColor: const Color(0xFF1E1E1E),
         contentTextStyle: const TextStyle(
           // fontFamily: 'Pretendard', // 추후 폰트 에셋 추가 시 활성화
           fontSize: 14,
@@ -331,10 +362,9 @@ class AppTheme {
     final colorScheme = ColorScheme.fromSeed(
       seedColor: primaryColor,
       brightness: Brightness.dark,
-      primary: primaryLight,
+      primary: primaryColor,
       secondary: secondaryColor,
       error: errorColor,
-      background: backgroundDark,
       surface: surfaceDark,
     );
 
@@ -361,17 +391,45 @@ class AppTheme {
         color: cardDark,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: Color(0xFF3A3A3A), width: 1),
+          side: const BorderSide(color: Color(0xFF2A2A2A), width: 1),
         ),
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       ),
 
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-        backgroundColor: surfaceDark,
-        selectedItemColor: primaryLight,
+        backgroundColor: Color(0xFF111111),
+        selectedItemColor: primaryColor,
         unselectedItemColor: Color(0xFF9CA3AF),
         elevation: 8,
         type: BottomNavigationBarType.fixed,
+      ),
+
+      // NavigationBar 테마 (Material 3)
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: const Color(0xFF1A1A1A),
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
+        indicatorColor: primaryColor.withValues(alpha: 0.18),
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return const IconThemeData(color: primaryColor, size: 24);
+          }
+          return const IconThemeData(color: Color(0xFF9CA3AF), size: 24);
+        }),
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: primaryColor,
+            );
+          }
+          return const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w400,
+            color: Color(0xFF9CA3AF),
+          );
+        }),
       ),
     );
   }

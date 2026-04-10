@@ -185,6 +185,10 @@ class ChatDao extends DatabaseAccessor<AppDatabase> with _$ChatDaoMixin {
     );
   }
 
+  String _encodeJson(Map<String, dynamic> data) => jsonEncode(data);
+  Map<String, dynamic> _decodeJson(String data) =>
+      Map<String, dynamic>.from(jsonDecode(data) as Map);
+
   MessagesCompanion _messageToCompanion(model.Message m) {
     return MessagesCompanion(
       id: Value(m.id),
@@ -195,7 +199,9 @@ class ChatDao extends DatabaseAccessor<AppDatabase> with _$ChatDaoMixin {
       messageType: Value(m.messageType),
       content: Value(m.content),
       imageUrl: Value(m.imageUrl),
+      extraData: Value(m.extraData != null ? _encodeJson(m.extraData!) : null),
       isRead: Value(m.isRead),
+      readAt: Value(m.readAt),
       createdAt: Value(m.createdAt),
     );
   }
@@ -210,8 +216,21 @@ class ChatDao extends DatabaseAccessor<AppDatabase> with _$ChatDaoMixin {
       messageType: row.messageType,
       content: row.content,
       imageUrl: row.imageUrl,
+      extraData: row.extraData != null ? _decodeJson(row.extraData!) : null,
       isRead: row.isRead,
+      readAt: row.readAt,
       createdAt: row.createdAt,
     );
+  }
+
+  /// 읽음 처리: 특정 메시지 ID 목록의 readAt 업데이트
+  Future<void> updateMessagesReadAt(List<String> messageIds, DateTime readAt) async {
+    if (messageIds.isEmpty) return;
+    await (update(db.messages)
+          ..where((t) => t.id.isIn(messageIds)))
+        .write(MessagesCompanion(
+      isRead: const Value(true),
+      readAt: Value(readAt),
+    ));
   }
 }

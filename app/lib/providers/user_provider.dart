@@ -15,29 +15,22 @@ class UserNotifier extends AutoDisposeAsyncNotifier<User?> {
     final authState = ref.watch(authStateProvider).valueOrNull;
     if (authState == null || !authState.isAuthenticated) return null;
 
-    final userId = authState.user?.id;
-    if (userId == null) return null;
-
-    final repo = ref.read(userRepositoryProvider);
-
-    // 1) 로컬 DB에서 먼저 조회
-    final localUser = await repo.getMeLocal(userId);
-
-    // 2) 백그라운드로 API 갱신 (TTL 만료 시만)
-    unawaited(repo.refreshMeIfStale(userId).then((_) {
-      // 갱신 후 로컬 DB에서 다시 읽어 state 업데이트
-      repo.getMeLocal(userId).then((updated) {
+    // authState.user가 있으면 바로 사용 (로그인 직후)
+    if (authState.user != null) {
+      // 백그라운드로 최신 데이터 갱신
+      final repo = ref.read(userRepositoryProvider);
+      unawaited(repo.getMe().then((updated) {
         if (updated != null && state.hasValue) {
           state = AsyncData(updated);
         }
-      });
-    }).catchError((e) {
-      debugPrint('[UserProvider] background refresh failed: $e');
-    }));
+      }).catchError((e) {
+        debugPrint('[UserProvider] background refresh failed: $e');
+      }));
+      return authState.user;
+    }
 
-    // 로컬에 있으면 즉시 반환, 없으면 API 호출
-    if (localUser != null) return localUser;
-
+    // user가 null인 경우 (네트워크 에러로 토큰만 유지된 상태)
+    final repo = ref.read(userRepositoryProvider);
     try {
       return await repo.getMe();
     } catch (e) {

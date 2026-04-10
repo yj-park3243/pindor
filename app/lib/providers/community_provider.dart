@@ -14,12 +14,14 @@ class CommunityRepository {
     String? category,
     String? sportType,
     String? cursor,
+    String? search,
     int limit = 20,
   }) async {
     final params = <String, dynamic>{'limit': limit};
     if (category != null) params['category'] = category;
     if (sportType != null) params['sportType'] = sportType;
     if (cursor != null) params['cursor'] = cursor;
+    if (search != null && search.isNotEmpty) params['search'] = search;
 
     final response = await _api.get('/pins/$pinId/posts', queryParameters: params);
     final data = response['data'] as List<dynamic>;
@@ -78,6 +80,10 @@ class CommunityRepository {
     return data
         .map((e) => Comment.fromJson(e as Map<String, dynamic>))
         .toList();
+  }
+
+  Future<void> deleteComment(String pinId, String postId, String commentId) async {
+    await _api.delete('/pins/$pinId/posts/$postId/comments/$commentId');
   }
 
   Future<Comment> createComment({
@@ -146,18 +152,25 @@ class PostListKey {
   final String pinId;
   final String? category;
   final String? sportType;
+  final String? search;
 
-  const PostListKey({required this.pinId, this.category, this.sportType});
+  const PostListKey({
+    required this.pinId,
+    this.category,
+    this.sportType,
+    this.search,
+  });
 
   @override
   bool operator ==(Object other) =>
       other is PostListKey &&
       other.pinId == pinId &&
       other.category == category &&
-      other.sportType == sportType;
+      other.sportType == sportType &&
+      other.search == search;
 
   @override
-  int get hashCode => Object.hash(pinId, category, sportType);
+  int get hashCode => Object.hash(pinId, category, sportType, search);
 }
 
 // ─── Notifier: PostList ───────────────────────────────────────────────────────
@@ -189,6 +202,7 @@ class PostListNotifier
         category: arg.category,
         sportType: arg.sportType,
         cursor: refresh ? null : state.cursor,
+        search: arg.search,
         limit: 20,
       );
 
@@ -324,36 +338,11 @@ class CommentsNotifier
   }
 
   Future<void> deleteComment(String commentId) async {
-    // 댓글 삭제는 서버에 DELETE /pins/:pinId/posts/:postId/comments/:commentId 가 없으므로
-    // 현재 서버 API에 맞는 댓글 삭제 엔드포인트가 없음 — 일단 주석 처리하고 로컬에서만 제거
-    // TODO: 서버에 댓글 삭제 API 추가 필요
-    state = AsyncData(
-      _removeCommentRecursive(state.value ?? [], commentId),
+    await _repo.deleteComment(_key.pinId, _key.postId, commentId);
+    // 서버 soft delete 후 목록 재조회 (삭제된 댓글은 "삭제된 댓글입니다"로 표시됨)
+    state = await AsyncValue.guard(
+      () => _repo.getComments(_key.pinId, _key.postId),
     );
-  }
-
-  /// 댓글 목록에서 commentId를 재귀적으로 제거 (대댓글 포함)
-  List<Comment> _removeCommentRecursive(
-      List<Comment> comments, String commentId) {
-    return comments
-        .where((c) => c.id != commentId)
-        .map((c) => Comment(
-              id: c.id,
-              postId: c.postId,
-              authorId: c.authorId,
-              authorNickname: c.authorNickname,
-              authorProfileImageUrl: c.authorProfileImageUrl,
-              authorTier: c.authorTier,
-              parentId: c.parentId,
-              content: c.content,
-              isDeleted: c.isDeleted,
-              replies: c.replies
-                  .where((r) => r.id != commentId)
-                  .toList(),
-              createdAt: c.createdAt,
-              updatedAt: c.updatedAt,
-            ))
-        .toList();
   }
 }
 

@@ -4,13 +4,15 @@ import '../../config/theme.dart';
 /// 채팅 입력바 위젯
 class ChatInputBar extends StatefulWidget {
   final ValueChanged<String> onSendText;
-  final VoidCallback? onSendImage;
+  final VoidCallback? onPlusPressed;
+  final VoidCallback? onTyping;
   final bool enabled;
 
   const ChatInputBar({
     super.key,
     required this.onSendText,
-    this.onSendImage,
+    this.onPlusPressed,
+    this.onTyping,
     this.enabled = true,
   });
 
@@ -29,6 +31,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
       final hasText = _controller.text.trim().isNotEmpty;
       if (hasText != _hasText) {
         setState(() => _hasText = hasText);
+      }
+      // 입력 중 타이핑 이벤트 전송
+      if (_controller.text.isNotEmpty) {
+        widget.onTyping?.call();
       }
     });
   }
@@ -55,19 +61,19 @@ class _ChatInputBarState extends State<ChatInputBar> {
         top: 10,
         bottom: MediaQuery.of(context).viewInsets.bottom > 0 ? 10 : 20,
       ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: const Border(
-          top: BorderSide(color: Color(0xFFE5E7EB), width: 1),
+      decoration: const BoxDecoration(
+        color: Color(0xFF1E1E1E),
+        border: Border(
+          top: BorderSide(color: Color(0xFF2A2A2A), width: 1),
         ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          // 이미지 첨부 버튼
+          // "+" 첨부 버튼
           IconButton(
-            onPressed: widget.enabled ? widget.onSendImage : null,
-            icon: const Icon(Icons.image_outlined),
+            onPressed: widget.enabled ? widget.onPlusPressed : null,
+            icon: const Icon(Icons.add_rounded),
             color: AppTheme.textSecondary,
             constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
             padding: const EdgeInsets.all(4),
@@ -78,7 +84,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
             child: Container(
               constraints: const BoxConstraints(maxHeight: 120),
               decoration: BoxDecoration(
-                color: const Color(0xFFF3F4F6),
+                color: const Color(0xFF2A2A2A),
                 borderRadius: BorderRadius.circular(22),
               ),
               child: TextField(
@@ -110,7 +116,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
             decoration: BoxDecoration(
               color: _hasText && widget.enabled
                   ? AppTheme.primaryColor
-                  : const Color(0xFFE5E7EB),
+                  : const Color(0xFF2A2A2A),
               shape: BoxShape.circle,
             ),
             child: IconButton(

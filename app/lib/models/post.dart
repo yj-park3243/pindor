@@ -38,6 +38,27 @@ class PinPost {
     required this.updatedAt,
   });
 
+  /// 서버가 images:[{imageUrl, sortOrder}] 또는 imageUrls:["url",...] 두 형태로 내려올 수 있음
+  static List<String> _parseImageUrls(Map<String, dynamic> json) {
+    // images 필드: PostImage 엔티티 배열 [{imageUrl: "...", sortOrder: 0}, ...]
+    if (json['images'] is List) {
+      return (json['images'] as List<dynamic>)
+          .map((e) {
+            if (e is Map<String, dynamic>) return e['imageUrl'] as String?;
+            return null;
+          })
+          .whereType<String>()
+          .toList();
+    }
+    // imageUrls 필드: 문자열 배열 (이전 형태 또는 클라이언트 내부 사용)
+    if (json['imageUrls'] is List) {
+      return (json['imageUrls'] as List<dynamic>)
+          .whereType<String>()
+          .toList();
+    }
+    return [];
+  }
+
   factory PinPost.fromJson(Map<String, dynamic> json) {
     final author = json['author'] as Map<String, dynamic>?;
     return PinPost(
@@ -55,10 +76,7 @@ class PinPost {
       likeCount: json['likeCount'] as int? ?? 0,
       commentCount: json['commentCount'] as int? ?? 0,
       isLiked: json['isLiked'] as bool? ?? false,
-      imageUrls: (json['imageUrls'] as List<dynamic>?)
-              ?.map((e) => e as String)
-              .toList() ??
-          [],
+      imageUrls: _parseImageUrls(json),
       isDeleted: json['isDeleted'] as bool? ?? false,
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(

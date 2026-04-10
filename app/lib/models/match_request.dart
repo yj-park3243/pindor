@@ -13,6 +13,7 @@ class MatchRequest {
   final double latitude;
   final double longitude;
   final String? locationName;
+  final String? pinName;
   final double radiusKm;
   final int minOpponentScore;
   final int maxOpponentScore;
@@ -22,6 +23,7 @@ class MatchRequest {
   final DateTime expiresAt;
   final DateTime createdAt;
   final String genderPreference; // ANY | SAME | MALE | FEMALE
+  final bool isCasual;
   final int? minAge;
   final int? maxAge;
 
@@ -39,6 +41,7 @@ class MatchRequest {
     required this.latitude,
     required this.longitude,
     this.locationName,
+    this.pinName,
     required this.radiusKm,
     required this.minOpponentScore,
     required this.maxOpponentScore,
@@ -48,6 +51,7 @@ class MatchRequest {
     required this.expiresAt,
     required this.createdAt,
     this.genderPreference = 'ANY',
+    this.isCasual = false,
     this.minAge,
     this.maxAge,
   });
@@ -70,6 +74,7 @@ class MatchRequest {
       latitude: (json['latitude'] as num?)?.toDouble() ?? 0.0,
       longitude: (json['longitude'] as num?)?.toDouble() ?? 0.0,
       locationName: json['locationName'] as String?,
+      pinName: json['pinName'] as String?,
       radiusKm: (json['radiusKm'] as num?)?.toDouble() ?? 10.0,
       minOpponentScore: json['minOpponentScore'] as int? ?? 800,
       maxOpponentScore: json['maxOpponentScore'] as int? ?? 1600,
@@ -83,6 +88,7 @@ class MatchRequest {
           ? DateTime.parse(json['createdAt'] as String)
           : DateTime.now(),
       genderPreference: json['genderPreference'] as String? ?? 'ANY',
+      isCasual: json['isCasual'] as bool? ?? false,
       minAge: json['minAge'] as int?,
       maxAge: json['maxAge'] as int?,
     );
@@ -107,6 +113,7 @@ class MatchRequest {
         'expiresAt': expiresAt.toIso8601String(),
         'createdAt': createdAt.toIso8601String(),
         'genderPreference': genderPreference,
+        'isCasual': isCasual,
         'minAge': minAge,
         'maxAge': maxAge,
       };
@@ -118,14 +125,24 @@ class MatchRequest {
 
   String get timeSlotDisplayName {
     switch (desiredTimeSlot) {
+      case 'DAWN':
+        return '새벽 (0~3시)';
+      case 'EARLY_MORNING':
+        return '이른 아침 (3~6시)';
       case 'MORNING':
-        return '오전';
+        return '오전 (6~9시)';
+      case 'LATE_MORNING':
+        return '오전 늦게 (9~12시)';
       case 'AFTERNOON':
-        return '오후';
+        return '오후 (12~15시)';
+      case 'LATE_AFTERNOON':
+        return '오후 늦게 (15~18시)';
       case 'EVENING':
-        return '저녁';
+        return '저녁 (18~21시)';
+      case 'NIGHT':
+        return '밤 (21~24시)';
       case 'ANY':
-        return '무관';
+        return '아무 때나';
       default:
         return desiredTimeSlot;
     }

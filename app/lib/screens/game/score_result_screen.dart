@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../config/router.dart';
 import '../../config/theme.dart';
 import '../../widgets/common/score_display.dart';
+import '../../widgets/common/app_toast.dart';
 
 /// 점수 변동 결과 화면 (PRD SCREEN-029)
 /// 애니메이션: 이전점수 → 새점수, 랭킹 변동 표시, 공유 버튼
@@ -108,7 +109,7 @@ class _ScoreResultScreenState extends State<ScoreResultScreen>
   Widget build(BuildContext context) {
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFF0A0A0A),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -264,9 +265,7 @@ class _ScoreResultScreenState extends State<ScoreResultScreen>
                     child: OutlinedButton.icon(
                       onPressed: () {
                         // TODO: 결과 공유 기능
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('공유 기능 준비 중입니다.')),
-                        );
+                        AppToast.info('공유 기능 준비 중입니다.');
                       },
                       icon: const Icon(Icons.share_rounded, size: 18),
                       label: const Text('결과 공유하기'),
@@ -394,10 +393,10 @@ class _RankChangeCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8F9FA),
+        color: const Color(0xFF1E1E1E),
         borderRadius: BorderRadius.circular(14),
         border:
-            Border.all(color: const Color(0xFFE5E7EB), width: 1),
+            Border.all(color: const Color(0xFF2A2A2A), width: 1),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,

@@ -1,4 +1,5 @@
 import * as admin from 'firebase-admin';
+import { readFileSync } from 'fs';
 import { env } from './env.js';
 
 let firebaseApp: admin.app.App | null = null;
@@ -19,13 +20,20 @@ export function getMessaging(): admin.messaging.Messaging | null {
 
 // 앱 초기화 (서버 시작 시 호출 — Firebase 없어도 서버는 정상 기동)
 export function initFirebase(): void {
-  if (!env.FIREBASE_SERVICE_ACCOUNT || env.FIREBASE_SERVICE_ACCOUNT.trim() === '') {
+  const raw = env.FIREBASE_SERVICE_ACCOUNT?.trim();
+  if (!raw) {
     console.warn('[Firebase] FIREBASE_SERVICE_ACCOUNT not set — push notifications disabled');
     return;
   }
 
   try {
-    const serviceAccount = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT) as admin.ServiceAccount;
+    // JSON 문자열이면 파싱, 파일 경로면 읽기
+    let serviceAccount: admin.ServiceAccount;
+    if (raw.startsWith('{')) {
+      serviceAccount = JSON.parse(raw) as admin.ServiceAccount;
+    } else {
+      serviceAccount = JSON.parse(readFileSync(raw, 'utf-8')) as admin.ServiceAccount;
+    }
 
     firebaseApp = admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),

@@ -1,0 +1,454 @@
+[
+  {
+    "name": "1. 비슷한 실력 매칭",
+    "description": "비슷한 레이팅(1000 vs 1020) 유저가 같은 핀에서 매칭되어야 함",
+    "simulatedTime": "2026-04-10T12:00:00Z",
+    "requests": [
+      {
+        "label": "유저A",
+        "requesterId": "user-a",
+        "sportsProfileId": "sp-a",
+        "pinId": "pin-gangnam",
+        "sportType": "GOLF",
+        "glickoRating": 1000,
+        "glickoRd": 100,
+        "isPlacement": false,
+        "lossStreak": 0,
+        "winStreak": 0,
+        "recentOpponentIds": [],
+        "createdAt": "2026-04-10T11:30:00Z",
+        "expiresAt": "2026-04-10T23:59:59Z"
+      },
+      {
+        "label": "유저B",
+        "requesterId": "user-b",
+        "sportsProfileId": "sp-b",
+        "pinId": "pin-gangnam",
+        "sportType": "GOLF",
+        "glickoRating": 1020,
+        "glickoRd": 100,
+        "isPlacement": false,
+        "lossStreak": 0,
+        "winStreak": 0,
+        "recentOpponentIds": [],
+        "createdAt": "2026-04-10T11:35:00Z",
+        "expiresAt": "2026-04-10T23:59:59Z"
+      }
+    ],
+    "expectedMatches": [{ "playerA": "유저A", "playerB": "유저B" }]
+  },
+
+  {
+    "name": "2. 레이팅 차이 큰 유저 미매칭 (초기)",
+    "description": "300점 차이(1000 vs 1300) — 방금 등록해서 범위 좁음 → 매칭 안됨",
+    "simulatedTime": "2026-04-10T12:00:00Z",
+    "requests": [
+      {
+        "label": "초보",
+        "requesterId": "user-low",
+        "sportsProfileId": "sp-low",
+        "pinId": "pin-gangnam",
+        "sportType": "GOLF",
+        "glickoRating": 1000,
+        "glickoRd": 100,
+        "isPlacement": false,
+        "lossStreak": 0,
+        "winStreak": 0,
+        "recentOpponentIds": [],
+        "createdAt": "2026-04-10T11:55:00Z",
+        "expiresAt": "2026-04-10T23:59:59Z"
+      },
+      {
+        "label": "고수",
+        "requesterId": "user-high",
+        "sportsProfileId": "sp-high",
+        "pinId": "pin-gangnam",
+        "sportType": "GOLF",
+        "glickoRating": 1300,
+        "glickoRd": 100,
+        "isPlacement": false,
+        "lossStreak": 0,
+        "winStreak": 0,
+        "recentOpponentIds": [],
+        "createdAt": "2026-04-10T11:55:00Z",
+        "expiresAt": "2026-04-10T23:59:59Z"
+      }
+    ],
+    "expectedMatches": [],
+    "expectedUnmatched": ["초보", "고수"]
+  },
+
+  {
+    "name": "3. 시간 경과 후 범위 확장 매칭",
+    "description": "200점 차이지만 오래 기다림(waitRatio 높음) → 범위 확장으로 매칭",
+    "simulatedTime": "2026-04-10T20:00:00Z",
+    "requests": [
+      {
+        "label": "오래기다린A",
+        "requesterId": "user-wait-a",
+        "sportsProfileId": "sp-wait-a",
+        "pinId": "pin-gangnam",
+        "sportType": "GOLF",
+        "glickoRating": 1000,
+        "glickoRd": 100,
+        "isPlacement": false,
+        "lossStreak": 0,
+        "winStreak": 0,
+        "recentOpponentIds": [],
+        "createdAt": "2026-04-10T08:00:00Z",
+        "expiresAt": "2026-04-10T23:59:59Z"
+      },
+      {
+        "label": "오래기다린B",
+        "requesterId": "user-wait-b",
+        "sportsProfileId": "sp-wait-b",
+        "pinId": "pin-gangnam",
+        "sportType": "GOLF",
+        "glickoRating": 1200,
+        "glickoRd": 100,
+        "isPlacement": false,
+        "lossStreak": 0,
+        "winStreak": 0,
+        "recentOpponentIds": [],
+        "createdAt": "2026-04-10T08:00:00Z",
+        "expiresAt": "2026-04-10T23:59:59Z"
+      }
+    ],
+    "expectedMatches": [{ "playerA": "오래기다린A", "playerB": "오래기다린B" }]
+  },
+
+  {
+    "name": "4. 연패 보정 매칭",
+    "description": "3연패 유저(1100)는 -50 조정 → 실질 1050. 상대 1000과 50점 차이로 매칭됨",
+    "simulatedTime": "2026-04-10T12:00:00Z",
+    "requests": [
+      {
+        "label": "연패유저",
+        "requesterId": "user-losing",
+        "sportsProfileId": "sp-losing",
+        "pinId": "pin-gangnam",
+        "sportType": "GOLF",
+        "glickoRating": 1100,
+        "glickoRd": 100,
+        "isPlacement": false,
+        "lossStreak": 3,
+        "winStreak": 0,
+        "recentOpponentIds": [],
+        "createdAt": "2026-04-10T11:00:00Z",
+        "expiresAt": "2026-04-10T23:59:59Z"
+      },
+      {
+        "label": "일반유저",
+        "requesterId": "user-normal",
+        "sportsProfileId": "sp-normal",
+        "pinId": "pin-gangnam",
+        "sportType": "GOLF",
+        "glickoRating": 1000,
+        "glickoRd": 100,
+        "isPlacement": false,
+        "lossStreak": 0,
+        "winStreak": 0,
+        "recentOpponentIds": [],
+        "createdAt": "2026-04-10T11:00:00Z",
+        "expiresAt": "2026-04-10T23:59:59Z"
+      }
+    ],
+    "expectedMatches": [{ "playerA": "연패유저", "playerB": "일반유저" }]
+  },
+
+  {
+    "name": "5. 최근 상대 재매칭 차단",
+    "description": "recentOpponentIds에 있는 상대 → 매칭 안됨 (cost 9999)",
+    "simulatedTime": "2026-04-10T12:00:00Z",
+    "requests": [
+      {
+        "label": "플레이어1",
+        "requesterId": "user-1",
+        "sportsProfileId": "sp-1",
+        "pinId": "pin-gangnam",
+        "sportType": "GOLF",
+        "glickoRating": 1000,
+        "glickoRd": 100,
+        "isPlacement": false,
+        "lossStreak": 0,
+        "winStreak": 0,
+        "recentOpponentIds": ["sp-2"],
+        "createdAt": "2026-04-10T11:00:00Z",
+        "expiresAt": "2026-04-10T23:59:59Z"
+      },
+      {
+        "label": "플레이어2",
+        "requesterId": "user-2",
+        "sportsProfileId": "sp-2",
+        "pinId": "pin-gangnam",
+        "sportType": "GOLF",
+        "glickoRating": 1010,
+        "glickoRd": 100,
+        "isPlacement": false,
+        "lossStreak": 0,
+        "winStreak": 0,
+        "recentOpponentIds": [],
+        "createdAt": "2026-04-10T11:00:00Z",
+        "expiresAt": "2026-04-10T23:59:59Z"
+      }
+    ],
+    "expectedMatches": [],
+    "expectedUnmatched": ["플레이어1", "플레이어2"]
+  },
+
+  {
+    "name": "6. 배치 유저 우선 매칭",
+    "description": "배치 유저(isPlacement)는 cost 절반 → 일반 유저보다 우선 매칭",
+    "simulatedTime": "2026-04-10T12:00:00Z",
+    "requests": [
+      {
+        "label": "배치유저",
+        "requesterId": "user-placement",
+        "sportsProfileId": "sp-placement",
+        "pinId": "pin-gangnam",
+        "sportType": "GOLF",
+        "glickoRating": 1000,
+        "glickoRd": 350,
+        "isPlacement": true,
+        "lossStreak": 0,
+        "winStreak": 0,
+        "recentOpponentIds": [],
+        "createdAt": "2026-04-10T11:00:00Z",
+        "expiresAt": "2026-04-10T23:59:59Z"
+      },
+      {
+        "label": "상대A_가까움",
+        "requesterId": "user-close",
+        "sportsProfileId": "sp-close",
+        "pinId": "pin-gangnam",
+        "sportType": "GOLF",
+        "glickoRating": 1050,
+        "glickoRd": 100,
+        "isPlacement": false,
+        "lossStreak": 0,
+        "winStreak": 0,
+        "recentOpponentIds": [],
+        "createdAt": "2026-04-10T11:00:00Z",
+        "expiresAt": "2026-04-10T23:59:59Z"
+      },
+      {
+        "label": "상대B_먼",
+        "requesterId": "user-far",
+        "sportsProfileId": "sp-far",
+        "pinId": "pin-gangnam",
+        "sportType": "GOLF",
+        "glickoRating": 1150,
+        "glickoRd": 100,
+        "isPlacement": false,
+        "lossStreak": 0,
+        "winStreak": 0,
+        "recentOpponentIds": [],
+        "createdAt": "2026-04-10T11:00:00Z",
+        "expiresAt": "2026-04-10T23:59:59Z"
+      }
+    ],
+    "expectedMatches": [{ "playerA": "배치유저", "playerB": "상대A_가까움" }],
+    "expectedUnmatched": ["상대B_먼"]
+  },
+
+  {
+    "name": "7. 다른 핀은 매칭 안됨",
+    "description": "같은 종목이지만 핀이 다르면 절대 매칭 안됨",
+    "simulatedTime": "2026-04-10T12:00:00Z",
+    "requests": [
+      {
+        "label": "강남유저",
+        "requesterId": "user-gn",
+        "sportsProfileId": "sp-gn",
+        "pinId": "pin-gangnam",
+        "sportType": "GOLF",
+        "glickoRating": 1000,
+        "glickoRd": 100,
+        "isPlacement": false,
+        "lossStreak": 0,
+        "winStreak": 0,
+        "recentOpponentIds": [],
+        "createdAt": "2026-04-10T11:00:00Z",
+        "expiresAt": "2026-04-10T23:59:59Z"
+      },
+      {
+        "label": "용산유저",
+        "requesterId": "user-ys",
+        "sportsProfileId": "sp-ys",
+        "pinId": "pin-yongsan",
+        "sportType": "GOLF",
+        "glickoRating": 1010,
+        "glickoRd": 100,
+        "isPlacement": false,
+        "lossStreak": 0,
+        "winStreak": 0,
+        "recentOpponentIds": [],
+        "createdAt": "2026-04-10T11:00:00Z",
+        "expiresAt": "2026-04-10T23:59:59Z"
+      }
+    ],
+    "expectedMatches": [],
+    "expectedUnmatched": ["강남유저", "용산유저"]
+  },
+
+  {
+    "name": "8. 대규모 풀 최적 매칭 (6명)",
+    "description": "6명 중 레이팅 가까운 순서로 3쌍 최적 매칭",
+    "simulatedTime": "2026-04-10T14:00:00Z",
+    "requests": [
+      {
+        "label": "P1_900",
+        "requesterId": "u1", "sportsProfileId": "s1",
+        "pinId": "pin-1", "sportType": "BILLIARDS",
+        "glickoRating": 900, "glickoRd": 100,
+        "isPlacement": false, "lossStreak": 0, "winStreak": 0,
+        "recentOpponentIds": [],
+        "createdAt": "2026-04-10T12:00:00Z", "expiresAt": "2026-04-10T23:59:59Z"
+      },
+      {
+        "label": "P2_920",
+        "requesterId": "u2", "sportsProfileId": "s2",
+        "pinId": "pin-1", "sportType": "BILLIARDS",
+        "glickoRating": 920, "glickoRd": 100,
+        "isPlacement": false, "lossStreak": 0, "winStreak": 0,
+        "recentOpponentIds": [],
+        "createdAt": "2026-04-10T12:00:00Z", "expiresAt": "2026-04-10T23:59:59Z"
+      },
+      {
+        "label": "P3_1050",
+        "requesterId": "u3", "sportsProfileId": "s3",
+        "pinId": "pin-1", "sportType": "BILLIARDS",
+        "glickoRating": 1050, "glickoRd": 100,
+        "isPlacement": false, "lossStreak": 0, "winStreak": 0,
+        "recentOpponentIds": [],
+        "createdAt": "2026-04-10T12:00:00Z", "expiresAt": "2026-04-10T23:59:59Z"
+      },
+      {
+        "label": "P4_1060",
+        "requesterId": "u4", "sportsProfileId": "s4",
+        "pinId": "pin-1", "sportType": "BILLIARDS",
+        "glickoRating": 1060, "glickoRd": 100,
+        "isPlacement": false, "lossStreak": 0, "winStreak": 0,
+        "recentOpponentIds": [],
+        "createdAt": "2026-04-10T12:00:00Z", "expiresAt": "2026-04-10T23:59:59Z"
+      },
+      {
+        "label": "P5_1200",
+        "requesterId": "u5", "sportsProfileId": "s5",
+        "pinId": "pin-1", "sportType": "BILLIARDS",
+        "glickoRating": 1200, "glickoRd": 100,
+        "isPlacement": false, "lossStreak": 0, "winStreak": 0,
+        "recentOpponentIds": [],
+        "createdAt": "2026-04-10T12:00:00Z", "expiresAt": "2026-04-10T23:59:59Z"
+      },
+      {
+        "label": "P6_1210",
+        "requesterId": "u6", "sportsProfileId": "s6",
+        "pinId": "pin-1", "sportType": "BILLIARDS",
+        "glickoRating": 1210, "glickoRd": 100,
+        "isPlacement": false, "lossStreak": 0, "winStreak": 0,
+        "recentOpponentIds": [],
+        "createdAt": "2026-04-10T12:00:00Z", "expiresAt": "2026-04-10T23:59:59Z"
+      }
+    ],
+    "expectedMatches": [
+      { "playerA": "P1_900", "playerB": "P2_920" },
+      { "playerA": "P3_1050", "playerB": "P4_1060" },
+      { "playerA": "P5_1200", "playerB": "P6_1210" }
+    ]
+  },
+
+  {
+    "name": "9. 연패 5회 — 더 넓은 범위 매칭",
+    "description": "5연패(1150→조정1100) + 상대 1000. 100점 차이, 대기 1시간이면 매칭됨",
+    "simulatedTime": "2026-04-10T13:00:00Z",
+    "requests": [
+      {
+        "label": "5연패유저",
+        "requesterId": "user-streak5",
+        "sportsProfileId": "sp-streak5",
+        "pinId": "pin-test",
+        "sportType": "TENNIS",
+        "glickoRating": 1150,
+        "glickoRd": 100,
+        "isPlacement": false,
+        "lossStreak": 5,
+        "winStreak": 0,
+        "recentOpponentIds": [],
+        "createdAt": "2026-04-10T12:00:00Z",
+        "expiresAt": "2026-04-10T23:59:59Z"
+      },
+      {
+        "label": "일반유저1000",
+        "requesterId": "user-1000",
+        "sportsProfileId": "sp-1000",
+        "pinId": "pin-test",
+        "sportType": "TENNIS",
+        "glickoRating": 1000,
+        "glickoRd": 100,
+        "isPlacement": false,
+        "lossStreak": 0,
+        "winStreak": 0,
+        "recentOpponentIds": [],
+        "createdAt": "2026-04-10T12:00:00Z",
+        "expiresAt": "2026-04-10T23:59:59Z"
+      }
+    ],
+    "expectedMatches": [{ "playerA": "5연패유저", "playerB": "일반유저1000" }]
+  },
+
+  {
+    "name": "10. 소규모 풀 (4명 이하) 동적 범위 비활성화",
+    "description": "3명만 있으면 동적 범위 무시, 하드캡 250만 적용. 200점 차이도 매칭",
+    "simulatedTime": "2026-04-10T12:05:00Z",
+    "requests": [
+      {
+        "label": "소풀A",
+        "requesterId": "sp-a1",
+        "sportsProfileId": "sp-a1",
+        "pinId": "pin-small",
+        "sportType": "TABLE_TENNIS",
+        "glickoRating": 1000,
+        "glickoRd": 100,
+        "isPlacement": false,
+        "lossStreak": 0,
+        "winStreak": 0,
+        "recentOpponentIds": [],
+        "createdAt": "2026-04-10T12:00:00Z",
+        "expiresAt": "2026-04-10T23:59:59Z"
+      },
+      {
+        "label": "소풀B",
+        "requesterId": "sp-b1",
+        "sportsProfileId": "sp-b1",
+        "pinId": "pin-small",
+        "sportType": "TABLE_TENNIS",
+        "glickoRating": 1200,
+        "glickoRd": 100,
+        "isPlacement": false,
+        "lossStreak": 0,
+        "winStreak": 0,
+        "recentOpponentIds": [],
+        "createdAt": "2026-04-10T12:00:00Z",
+        "expiresAt": "2026-04-10T23:59:59Z"
+      },
+      {
+        "label": "소풀C",
+        "requesterId": "sp-c1",
+        "sportsProfileId": "sp-c1",
+        "pinId": "pin-small",
+        "sportType": "TABLE_TENNIS",
+        "glickoRating": 1100,
+        "glickoRd": 100,
+        "isPlacement": false,
+        "lossStreak": 0,
+        "winStreak": 0,
+        "recentOpponentIds": [],
+        "createdAt": "2026-04-10T12:00:00Z",
+        "expiresAt": "2026-04-10T23:59:59Z"
+      }
+    ],
+    "expectedMatches": [{ "playerA": "소풀A", "playerB": "소풀C" }],
+    "expectedUnmatched": ["소풀B"]
+  }
+]

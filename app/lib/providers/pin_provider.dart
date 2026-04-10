@@ -7,27 +7,20 @@ import '../repositories/pin_repository.dart';
 
 /// 전체 핀 목록 프로바이더 (버전 기반 동기화)
 ///
-/// 1. 로컬 DB에 데이터 있으면 즉시 반환
-/// 2. 없으면 서버 조회 → 로컬 DB 저장
-/// 3. 백그라운드로 서버 버전 체크 → 변경 시만 갱신
+/// 항상 서버 버전 체크 후 반환 — 버전 동일하면 로컬 데이터 즉시 반환,
+/// 변경 시 갱신 후 반환. 네트워크 에러 시만 로컬 캐시 폴백.
 final allPinsProvider = FutureProvider.autoDispose<List<Pin>>((ref) async {
-  // 핀 데이터는 앱 전역에서 유지 (autoDispose 방지)
   ref.keepAlive();
   final repo = ref.read(pinRepositoryProvider);
 
-  // 1) 로컬 DB에 핀 데이터 있는지 확인
-  final hasCache = await repo.hasPinsCache();
-
-  if (hasCache) {
-    // 캐시 있으면 로컬에서 즉시 반환 + 백그라운드 갱신
-    unawaited(repo.refreshIfStale().catchError((e) {
-      debugPrint('[PinProvider] background refresh failed: $e');
-    }));
-    return repo.getAllPinsLocal();
+  try {
+    return await repo.fetchAndCachePins();
+  } catch (e) {
+    debugPrint('[PinProvider] 서버 버전 체크 실패 — 로컬 폴백: $e');
+    final hasCache = await repo.hasPinsCache();
+    if (hasCache) return repo.getAllPinsLocal();
+    rethrow;
   }
-
-  // 2) 캐시 없으면 API 조회 → 로컬 저장 → 반환
-  return repo.fetchAndCachePins();
 });
 
 /// 주변 핀 목록 프로바이더

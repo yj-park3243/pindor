@@ -5,9 +5,11 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import '../../config/sports.dart';
 import '../../config/theme.dart';
+import '../../core/network/api_client.dart';
 import '../../providers/community_provider.dart';
 import '../../providers/sport_preference_provider.dart';
 import '../../repositories/upload_repository.dart';
+import '../../widgets/common/app_toast.dart';
 
 /// 게시글 작성 화면
 class CreatePostScreen extends ConsumerStatefulWidget {
@@ -43,9 +45,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
 
   Future<void> _pickImage() async {
     if (_pickedImages.length >= 4) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('이미지는 최대 4장까지 첨부할 수 있습니다.')),
-      );
+      AppToast.warning('이미지는 최대 4장까지 첨부할 수 있습니다.');
       return;
     }
 
@@ -80,12 +80,17 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
             imageUrls: imageUrls.isNotEmpty ? imageUrls : null,
           );
 
-      if (mounted) context.pop(true);
+      if (mounted) {
+        AppToast.success('게시글이 등록되었습니다!');
+        context.pop(true);
+      }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('게시글 작성에 실패했습니다: $e')),
-        );
+        String errorMessage = '게시글 작성에 실패했습니다.';
+        if (e is ApiException) {
+          errorMessage = e.message;
+        }
+        AppToast.error(errorMessage);
       }
     } finally {
       if (mounted) setState(() => _isSubmitting = false);

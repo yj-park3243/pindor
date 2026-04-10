@@ -10,7 +10,9 @@ class Messages extends Table {
   TextColumn get messageType => text().withDefault(const Constant('TEXT'))();
   TextColumn get content => text()();
   TextColumn get imageUrl => text().nullable()();
+  TextColumn get extraData => text().nullable()();
   BoolColumn get isRead => boolean().withDefault(const Constant(false))();
+  DateTimeColumn get readAt => dateTime().nullable()();
   DateTimeColumn get createdAt => dateTime()();
 
   @override

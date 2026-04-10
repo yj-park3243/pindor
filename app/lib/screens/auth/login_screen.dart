@@ -4,9 +4,9 @@ import 'package:go_router/go_router.dart';
 import '../../config/router.dart';
 import '../../config/theme.dart';
 import '../../providers/auth_provider.dart';
+import '../../widgets/common/app_toast.dart';
 
 /// 로그인 화면
-/// 카카오 로그인 버튼 (애플 로그인은 iOS에서 추가)
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -17,10 +17,25 @@ class LoginScreen extends ConsumerStatefulWidget {
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _isLoading = false;
 
-  void _loginWithKakao() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('카카오 로그인은 준비 중입니다')),
-    );
+  Future<void> _loginWithApple() async {
+    setState(() => _isLoading = true);
+    try {
+      await ref.read(authStateProvider.notifier).loginWithApple();
+      if (mounted) {
+        final authState = ref.read(authStateProvider).valueOrNull;
+        if (authState?.isNewUser == true) {
+          context.go(AppRoutes.profileSetup);
+        } else {
+          context.go(AppRoutes.home);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        AppToast.error('Apple 로그인 실패: ${e.toString()}');
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _loginWithGoogle() async {
@@ -37,9 +52,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('로그인 실패: ${e.toString()}')),
-        );
+        AppToast.error('로그인 실패: ${e.toString()}');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -49,7 +62,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFF0A0A0A),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 28),
@@ -136,15 +149,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                   const SizedBox(height: 24),
 
-                  // 카카오 로그인 버튼
+                  // Apple 로그인 버튼
                   SizedBox(
                     width: double.infinity,
                     height: 54,
                     child: ElevatedButton(
-                      onPressed: _isLoading ? null : _loginWithKakao,
+                      onPressed: _isLoading ? null : _loginWithApple,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFFEE500),
-                        foregroundColor: const Color(0xFF191919),
+                        backgroundColor: const Color(0xFF000000),
+                        foregroundColor: Colors.white,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
@@ -156,24 +169,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               height: 22,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2.5,
-                                color: Color(0xFF191919),
+                                color: Colors.white,
                               ),
                             )
                           : const Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(
-                                  Icons.chat_bubble_rounded,
-                                  size: 20,
-                                  color: Color(0xFF191919),
-                                ),
+                                Icon(Icons.apple, size: 22, color: Colors.white),
                                 SizedBox(width: 10),
                                 Text(
-                                  '카카오로 시작하기',
+                                  'Apple로 시작하기',
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w700,
-                                    color: Color(0xFF191919),
+                                    color: Colors.white,
                                   ),
                                 ),
                               ],
@@ -191,7 +200,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       onPressed: _isLoading ? null : _loginWithGoogle,
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppTheme.textPrimary,
-                        side: const BorderSide(color: Color(0xFFE0E0E0), width: 1.5),
+                        side: const BorderSide(color: Color(0xFF2A2A2A), width: 1.5),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
                         ),
@@ -204,7 +213,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             width: 22,
                             height: 22,
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: const Color(0xFF1E1E1E),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: const Center(
@@ -224,45 +233,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // Apple 로그인 버튼
-                  SizedBox(
-                    width: double.infinity,
-                    height: 54,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                              content: Text('Apple 로그인은 준비 중입니다')),
-                        );
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF000000),
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.apple, size: 22, color: Colors.white),
-                          SizedBox(width: 10),
-                          Text(
-                            'Apple로 시작하기',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
                             ),
                           ),
                         ],

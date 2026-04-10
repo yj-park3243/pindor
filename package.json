@@ -13,6 +13,8 @@
     "clean": "cd app && flutter clean && flutter pub get",
     "d": "cd app && ./deploy.sh",
     "da": "cd app && ./deploy.sh android",
-    "di": "cd app && ./deploy.sh ios"
+    "di": "cd app && ./deploy.sh ios",
+    "c": "claude --channels plugin:telegram@claude-plugins-official  --dangerously-skip-permissions --resume",
+    "c1": "claude --channels plugin:telegram@claude-plugins-official --dangerously-skip-permissions  --resume"
   }
 }

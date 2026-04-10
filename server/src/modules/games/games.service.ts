@@ -25,6 +25,9 @@ import {
   ScoreHistory,
 } from '../../entities/index.js';
 import { Tier } from '../../entities/index.js';
+import { Message } from '../../entities/message.entity.js';
+import { MessageType } from '../../entities/enums.js';
+import { ChatRoom } from '../../entities/chat-room.entity.js';
 
 // ─────────────────────────────────────
 // 활동량 보너스 계산
@@ -201,6 +204,44 @@ export class GamesService {
         requesterClaim as 'WIN' | 'LOSS' | 'DRAW',
         opponentClaim as 'WIN' | 'LOSS' | 'DRAW',
       );
+    }
+
+    // 채팅방에 결과 제출 시스템 메시지 전송
+    if (match.chatRoomId) {
+      const submitter = isRequester
+        ? (match.requesterProfile as any).user
+        : (match.opponentProfile as any).user;
+      const winnerNickname = claimedResult === 'DRAW'
+        ? null
+        : claimedResult === 'WIN'
+          ? submitter?.nickname ?? '나'
+          : (isRequester
+              ? (match.opponentProfile as any).user?.nickname
+              : (match.requesterProfile as any).user?.nickname) ?? '상대';
+      const winnerProfileImage = claimedResult === 'DRAW'
+        ? null
+        : claimedResult === 'WIN'
+          ? submitter?.profileImageUrl ?? null
+          : (isRequester
+              ? (match.opponentProfile as any).user?.profileImageUrl
+              : (match.requesterProfile as any).user?.profileImageUrl) ?? null;
+
+      const messageRepo = this.dataSource.getRepository(Message);
+      const chatRoomRepo = this.dataSource.getRepository(ChatRoom);
+      const sysMsg = messageRepo.create({
+        chatRoomId: match.chatRoomId,
+        senderId: userId,
+        messageType: MessageType.SYSTEM,
+        content: '상대방이 경기 결과를 입력했습니다.',
+        extraData: {
+          type: 'GAME_RESULT',
+          claimedResult,
+          winnerNickname,
+          winnerProfileImage,
+        },
+      });
+      await messageRepo.save(sysMsg);
+      await chatRoomRepo.update(match.chatRoomId, { lastMessageAt: new Date() });
     }
 
     // 한 쪽만 제출한 경우: 상대방에게 알림
@@ -852,6 +893,90 @@ export class GamesService {
   }
 
   // ─────────────────────────────────────
+  // ─────────────────────────────────────
+  // 자동 결과 확정: 양측 미입력 → 무승부 처리 (worker용)
+  // ─────────────────────────────────────
+
+  async resolveGameAsDraw(gameId: string): Promise<void> {
+    const game = await this.gameRepo.findOne({
+      where: { id: gameId },
+      relations: {
+        match: {
+          requesterProfile: true,
+          opponentProfile: true,
+        } as any,
+      } as any,
+    });
+
+    if (!game) return;
+
+    // 이미 처리된 경우 스킵
+    if (!['PENDING', 'PROOF_UPLOADED'].includes(game.resultStatus)) return;
+
+    const match = game.match as any;
+
+    // winnerProfileId = null → DRAW
+    await this.gameRepo.update(gameId, { winnerProfileId: null });
+
+    await this.applyEloChanges(gameId, { ...game, winnerProfileId: null }, match);
+
+    console.info(`[AutoResolve] Game ${gameId} resolved as DRAW (3-day timeout)`);
+  }
+
+  // ─────────────────────────────────────
+  // 자동 결과 확정: 한쪽만 제출 → 제출된 결과 채택 (worker용)
+  // ─────────────────────────────────────
+
+  async resolveGameWithSingleResult(gameId: string): Promise<void> {
+    const game = await this.gameRepo.findOne({
+      where: { id: gameId },
+      relations: {
+        match: {
+          requesterProfile: true,
+          opponentProfile: true,
+        } as any,
+      } as any,
+    });
+
+    if (!game) return;
+
+    const requesterClaim = (game as any).requesterClaimedResult as string | null;
+    const opponentClaim = (game as any).opponentClaimedResult as string | null;
+
+    // 양측 모두 제출하지 않은 경우 (이미 resolveGameAsDraw로 처리되어야 함)
+    if (!requesterClaim && !opponentClaim) return;
+
+    // 이미 양측 모두 제출된 경우 스킵 (정상 플로우에서 이미 처리)
+    if (requesterClaim && opponentClaim) return;
+
+    // 이미 처리된 경우 스킵
+    if (!['PENDING', 'PROOF_UPLOADED'].includes(game.resultStatus)) return;
+
+    const match = game.match as any;
+    const requesterProfileId = (match.requesterProfile as any).id;
+    const opponentProfileId = (match.opponentProfile as any).id;
+
+    // 제출된 결과 기준으로 winnerProfileId 결정
+    let winnerProfileId: string | null = null;
+    if (requesterClaim === 'WIN') {
+      winnerProfileId = requesterProfileId;
+    } else if (requesterClaim === 'LOSS') {
+      winnerProfileId = opponentProfileId;
+    } else if (opponentClaim === 'WIN') {
+      winnerProfileId = opponentProfileId;
+    } else if (opponentClaim === 'LOSS') {
+      winnerProfileId = requesterProfileId;
+    }
+    // DRAW → winnerProfileId = null
+
+    await this.gameRepo.update(gameId, { winnerProfileId });
+
+    await this.applyEloChanges(gameId, { ...game, winnerProfileId }, match);
+
+    console.info(`[AutoResolve] Game ${gameId} resolved with single-side result (1-day timeout)`);
+  }
+
+  // ─────────────────────────────────────
   // Private: 경기 조회 + 참여자 검증
   // ─────────────────────────────────────
 
@@ -879,5 +1004,15 @@ export class GamesService {
     }
 
     return game;
+  }
+
+  async addProofImages(userId: string, gameId: string, imageUrls: string[]): Promise<void> {
+    const game = await this.gameRepo.findOne({ where: { id: gameId } });
+    if (!game) throw AppError.notFound(ErrorCode.GAME_NOT_FOUND);
+
+    const existing = game.proofImageUrls ?? [];
+    const merged = [...existing, ...imageUrls].slice(0, 10); // 최대 10장
+
+    await this.gameRepo.update(gameId, { proofImageUrls: merged });
   }
 }

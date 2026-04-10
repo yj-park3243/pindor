@@ -11,6 +11,8 @@ import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/error_view.dart';
 
 import '../../widgets/report/report_bottom_sheet.dart';
+import '../../widgets/common/fullscreen_image_viewer.dart';
+import '../../widgets/common/app_toast.dart';
 
 /// 게시글 상세 + 댓글 화면 (PRD SCREEN-051)
 class PostDetailScreen extends ConsumerStatefulWidget {
@@ -41,19 +43,30 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
   Future<void> _toggleLike(PinPost post) async {
     final prevLiked = _localIsLiked ?? post.isLiked;
     final prevCount = _localLikeCount ?? post.likeCount;
+    // Optimistic UI 업데이트
     setState(() {
       _localIsLiked = !prevLiked;
       _localLikeCount = prevLiked ? prevCount - 1 : prevCount + 1;
     });
     try {
       await ref.read(communityRepositoryProvider).toggleLike(widget.pinId, widget.postId);
-    } catch (_) {
+      // 서버 성공 후 local state 초기화 + postDetailProvider invalidate하여 최신 likeCount 동기화
+      if (mounted) {
+        setState(() {
+          _localIsLiked = null;
+          _localLikeCount = null;
+        });
+      }
+      final key = PostDetailKey(pinId: widget.pinId, postId: widget.postId);
+      ref.invalidate(postDetailProvider(key));
+    } catch (e) {
       // 실패 시 롤백
       if (mounted) {
         setState(() {
           _localIsLiked = prevLiked;
           _localLikeCount = prevCount;
         });
+        AppToast.error('좋아요 처리에 실패했습니다.');
       }
     }
   }
@@ -83,9 +96,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
       });
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('댓글 작성에 실패했습니다: $e')),
-        );
+        AppToast.error('댓글 작성에 실패했습니다: $e');
       }
     } finally {
       if (mounted) setState(() => _isSending = false);
@@ -121,9 +132,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                           if (mounted) context.pop(true);
                         } catch (e) {
                           if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('삭제에 실패했습니다.')),
-                            );
+                            AppToast.error('삭제에 실패했습니다.');
                           }
                         }
                       }
@@ -287,43 +296,29 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
   }
 
   Future<bool?> _showDeleteDialog() {
-    return showDialog<bool>(
+    return showModalBottomSheet<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('게시글 삭제'),
-        content: const Text('게시글을 삭제하면 복구할 수 없습니다.\n삭제하시겠습니까?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('취소'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: AppTheme.errorColor),
-            child: const Text('삭제'),
-          ),
-        ],
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _ConfirmSheet(
+        icon: Icons.delete_outline,
+        iconColor: AppTheme.errorColor,
+        title: '게시글 삭제',
+        subtitle: '게시글을 삭제하면 복구할 수 없습니다.\n삭제하시겠습니까?',
+        confirmLabel: '삭제',
       ),
     );
   }
 
   Future<bool?> _showCommentDeleteDialog() {
-    return showDialog<bool>(
+    return showModalBottomSheet<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('댓글 삭제'),
-        content: const Text('댓글을 삭제하시겠습니까?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('취소'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: AppTheme.errorColor),
-            child: const Text('삭제'),
-          ),
-        ],
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => const _ConfirmSheet(
+        icon: Icons.delete_outline,
+        iconColor: AppTheme.errorColor,
+        title: '댓글 삭제',
+        subtitle: '댓글을 삭제하시겠습니까?',
+        confirmLabel: '삭제',
       ),
     );
   }
@@ -358,7 +353,7 @@ class _PostContent extends StatelessWidget {
           children: [
             CircleAvatar(
               radius: 16,
-              backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
+              backgroundColor: AppTheme.primaryColor.withOpacity(0.2),
               backgroundImage: post.authorProfileImageUrl != null
                   ? CachedNetworkImageProvider(post.authorProfileImageUrl!)
                   : null,
@@ -500,13 +495,31 @@ class _ImageGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (imageUrls.length == 1) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: CachedNetworkImage(
-          imageUrl: imageUrls[0],
-          width: double.infinity,
-          height: 200,
-          fit: BoxFit.cover,
+      return GestureDetector(
+        onTap: () => showFullscreenImage(context, imageUrls, initialIndex: 0),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: CachedNetworkImage(
+            imageUrl: imageUrls[0],
+            width: double.infinity,
+            height: 200,
+            fit: BoxFit.cover,
+            memCacheWidth: 400,
+            memCacheHeight: 400,
+            placeholder: (_, __) => Container(
+              height: 200,
+              color: Colors.grey.shade100,
+              child: const Center(child: CircularProgressIndicator()),
+            ),
+            errorWidget: (_, __, ___) => Container(
+              height: 200,
+              color: Colors.grey.shade100,
+              child: const Center(
+                child: Icon(Icons.broken_image_outlined,
+                    color: Colors.grey, size: 40),
+              ),
+            ),
+          ),
         ),
       );
     }
@@ -521,11 +534,50 @@ class _ImageGrid extends StatelessWidget {
       ),
       itemCount: imageUrls.length.clamp(0, 4),
       itemBuilder: (context, index) {
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: CachedNetworkImage(
-            imageUrl: imageUrls[index],
-            fit: BoxFit.cover,
+        // 4장 이상이면 마지막 셀에 +N 오버레이 표시
+        final isLastAndMore = index == 3 && imageUrls.length > 4;
+        return GestureDetector(
+          onTap: () =>
+              showFullscreenImage(context, imageUrls, initialIndex: index),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: CachedNetworkImage(
+                  imageUrl: imageUrls[index],
+                  fit: BoxFit.cover,
+                  memCacheWidth: 360,
+                  memCacheHeight: 360,
+                  placeholder: (_, __) =>
+                      Container(color: Colors.grey.shade100),
+                  errorWidget: (_, __, ___) => Container(
+                    color: Colors.grey.shade100,
+                    child: const Center(
+                      child: Icon(Icons.broken_image_outlined,
+                          color: Colors.grey),
+                    ),
+                  ),
+                ),
+              ),
+              if (isLastAndMore)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    color: Colors.black54,
+                    child: Center(
+                      child: Text(
+                        '+${imageUrls.length - 4}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
         );
       },
@@ -619,7 +671,7 @@ class _SingleComment extends StatelessWidget {
             const Icon(Icons.subdirectory_arrow_right, size: 16, color: AppTheme.textDisabled),
           CircleAvatar(
             radius: 15,
-            backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
+            backgroundColor: AppTheme.primaryColor.withOpacity(0.2),
             backgroundImage: comment.authorProfileImageUrl != null
                 ? CachedNetworkImageProvider(comment.authorProfileImageUrl!)
                 : null,
@@ -730,7 +782,7 @@ class _CommentInputBar extends StatelessWidget {
           if (replyTarget != null)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              color: AppTheme.primaryColor.withOpacity(0.08),
+              color: AppTheme.primaryColor.withOpacity(0.18),
               child: Row(
                 children: [
                   const Icon(Icons.reply, size: 16, color: AppTheme.primaryColor),
@@ -754,7 +806,7 @@ class _CommentInputBar extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: const Color(0xFF1E1E1E),
               border: Border(
                 top: BorderSide(color: Colors.grey.shade200),
               ),
@@ -791,6 +843,115 @@ class _CommentInputBar extends StatelessWidget {
                       ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 공통 확인 바텀시트 (파괴적 액션용)
+class _ConfirmSheet extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String subtitle;
+  final String confirmLabel;
+
+  const _ConfirmSheet({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+    required this.confirmLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+          24, 20, 24, MediaQuery.of(context).padding.bottom + 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: const Color(0xFF2A2A2A),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: iconColor.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: iconColor, size: 28),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 14,
+              color: Color(0xFF9CA3AF),
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 28),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    side: const BorderSide(color: Color(0xFF2A2A2A)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('취소',
+                      style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF9CA3AF))),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: iconColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    elevation: 0,
+                  ),
+                  child: Text(confirmLabel,
+                      style: const TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w700)),
+                ),
+              ),
+            ],
           ),
         ],
       ),
