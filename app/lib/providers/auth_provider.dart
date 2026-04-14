@@ -127,8 +127,9 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
 
   /// Google 로그인
   Future<void> loginWithGoogle() async {
+    final previousState = state;
     state = const AsyncLoading();
-    state = await AsyncValue.guard(() async {
+    try {
       final GoogleSignIn googleSignIn = GoogleSignIn();
       final GoogleSignInAccount? account = await googleSignIn.signIn();
       if (account == null) throw Exception('Google 로그인 취소됨');
@@ -172,18 +173,22 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
         );
       }
 
-      return AuthState(
+      state = AsyncData(AuthState(
         isAuthenticated: true,
         user: user,
         isNewUser: isNewUser,
-      );
-    });
+      ));
+    } catch (e, st) {
+      state = previousState;
+      rethrow;
+    }
   }
 
   /// Apple 로그인
   Future<void> loginWithApple() async {
+    final previousState = state;
     state = const AsyncLoading();
-    state = await AsyncValue.guard(() async {
+    try {
       final credential = await SignInWithApple.getAppleIDCredential(
         scopes: [
           AppleIDAuthorizationScopes.email,
@@ -240,12 +245,19 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
         );
       }
 
-      return AuthState(
+      state = AsyncData(AuthState(
         isAuthenticated: true,
         user: user,
         isNewUser: isNewUser,
-      );
-    });
+      ));
+    } on SignInWithAppleAuthorizationException {
+      // 유저가 취소 — 이전 상태로 복원
+      state = previousState;
+      rethrow;
+    } catch (e, st) {
+      state = previousState;
+      rethrow;
+    }
   }
 
   /// 사용자 정보 갱신

@@ -16,6 +16,11 @@ async function start(): Promise<void> {
   await AppDataSource.initialize();
   console.info('[Server] Database connected via TypeORM');
 
+  // VERIFICATION_CODE MessageType enum 값 추가 (없으면)
+  await AppDataSource.query(
+    `DO $$ BEGIN ALTER TYPE "MessageType" ADD VALUE IF NOT EXISTS 'VERIFICATION_CODE'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`
+  ).catch((e: any) => console.warn('[Server] ALTER TYPE MessageType:', e.message));
+
   // EMAIL provider enum 값 추가 (없으면)
   await AppDataSource.query(
     `DO $$ BEGIN ALTER TYPE "SocialProvider" ADD VALUE IF NOT EXISTS 'EMAIL'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`
@@ -33,6 +38,13 @@ async function start(): Promise<void> {
       ADD COLUMN IF NOT EXISTS casual_win INT NOT NULL DEFAULT 0,
       ADD COLUMN IF NOT EXISTS casual_loss INT NOT NULL DEFAULT 0;`
   ).catch((e: any) => console.warn('[Server] ALTER TABLE sports_profiles (casual):', e.message));
+
+  // matches 테이블에 인증번호 컬럼 추가 (없으면)
+  await AppDataSource.query(
+    `ALTER TABLE matches
+      ADD COLUMN IF NOT EXISTS requester_verification_code VARCHAR(4),
+      ADD COLUMN IF NOT EXISTS opponent_verification_code VARCHAR(4);`
+  ).catch((e: any) => console.warn('[Server] ALTER TABLE matches (verification_code):', e.message));
 
   // match_requests 테이블에 is_casual 컬럼 추가 (없으면)
   await AppDataSource.query(
@@ -90,6 +102,7 @@ async function start(): Promise<void> {
 
   // 전역으로 접근 가능하게 설정 (서비스 간 의존성 주입 대신 간단히 처리)
   (global as any).__notificationService = notificationService;
+  (global as any).__io = io;
 
   // ─────────────────────────────────────
   // Socket.io 게이트웨이 설정
@@ -100,7 +113,7 @@ async function start(): Promise<void> {
   // Redis pub/sub 구독 (워커→메인 서버 알림)
   // ─────────────────────────────────────
   const subClient = redis.duplicate();
-  await subClient.subscribe('system_notification', 'push_notification');
+  await subClient.subscribe('system_notification', 'push_notification', 'match_lifecycle', 'chat_room_message');
 
   subClient.on('message', async (channel, message) => {
     try {
@@ -108,6 +121,27 @@ async function start(): Promise<void> {
 
       if (channel === 'system_notification' || channel === 'push_notification') {
         await notificationService.send(payload);
+      }
+
+      // 매칭 라이프사이클 이벤트 → Socket.io 룸으로 직접 전달
+      if (channel === 'match_lifecycle') {
+        const { event, requestId, matchId, data } = payload;
+
+        if (event === 'MATCH_FOUND' && requestId) {
+          // 매칭 요청 룸에 매칭 성사 이벤트 전송
+          io.to(`matchrequest:${requestId}`).emit('MATCH_FOUND', data);
+        } else if (event === 'MATCH_STATUS_CHANGED' && matchId) {
+          // 매칭 룸에 상태 변경 이벤트 전송
+          io.to(`match:${matchId}`).emit('MATCH_STATUS_CHANGED', data);
+        }
+      }
+
+      // 채팅방 시스템 메시지 → 해당 채팅 룸으로 브로드캐스트
+      if (channel === 'chat_room_message') {
+        const { roomId, message: msgData } = payload;
+        if (roomId && msgData) {
+          io.to(`room:${roomId}`).emit('NEW_MESSAGE', msgData);
+        }
       }
     } catch (err) {
       console.error('[Redis Sub] Message parse error:', err);
@@ -120,9 +154,14 @@ async function start(): Promise<void> {
   await import('./workers/match-accept-timeout.worker.js');
 
   // ─────────────────────────────────────
-  // 주기적 작업 스케줄 (프로덕션에선 별도 Worker 서버 권장)
+  // 경기 결과 자동 확정 워커 (항상 활성화 — 3분 delayed job 처리용)
   // ─────────────────────────────────────
-  if (env.NODE_ENV !== 'production') {
+  await import('./workers/game-auto-resolve.worker.js');
+
+  // ─────────────────────────────────────
+  // 주기적 작업 스케줄
+  // ─────────────────────────────────────
+  {
     const { processExpiredMatchRequests } = await import('./workers/match-expiry.worker.js');
     const { scheduleDeadlineWarnings } = await import('./workers/result-deadline.worker.js');
     const { rankingRefreshQueue } = await import('./workers/ranking-refresh.worker.js');
@@ -143,8 +182,9 @@ async function start(): Promise<void> {
     // 매칭 큐 워커 (10초마다)
     setInterval(() => processMatchingQueue().catch(console.error), 10000);
 
-    // 1시간마다 경기 결과 자동 확정 (3일 무입력 → 무승부, 1일 단측 → 채택)
-    setInterval(() => processAutoResolveGames().catch(console.error), 60 * 60 * 1000);
+    // 5분마다 경기 결과 자동 확정 백업 폴링 (3일 무입력 → 무승부, 3분 단측 → 채택)
+    // BullMQ delayed job이 메인이지만, 누락 방지를 위한 백업
+    setInterval(() => processAutoResolveGames().catch(console.error), 5 * 60 * 1000);
   }
 
   // ─────────────────────────────────────

@@ -85,7 +85,7 @@ export function UserListPage() {
             <span key={sp.id}>
               <TierBadge tier={sp.tier as Tier} showScore score={sp.currentScore} />
               <Text type="secondary" style={{ fontSize: 11, marginLeft: 4 }}>
-                {SPORT_TYPE_CONFIG[sp.sportType].label}
+                {SPORT_TYPE_CONFIG[sp.sportType]?.label ?? sp.sportType}
               </Text>
             </span>
           )) || <Text type="secondary">없음</Text>}
@@ -237,7 +237,7 @@ export function UserListPage() {
       <Card style={{ borderRadius: 8 }}>
         <div style={{ marginBottom: 12 }}>
           <Text type="secondary">
-            총 {data?.total.toLocaleString() || 0}명
+            총 {(data?.total ?? 0).toLocaleString()}명
           </Text>
         </div>
 
@@ -254,7 +254,7 @@ export function UserListPage() {
             total: data?.total || 0,
             showSizeChanger: true,
             showQuickJumper: true,
-            showTotal: (total) => `총 ${total.toLocaleString()}명`,
+            showTotal: (total) => `총 ${(total ?? 0).toLocaleString()}명`,
             onChange: (p, ps) => {
               setPage(p);
               setPageSize(ps);

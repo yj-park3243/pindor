@@ -86,6 +86,30 @@ export async function pinsRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
+  // ─── POST /pins/favorite ───
+  fastify.post(
+    '/pins/favorite',
+    {
+      onRequest: [fastify.authenticate],
+      schema: {
+        tags: ['Pins'],
+        summary: '자주 가는 핀 등록',
+        security: [{ bearerAuth: [] }],
+        body: {
+          type: 'object',
+          properties: {
+            pinId: { type: 'string', format: 'uuid' },
+          },
+          required: ['pinId'],
+        },
+      },
+    },
+    async (request: FastifyRequest<{ Body: { pinId: string } }>, reply: FastifyReply) => {
+      await pinsService.setFavoritePin(request.user.userId, request.body.pinId);
+      return reply.send({ success: true, data: { message: '자주 가는 핀이 등록되었습니다.' } });
+    },
+  );
+
   // ─── GET /pins/nearby ───
   fastify.get(
     '/pins/nearby',
@@ -181,13 +205,14 @@ export async function pinsRoutes(fastify: FastifyInstance): Promise<void> {
       },
     },
     async (
-      request: FastifyRequest<{ Params: { pinId: string; postId: string } }>,
+      request: FastifyRequest<{ Params: { pinId: string; postId: string }; Querystring: { sportType?: string } }>,
       reply: FastifyReply,
     ) => {
       const data = await pinsService.getPost(
         request.params.pinId,
         request.params.postId,
         request.user.userId,
+        request.query.sportType,
       );
       return reply.send({ success: true, data });
     },

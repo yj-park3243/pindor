@@ -158,7 +158,7 @@ export function UserDetailPage() {
                   연동 소셜 계정
                 </Text>
                 <Space wrap>
-                  {user.socialAccounts.map((sa) => (
+                  {user.socialAccounts?.map((sa) => (
                     <Tag key={sa.id} color="blue">{sa.provider}</Tag>
                   ))}
                 </Space>

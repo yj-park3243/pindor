@@ -1,0 +1,17 @@
+default_platform(:android)
+
+platform :android do
+  desc "Deploy to Google Play Internal Testing"
+  lane :internal do
+    upload_to_play_store(
+      track: 'internal',
+      aab: '../build/app/outputs/bundle/release/app-release.aab',
+      json_key: '/Users/yongju/WebProject2/match/etc/PINS fastlane.json',
+      package_name: 'kr.pins.spots',
+      release_status: 'draft',
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+    )
+  end
+end

@@ -3,9 +3,10 @@ import { AdminRole, SportType, Tier, RankingEntry, SportsProfile } from '../../e
 import { requireAdmin } from './admin.middleware.js';
 import { AppDataSource } from '../../config/database.js';
 import { AppError, ErrorCode } from '../../shared/errors/app-error.js';
+import { parsePageParams, paginatedResponse } from '../../shared/pagination.js';
 
 export async function adminRankingsRoutes(fastify: FastifyInstance): Promise<void> {
-  // ─── GET /admin/rankings ── 랭킹 목록 (cursor pagination)
+  // ─── GET /admin/rankings ── 랭킹 목록
   fastify.get(
     '/admin/rankings',
     {
@@ -14,12 +15,12 @@ export async function adminRankingsRoutes(fastify: FastifyInstance): Promise<voi
     },
     async (
       request: FastifyRequest<{
-        Querystring: { sportType?: string; tier?: string; cursor?: string; limit?: number };
+        Querystring: { sportType?: string; tier?: string; page?: number; pageSize?: number };
       }>,
       reply: FastifyReply,
     ) => {
-      const { sportType, tier, cursor, limit = 20 } = request.query;
-      const take = Math.min(Number(limit) || 20, 100);
+      const { sportType, tier } = request.query;
+      const { page, pageSize, skip } = parsePageParams(request.query);
 
       const rankingRepo = AppDataSource.getRepository(RankingEntry);
       const qb = rankingRepo
@@ -34,20 +35,14 @@ export async function adminRankingsRoutes(fastify: FastifyInstance): Promise<voi
       if (tier) {
         qb.andWhere('rankingEntry.tier = :tier', { tier });
       }
-      if (cursor) {
-        qb.andWhere('rankingEntry.updatedAt < :cursor', { cursor: new Date(cursor) });
-      }
 
-      const entries = await qb
+      const [items, total] = await qb
         .orderBy('rankingEntry.updatedAt', 'DESC')
-        .take(take + 1)
-        .getMany();
+        .skip(skip)
+        .take(pageSize)
+        .getManyAndCount();
 
-      const hasMore = entries.length > take;
-      const items = hasMore ? entries.slice(0, take) : entries;
-      const nextCursor = hasMore ? items[items.length - 1].updatedAt.toISOString() : null;
-
-      return reply.send({ success: true, data: items, meta: { cursor: nextCursor, hasMore } });
+      return reply.send({ success: true, data: paginatedResponse(items, total, page, pageSize) });
     },
   );
 
@@ -67,13 +62,13 @@ export async function adminRankingsRoutes(fastify: FastifyInstance): Promise<voi
     async (
       request: FastifyRequest<{
         Params: { pinId: string };
-        Querystring: { sportType?: string; cursor?: string; limit?: number };
+        Querystring: { sportType?: string; page?: number; pageSize?: number };
       }>,
       reply: FastifyReply,
     ) => {
       const { pinId } = request.params;
-      const { sportType, cursor, limit = 20 } = request.query;
-      const take = Math.min(Number(limit) || 20, 100);
+      const { sportType } = request.query;
+      const { page, pageSize, skip } = parsePageParams(request.query);
 
       const rankingRepo = AppDataSource.getRepository(RankingEntry);
       const qb = rankingRepo
@@ -85,20 +80,14 @@ export async function adminRankingsRoutes(fastify: FastifyInstance): Promise<voi
       if (sportType) {
         qb.andWhere('rankingEntry.sportType = :sportType', { sportType });
       }
-      if (cursor) {
-        qb.andWhere('rankingEntry.rank > :cursor', { cursor: Number(cursor) });
-      }
 
-      const entries = await qb
+      const [items, total] = await qb
         .orderBy('rankingEntry.rank', 'ASC')
-        .take(take + 1)
-        .getMany();
+        .skip(skip)
+        .take(pageSize)
+        .getManyAndCount();
 
-      const hasMore = entries.length > take;
-      const items = hasMore ? entries.slice(0, take) : entries;
-      const nextCursor = hasMore ? String(items[items.length - 1].rank) : null;
-
-      return reply.send({ success: true, data: items, meta: { cursor: nextCursor, hasMore } });
+      return reply.send({ success: true, data: paginatedResponse(items, total, page, pageSize) });
     },
   );
 
@@ -111,12 +100,11 @@ export async function adminRankingsRoutes(fastify: FastifyInstance): Promise<voi
     },
     async (
       request: FastifyRequest<{
-        Querystring: { isResolved?: string; cursor?: string; limit?: number };
+        Querystring: { isResolved?: string; page?: number; pageSize?: number };
       }>,
       reply: FastifyReply,
     ) => {
-      const { cursor, limit = 20 } = request.query;
-      const take = Math.min(Number(limit) || 20, 100);
+      const { page, pageSize, skip } = parsePageParams(request.query);
 
       const rankingRepo = AppDataSource.getRepository(RankingEntry);
       const qb = rankingRepo
@@ -128,21 +116,14 @@ export async function adminRankingsRoutes(fastify: FastifyInstance): Promise<voi
           '(rankingEntry.score > 2000 OR rankingEntry.score < 500 OR (rankingEntry.gamesPlayed = 0 AND rankingEntry.score != 1000))',
         );
 
-      if (cursor) {
-        qb.andWhere('rankingEntry.updatedAt < :cursor', { cursor: new Date(cursor) });
-      }
-
-      const entries = await qb
+      const [rawEntries, total] = await qb
         .orderBy('rankingEntry.updatedAt', 'DESC')
-        .take(take + 1)
-        .getMany();
-
-      const hasMore = entries.length > take;
-      const raw = hasMore ? entries.slice(0, take) : entries;
-      const nextCursor = hasMore ? raw[raw.length - 1].updatedAt.toISOString() : null;
+        .skip(skip)
+        .take(pageSize)
+        .getManyAndCount();
 
       // 이상 사유 계산
-      const items = raw.map((entry) => {
+      const items = rawEntries.map((entry) => {
         const reasons: string[] = [];
         if (entry.score > 2000) reasons.push('점수 상한 초과 (>2000)');
         if (entry.score < 500) reasons.push('점수 하한 미달 (<500)');
@@ -155,7 +136,7 @@ export async function adminRankingsRoutes(fastify: FastifyInstance): Promise<voi
         };
       });
 
-      return reply.send({ success: true, data: items, meta: { cursor: nextCursor, hasMore } });
+      return reply.send({ success: true, data: paginatedResponse(items, total, page, pageSize) });
     },
   );
 

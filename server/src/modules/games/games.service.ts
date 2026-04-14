@@ -1,10 +1,10 @@
 import { DataSource } from 'typeorm';
+import { redis } from '../../config/redis.js';
 import { AppError, ErrorCode } from '../../shared/errors/app-error.js';
 import {
   calculateBothElo,
   getKFactor,
-  calculateTierByPercentile,
-  calculateTierFallback,
+  calculateTierByRank,
   determineGolfWinner,
 } from '../../shared/utils/elo.js';
 import { updateGlicko2 } from '../../shared/utils/glicko2.js';
@@ -23,11 +23,13 @@ import {
   SportsProfile,
   ResultConfirmation,
   ScoreHistory,
+  RankingEntry,
 } from '../../entities/index.js';
 import { Tier } from '../../entities/index.js';
 import { Message } from '../../entities/message.entity.js';
 import { MessageType } from '../../entities/enums.js';
 import { ChatRoom } from '../../entities/chat-room.entity.js';
+import { gameAutoResolveQueue } from '../../queues/game-auto-resolve.queue.js';
 
 // ─────────────────────────────────────
 // 활동량 보너스 계산
@@ -99,6 +101,17 @@ export class GamesService {
     const match = game.match;
     const isRequester = (match.requesterProfile as any).userId === userId;
 
+    // 인증번호 검증: 상대방의 코드를 입력해야 함
+    const expectedCode = isRequester
+      ? (match as any).opponentVerificationCode
+      : (match as any).requesterVerificationCode;
+    if (expectedCode && dto.verificationCode !== expectedCode) {
+      throw AppError.badRequest(
+        ErrorCode.VALIDATION_ERROR,
+        '인증번호가 일치하지 않습니다. 상대방의 인증번호를 확인해주세요.',
+      );
+    }
+
     // 본인이 이미 제출했는지 확인 (claimedResult 기준)
     const alreadySubmittedByThisUser = isRequester
       ? (game as any).requesterClaimedResult !== null
@@ -123,8 +136,8 @@ export class GamesService {
       claimedResult = 'DRAW';
     }
 
-    // 골프의 경우 핸디캡 적용 승자 결정 (claimedResult 덮어쓰기)
-    if (game.sportType === 'GOLF') {
+    // 골프의 경우 핸디캡 적용 승자 결정 (점수 기반일 때만 — 명시적 claimedResult가 없을 때)
+    if (game.sportType === 'GOLF' && !dto.claimedResult) {
       const requesterHandicap = Number((match.requesterProfile as any).gHandicap ?? 0);
       const opponentHandicap = Number((match.opponentProfile as any).gHandicap ?? 0);
 
@@ -231,7 +244,11 @@ export class GamesService {
 
       // 결과 텍스트: "OOO님이 승리로 결과를 입력했습니다"
       const resultLabel = claimedResult === 'WIN' ? '승리' : claimedResult === 'LOSS' ? '패배' : '무승부';
-      const content = `${submitterNickname}님이 ${resultLabel}(으)로 결과를 입력했습니다.`;
+      const deadline = new Date(Date.now() + 3 * 60 * 1000);
+      const kstTime = new Date(deadline.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+      const deadlineHH = String(kstTime.getHours()).padStart(2, '0');
+      const deadlineMM = String(kstTime.getMinutes()).padStart(2, '0');
+      const content = `${submitterNickname}님이 ${resultLabel}(으)로 결과를 입력했습니다.\n3분 내(${deadlineHH}:${deadlineMM}) 상대방이 결과를 입력하지 않으면 자동으로 경기가 확정됩니다.`;
 
       const messageRepo = this.dataSource.getRepository(Message);
       const chatRoomRepo = this.dataSource.getRepository(ChatRoom);
@@ -248,8 +265,30 @@ export class GamesService {
           winnerProfileImage,
         },
       });
-      await messageRepo.save(sysMsg);
+      const savedMsg = await messageRepo.save(sysMsg);
       await chatRoomRepo.update(match.chatRoomId, { lastMessageAt: new Date() });
+
+      // 채팅방에 실시간 시스템 메시지 브로드캐스트 (직접 emit)
+      const msgData = {
+        id: savedMsg.id,
+        roomId: match.chatRoomId,
+        sender: null,
+        content: savedMsg.content,
+        messageType: 'SYSTEM',
+        extraData: savedMsg.extraData,
+        readAt: null,
+        createdAt: savedMsg.createdAt,
+      };
+      try {
+        const io = (global as any).__io;
+        if (io) {
+          io.to(`room:${match.chatRoomId}`).emit('NEW_MESSAGE', msgData);
+        } else {
+          await redis.publish('chat_room_message', JSON.stringify({ roomId: match.chatRoomId, message: msgData }));
+        }
+      } catch (pubErr) {
+        console.warn('[SubmitResult] chat message broadcast failed:', pubErr);
+      }
     }
 
     // 한 쪽만 제출한 경우: 상대방에게 알림
@@ -258,10 +297,22 @@ export class GamesService {
         userId: opponentUserId,
         type: 'GAME_RESULT_SUBMITTED',
         title: '경기 결과 입력 요청',
-        body: '상대방이 경기 결과를 입력했습니다. 결과를 입력해 주세요.',
+        body: '상대방이 경기 결과를 입력했습니다. 3분 내에 결과를 입력해 주세요.',
         data: { gameId, deepLink: `/games/${gameId}/result` },
       });
     }
+
+    // 3분 후 자동 확정 delayed job 등록 (상대방 미입력 시 제출된 결과 채택)
+    await gameAutoResolveQueue.add(
+      'auto-resolve-single',
+      { gameId },
+      {
+        delay: 3 * 60 * 1000, // 3분
+        jobId: `auto-resolve-${gameId}`,
+        removeOnComplete: true,
+        removeOnFail: { count: 3 },
+      },
+    );
 
     return { status: 'PROOF_UPLOADED', message: '결과가 저장되었습니다. 상대방의 결과 입력을 기다립니다.' };
   }
@@ -305,23 +356,130 @@ export class GamesService {
       resolvedResult = 'DRAW';
     }
 
-    await this.gameRepo.update(gameId, { winnerProfileId: resolvedWinnerProfileId });
-
-    // ELO 점수 반영 (applyEloChanges는 winnerProfileId 기반으로 동작)
-    const isCasual = await this.applyEloChanges(gameId, { ...game, winnerProfileId: resolvedWinnerProfileId }, match);
-
     const isAgreement =
       (requesterClaim === 'WIN' && opponentClaim === 'LOSS') ||
       (requesterClaim === 'LOSS' && opponentClaim === 'WIN') ||
       (requesterClaim === 'DRAW' && opponentClaim === 'DRAW');
 
-    const message = !isAgreement
-      ? '결과가 일치하지 않아 무승부로 처리되었습니다.'
-      : isCasual
-      ? '친선 경기 결과가 확정되었습니다.'
-      : '경기 결과가 확정되었습니다. 점수가 반영되었습니다.';
+    await this.gameRepo.update(gameId, { winnerProfileId: resolvedWinnerProfileId });
 
-    // 양쪽 유저에게 MATCH_COMPLETED 알림 → 앱에서 즉시 반영
+    let isCasual = false;
+    let message: string;
+
+    if (isAgreement) {
+      // 결과 합의 → ELO 점수 반영
+      try {
+        isCasual = await this.applyEloChanges(gameId, { ...game, winnerProfileId: resolvedWinnerProfileId }, match);
+      } catch (eloError) {
+        console.error('[GamesService] applyEloChanges 실패 — Match COMPLETED 폴백 처리:', eloError);
+        try {
+          await this.gameRepo.update(gameId, {
+            resultStatus: 'VERIFIED' as any,
+            verifiedAt: new Date(),
+          });
+          const matchRepo = this.dataSource.getRepository(Match);
+          await matchRepo.update(game.matchId, {
+            status: 'COMPLETED' as any,
+            completedAt: new Date(),
+          });
+        } catch (fallbackErr) {
+          console.error('[GamesService] fallback COMPLETED 업데이트 실패:', fallbackErr);
+        }
+      }
+      message = isCasual
+        ? '친선 경기 결과가 확정되었습니다.'
+        : '경기 결과가 확정되었습니다. 점수가 반영되었습니다.';
+    } else {
+      // 결과 불일치 → 점수 변동 없이 DISPUTED 상태로 처리 (어드민 검토 대기)
+      await this.gameRepo.update(gameId, {
+        resultStatus: 'DISPUTED' as any,
+        verifiedAt: new Date(),
+      });
+      const matchRepo = this.dataSource.getRepository(Match);
+      await matchRepo.update(game.matchId, {
+        status: 'COMPLETED' as any,
+        completedAt: new Date(),
+      });
+
+      // DISPUTED여도 해당 핀에 ranking_entry 생성 (점수 변동 없이 기록만)
+      if (match.pinId) {
+        const rankingEntryRepoDisputed = this.dataSource.getRepository(RankingEntry);
+        const sportType = (match.requesterProfile as any).sportType;
+        for (const profile of [match.requesterProfile, match.opponentProfile]) {
+          const profileId = (profile as any).id;
+          const profileScore = (profile as any).currentScore ?? 1000;
+          const existing = await rankingEntryRepoDisputed.findOne({
+            where: { pinId: match.pinId, sportsProfileId: profileId, sportType: sportType as any },
+          });
+          if (existing) {
+            await rankingEntryRepoDisputed.update(existing.id, {
+              gamesPlayed: (existing.gamesPlayed ?? 0) + 1,
+            });
+          } else {
+            await rankingEntryRepoDisputed.save(rankingEntryRepoDisputed.create({
+              pinId: match.pinId,
+              sportsProfileId: profileId,
+              sportType: sportType as any,
+              score: profileScore,
+              rank: 0,
+              tier: 'IRON' as any,
+              gamesPlayed: 1,
+            }));
+          }
+        }
+      }
+
+      message = '결과가 일치하지 않아 점수 변동 없이 처리되었습니다. 이의 제기를 통해 운영자에게 검토를 요청할 수 있습니다.';
+    }
+
+    // 채팅방에 확정 시스템 메시지 전송
+    if (match.chatRoomId) {
+      const messageRepo = this.dataSource.getRepository(Message);
+      const chatRoomRepo = this.dataSource.getRepository(ChatRoom);
+      const sysMsg = messageRepo.create({
+        chatRoomId: match.chatRoomId,
+        senderId: (match.requesterProfile as any).userId,
+        messageType: MessageType.SYSTEM,
+        content: message,
+        extraData: { type: 'GAME_RESOLVED', resolvedResult, isAgreement },
+      });
+      const savedMsg = await messageRepo.save(sysMsg);
+      await chatRoomRepo.update(match.chatRoomId, { lastMessageAt: new Date() });
+
+      const resolvedMsgData = {
+        id: savedMsg.id,
+        roomId: match.chatRoomId,
+        sender: null,
+        content: savedMsg.content,
+        messageType: 'SYSTEM',
+        extraData: savedMsg.extraData,
+        readAt: null,
+        createdAt: savedMsg.createdAt,
+      };
+      try {
+        const io = (global as any).__io;
+        if (io) {
+          io.to(`room:${match.chatRoomId}`).emit('NEW_MESSAGE', resolvedMsgData);
+        } else {
+          await redis.publish('chat_room_message', JSON.stringify({ roomId: match.chatRoomId, message: resolvedMsgData }));
+        }
+      } catch (pubErr) {
+        console.warn('[GamesService] chat message broadcast failed:', pubErr);
+      }
+    }
+
+    // 경기 완료 → COMPLETED 상태 실시간 전달 (WS 먼저, push 나중)
+    try {
+      await redis.publish('match_lifecycle', JSON.stringify({
+        event: 'MATCH_STATUS_CHANGED',
+        matchId: match.id,
+        data: { matchId: match.id, status: 'COMPLETED', gameId },
+      }));
+    } catch (pubErr) {
+      console.warn('[GamesService] match_lifecycle publish failed:', pubErr);
+    }
+
+    // 양쪽 유저에게 MATCH_COMPLETED 알림
     if (this.notificationService) {
       await this.notificationService.sendBulk([
         {
@@ -423,12 +581,6 @@ export class GamesService {
   // ─────────────────────────────────────
 
   private async applyEloChanges(gameId: string, game: any, match: any): Promise<boolean> {
-    // scoreHistory/casualScore 중복 방지: 게임이 이미 VERIFIED면 스킵
-    const existingGame = await this.gameRepo.findOne({ where: { id: gameId }, select: { resultStatus: true } as any });
-    if ((existingGame as any)?.resultStatus === 'VERIFIED') {
-      return false;
-    }
-
     // 캐주얼 모드 여부 확인 (matchRequest.isCasual)
     let isCasual = false;
     if (match.matchRequestId) {
@@ -458,9 +610,44 @@ export class GamesService {
     const kFactorRequester = isCasual ? CASUAL_K_FACTOR : getKFactor(requesterProfile.gamesPlayed, requesterProfile.tier as Tier);
     const kFactorOpponent = isCasual ? CASUAL_K_FACTOR : getKFactor(opponentProfile.gamesPlayed, opponentProfile.tier as Tier);
 
-    // 캐주얼은 casualScore 기준으로 ELO 계산, 일반은 currentScore 기준
-    const requesterBaseScore = isCasual ? (requesterProfile.casualScore ?? 1000) : requesterProfile.currentScore;
-    const opponentBaseScore = isCasual ? (opponentProfile.casualScore ?? 1000) : opponentProfile.currentScore;
+    // 캐주얼은 casualScore 기준으로 ELO 계산, 일반은 해당 핀의 ranking_entries.score 기준
+    // 핀이 있는 경우 핀별 독립 점수 조회, 없거나 캐주얼이면 글로벌/casual 점수 사용
+    let requesterBaseScore: number;
+    let opponentBaseScore: number;
+
+    if (isCasual) {
+      requesterBaseScore = requesterProfile.casualScore ?? 1000;
+      opponentBaseScore = opponentProfile.casualScore ?? 1000;
+    } else if (match.pinId) {
+      // 핀별 독립 점수 조회 (없으면 1000 기본값)
+      const rankingEntryRepoForScore = this.dataSource.getRepository(RankingEntry);
+      const sportTypeForScore = requesterProfile.sportType;
+
+      const [reqPinEntry, oppPinEntry] = await Promise.all([
+        rankingEntryRepoForScore.findOne({
+          where: {
+            pinId: match.pinId,
+            sportsProfileId: requesterProfile.id,
+            sportType: sportTypeForScore as any,
+          },
+        }),
+        rankingEntryRepoForScore.findOne({
+          where: {
+            pinId: match.pinId,
+            sportsProfileId: opponentProfile.id,
+            sportType: sportTypeForScore as any,
+          },
+        }),
+      ]);
+
+      // 핀에 기록이 없으면 글로벌 점수로 시작 (실력 반영, 스머핑 방지)
+      requesterBaseScore = reqPinEntry?.score ?? requesterProfile.currentScore;
+      opponentBaseScore = oppPinEntry?.score ?? opponentProfile.currentScore;
+    } else {
+      // 핀 없는 매칭: 글로벌 점수 사용
+      requesterBaseScore = requesterProfile.currentScore;
+      opponentBaseScore = opponentProfile.currentScore;
+    }
 
     // 활동량 데이터 조회 (일반 게임에서만 사용)
     const now = new Date();
@@ -577,52 +764,53 @@ export class GamesService {
       glickoOpponent = updateGlicko2(opponentGlickoRating, opponentResults);
     }
 
-    // displayScore: glickoRating(순수 MMR) + activityBonus (사용자에게 노출되는 점수)
-    // 캐주얼은 displayScore 미사용 (newScoreA/B는 casualScore에만 적용)
-    const finalDisplayScoreA = !isCasual && glickoRequester
-      ? Math.max(100, Math.round(glickoRequester.rating) + requesterBonus)
-      : newScoreA;
-    const finalDisplayScoreB = !isCasual && glickoOpponent
-      ? Math.max(100, Math.round(glickoOpponent.rating) + opponentBonus)
-      : newScoreB;
+    // 핀별 독립 점수 체계: ELO 기반 점수 사용 (Glicko-2는 매치메이킹 MMR 전용)
+    // 글로벌 Glicko-2 레이팅은 핀별 점수와 다를 수 있어 display에 사용하면 승패 점수가 뒤바뀜
+    const finalDisplayScoreA = newScoreA;
+    const finalDisplayScoreB = newScoreB;
 
     // 일반 게임에서만 티어 계산
     let newTierRequester = requesterProfile.tier as Tier;
     let newTierOpponent = opponentProfile.tier as Tier;
 
-    if (!isCasual) {
-      // 퍼센타일 기반 티어 계산 (전체 유저 점수 분포 조회)
+    if (!isCasual && match.pinId) {
+      // 핀별+스포츠별 등수 기반 티어 계산
       const sportType = requesterProfile.sportType;
-      const allProfiles = await this.sportsProfileRepo
-        .createQueryBuilder('sp')
-        .leftJoin('sp.user', 'u')
-        .where('sp.sportType = :sportType AND sp.isActive = true AND u.status = :status', {
-          sportType,
-          status: 'ACTIVE',
-        })
-        .select('sp.currentScore', 'currentScore')
-        .orderBy('sp.currentScore', 'DESC')
-        .getRawMany<{ currentScore: number }>();
+      const rankingEntryRepo = this.dataSource.getRepository(RankingEntry);
 
-      const allScoresSorted = allProfiles
-        .map((p) => {
-          if (p.currentScore === requesterProfile.currentScore) return newScoreA;
-          if (p.currentScore === opponentProfile.currentScore) return newScoreB;
-          return p.currentScore;
-        })
-        .sort((a, b) => b - a);
+      // 해당 핀+스포츠의 전체 랭킹 엔트리 수
+      const totalPlayers = await rankingEntryRepo.count({
+        where: { pinId: match.pinId, sportType: sportType as any },
+      });
 
-      // 유저 수가 30명 미만이면 폴백(절대 점수) 방식 사용
-      const useFallback = allScoresSorted.length < 30;
-      newTierRequester = useFallback
-        ? calculateTierFallback(newScoreA)
-        : calculateTierByPercentile(newScoreA, allScoresSorted);
-      newTierOpponent = useFallback
-        ? calculateTierFallback(newScoreB)
-        : calculateTierByPercentile(newScoreB, allScoresSorted);
+      // 각 유저의 등수 조회
+      const reqEntry = await rankingEntryRepo.findOne({
+        where: { pinId: match.pinId, sportType: sportType as any, sportsProfileId: requesterProfile.id },
+      });
+      const oppEntry = await rankingEntryRepo.findOne({
+        where: { pinId: match.pinId, sportType: sportType as any, sportsProfileId: opponentProfile.id },
+      });
+
+      if (reqEntry && totalPlayers > 0) {
+        newTierRequester = calculateTierByRank(reqEntry.rank, totalPlayers);
+      }
+      if (oppEntry && totalPlayers > 0) {
+        newTierOpponent = calculateTierByRank(oppEntry.rank, totalPlayers);
+      }
     }
 
-    await this.dataSource.transaction(async (manager) => {
+    const txResult = await this.dataSource.transaction(async (manager) => {
+      // 비관적 잠금: 다중 인스턴스에서 동시 처리 방지 (SELECT FOR UPDATE)
+      const lockedGame = await manager
+        .createQueryBuilder(Game, 'game')
+        .setLock('pessimistic_write')
+        .where('game.id = :id', { id: gameId })
+        .getOne();
+
+      if (!lockedGame || (lockedGame as any).resultStatus === 'VERIFIED') {
+        return { skipped: true }; // 이미 처리됨 — 다른 인스턴스가 먼저 처리
+      }
+
       if (isCasual) {
         // 캐주얼: casualScore/casualWin/casualLoss만 업데이트, 메인 점수/티어/wins/losses 변경 없음
         await manager
@@ -676,14 +864,103 @@ export class GamesService {
           ? (opponentProfile.lossStreak ?? 0) + 1
           : 0;
 
+        // ─────────────────────────────────────
+        // 핀별 ranking_entries 업데이트 (핀이 있는 일반 게임)
+        // ─────────────────────────────────────
+        let reqNewCurrentScore = finalDisplayScoreA;
+        let oppNewCurrentScore = finalDisplayScoreB;
+
+        if (match.pinId) {
+          const rankingEntryRepo = manager.getRepository(RankingEntry);
+          const sportType = requesterProfile.sportType;
+
+          // 요청자 ranking_entry upsert
+          const existingReqEntry = await rankingEntryRepo.findOne({
+            where: {
+              pinId: match.pinId,
+              sportsProfileId: requesterProfile.id,
+              sportType: sportType as any,
+            },
+          });
+
+          if (existingReqEntry) {
+            await rankingEntryRepo.update(existingReqEntry.id, {
+              score: finalDisplayScoreA,
+              gamesPlayed: (existingReqEntry.gamesPlayed ?? 0) + 1,
+            });
+          } else {
+            const newReqEntry = rankingEntryRepo.create({
+              pinId: match.pinId,
+              sportsProfileId: requesterProfile.id,
+              sportType: sportType as any,
+              score: finalDisplayScoreA,
+              rank: 0,
+              tier: newTierRequester,
+              gamesPlayed: 1,
+            });
+            await rankingEntryRepo.save(newReqEntry);
+          }
+
+          // 상대방 ranking_entry upsert
+          const existingOppEntry = await rankingEntryRepo.findOne({
+            where: {
+              pinId: match.pinId,
+              sportsProfileId: opponentProfile.id,
+              sportType: sportType as any,
+            },
+          });
+
+          if (existingOppEntry) {
+            await rankingEntryRepo.update(existingOppEntry.id, {
+              score: finalDisplayScoreB,
+              gamesPlayed: (existingOppEntry.gamesPlayed ?? 0) + 1,
+            });
+          } else {
+            const newOppEntry = rankingEntryRepo.create({
+              pinId: match.pinId,
+              sportsProfileId: opponentProfile.id,
+              sportType: sportType as any,
+              score: finalDisplayScoreB,
+              rank: 0,
+              tier: newTierOpponent,
+              gamesPlayed: 1,
+            });
+            await rankingEntryRepo.save(newOppEntry);
+          }
+
+          // sports_profiles.currentScore = 해당 유저의 모든 ranking_entries 중 최고점
+          const [reqMaxResult, oppMaxResult] = await Promise.all([
+            rankingEntryRepo
+              .createQueryBuilder('re')
+              .select('MAX(re.score)', 'maxScore')
+              .where('re.sportsProfileId = :id AND re.sportType = :sportType', {
+                id: requesterProfile.id,
+                sportType,
+              })
+              .getRawOne<{ maxScore: number }>(),
+            rankingEntryRepo
+              .createQueryBuilder('re')
+              .select('MAX(re.score)', 'maxScore')
+              .where('re.sportsProfileId = :id AND re.sportType = :sportType', {
+                id: opponentProfile.id,
+                sportType,
+              })
+              .getRawOne<{ maxScore: number }>(),
+          ]);
+
+          reqNewCurrentScore = reqMaxResult?.maxScore ?? finalDisplayScoreA;
+          oppNewCurrentScore = oppMaxResult?.maxScore ?? finalDisplayScoreB;
+        }
+
         // 일반: 요청자 점수 + Glicko-2 + 부가 통계 업데이트
-        // glickoRating = 순수 Glicko-2 (MMR), displayScore = glickoRating + bonus (사용자 노출), currentScore = displayScore
+        // glickoRating = 순수 Glicko-2 (MMR), displayScore = glickoRating + bonus (사용자 노출)
+        // currentScore = 핀이 있으면 모든 핀 중 최고점, 없으면 displayScore
         await manager
           .createQueryBuilder()
           .update(SportsProfile)
           .set({
             displayScore: finalDisplayScoreA,
-            currentScore: finalDisplayScoreA,
+            currentScore: reqNewCurrentScore,
             tier: newTierRequester,
             gamesPlayed: () => 'games_played + 1',
             isPlacement: reqGamesAfter < 5,
@@ -708,7 +985,7 @@ export class GamesService {
           .update(SportsProfile)
           .set({
             displayScore: finalDisplayScoreB,
-            currentScore: finalDisplayScoreB,
+            currentScore: oppNewCurrentScore,
             tier: newTierOpponent,
             gamesPlayed: () => 'games_played + 1',
             isPlacement: oppGamesAfter < 5,
@@ -799,13 +1076,18 @@ export class GamesService {
           status: 'EXPIRED' as any,
         });
       }
+
+      return { skipped: false };
     });
+
+    // 이미 다른 인스턴스에서 처리된 경우 알림 스킵
+    if (txResult.skipped) {
+      return false;
+    }
 
     // 알림 발송
     if (this.notificationService) {
       const notifs: NotificationPayload[] = [];
-
-      const scoreLabel = isCasual ? '[친선] 점수가 업데이트되었습니다' : '점수가 업데이트되었습니다';
 
       // 최종 점수 결정: 일반 게임은 displayScore(glickoRating + bonus), 캐주얼은 ELO 기반
       const finalNotifScoreA = isCasual ? newScoreA : finalDisplayScoreA;
@@ -813,40 +1095,58 @@ export class GamesService {
       const notifChangeA = finalNotifScoreA - requesterBaseScore;
       const notifChangeB = finalNotifScoreB - opponentBaseScore;
 
+      const scoreTitleA = notifChangeA >= 0
+        ? `경기 결과: +${notifChangeA}점 획득!`
+        : `경기 결과: ${notifChangeA}점`;
+      const scoreTitleB = notifChangeB >= 0
+        ? `경기 결과: +${notifChangeB}점 획득!`
+        : `경기 결과: ${notifChangeB}점`;
+
       notifs.push({
         userId: requesterProfile.userId,
         type: 'SCORE_UPDATED',
-        title: scoreLabel,
-        body: `${notifChangeA >= 0 ? '+' : ''}${notifChangeA}점 (${finalNotifScoreA}점)`,
+        title: isCasual ? '[친선] 경기 완료' : scoreTitleA,
+        body: isCasual ? '친선 경기가 완료되었습니다.' : `현재 점수: ${finalNotifScoreA}점`,
         data: { gameId, deepLink: '/profile/score', isCasual: String(isCasual) },
       });
 
       notifs.push({
         userId: opponentProfile.userId,
         type: 'SCORE_UPDATED',
-        title: scoreLabel,
-        body: `${notifChangeB >= 0 ? '+' : ''}${notifChangeB}점 (${finalNotifScoreB}점)`,
+        title: isCasual ? '[친선] 경기 완료' : scoreTitleB,
+        body: isCasual ? '친선 경기가 완료되었습니다.' : `현재 점수: ${finalNotifScoreB}점`,
         data: { gameId, deepLink: '/profile/score', isCasual: String(isCasual) },
       });
 
       // 티어 변경 알림 (캐주얼은 티어 영향 없음)
       if (!isCasual) {
+        const tierKo = (t: string) => {
+          const m: Record<string, string> = { IRON: '아이언', BRONZE: '브론즈', SILVER: '실버', GOLD: '골드', PLATINUM: '플래티넘', MASTER: '마스터', GRANDMASTER: '그랜드마스터' };
+          return m[t.toUpperCase()] ?? t;
+        };
+        const isUp = (from: string, to: string) => {
+          const order = ['IRON','BRONZE','SILVER','GOLD','PLATINUM','MASTER','GRANDMASTER'];
+          return order.indexOf(to.toUpperCase()) > order.indexOf(from.toUpperCase());
+        };
+
         if (newTierRequester !== requesterProfile.tier) {
+          const up = isUp(requesterProfile.tier, newTierRequester);
           notifs.push({
             userId: requesterProfile.userId,
             type: 'TIER_CHANGED',
-            title: '티어가 변경되었습니다!',
-            body: `${requesterProfile.tier} → ${newTierRequester}`,
+            title: up ? '축하합니다! 티어가 승급되었습니다!' : '티어가 변경되었습니다',
+            body: `${tierKo(requesterProfile.tier)} → ${tierKo(newTierRequester)}`,
             data: { deepLink: '/profile/score' },
           });
         }
 
         if (newTierOpponent !== opponentProfile.tier) {
+          const up = isUp(opponentProfile.tier, newTierOpponent);
           notifs.push({
             userId: opponentProfile.userId,
             type: 'TIER_CHANGED',
-            title: '티어가 변경되었습니다!',
-            body: `${opponentProfile.tier} → ${newTierOpponent}`,
+            title: up ? '축하합니다! 티어가 승급되었습니다!' : '티어가 변경되었습니다',
+            body: `${tierKo(opponentProfile.tier)} → ${tierKo(newTierOpponent)}`,
             data: { deepLink: '/profile/score' },
           });
         }
@@ -937,8 +1237,8 @@ export class GamesService {
       where: { id: gameId },
       relations: {
         match: {
-          requesterProfile: true,
-          opponentProfile: true,
+          requesterProfile: { user: true } as any,
+          opponentProfile: { user: true } as any,
         } as any,
       } as any,
     });
@@ -953,7 +1253,42 @@ export class GamesService {
     // winnerProfileId = null → DRAW
     await this.gameRepo.update(gameId, { winnerProfileId: null });
 
-    await this.applyEloChanges(gameId, { ...game, winnerProfileId: null }, match);
+    const applied = await this.applyEloChanges(gameId, { ...game, winnerProfileId: null }, match);
+
+    // applyEloChanges가 false(=이미 다른 인스턴스에서 처리)면 알림/메시지 스킵
+    if (applied === false) return;
+
+    // 경기 완료 → COMPLETED 상태 실시간 전달 (WS 먼저, push 나중)
+    try {
+      await redis.publish('match_lifecycle', JSON.stringify({
+        event: 'MATCH_STATUS_CHANGED',
+        matchId: match.id,
+        data: { matchId: match.id, status: 'COMPLETED', gameId },
+      }));
+    } catch (pubErr) {
+      console.warn('[AutoResolve] match_lifecycle publish failed:', pubErr);
+    }
+
+    // 양쪽 유저에게 MATCH_COMPLETED 알림
+    if (this.notificationService) {
+      const message = '양측 모두 결과를 입력하지 않아 무승부로 자동 처리되었습니다.';
+      await this.notificationService.sendBulk([
+        {
+          userId: (match.requesterProfile as any).userId,
+          type: 'MATCH_COMPLETED',
+          title: '경기 자동 완료',
+          body: message,
+          data: { matchId: match.id, gameId, deepLink: `/matches/${match.id}` },
+        },
+        {
+          userId: (match.opponentProfile as any).userId,
+          type: 'MATCH_COMPLETED',
+          title: '경기 자동 완료',
+          body: message,
+          data: { matchId: match.id, gameId, deepLink: `/matches/${match.id}` },
+        },
+      ]);
+    }
 
     console.info(`[AutoResolve] Game ${gameId} resolved as DRAW (3-day timeout)`);
   }
@@ -967,8 +1302,8 @@ export class GamesService {
       where: { id: gameId },
       relations: {
         match: {
-          requesterProfile: true,
-          opponentProfile: true,
+          requesterProfile: { user: true } as any,
+          opponentProfile: { user: true } as any,
         } as any,
       } as any,
     });
@@ -1006,9 +1341,81 @@ export class GamesService {
 
     await this.gameRepo.update(gameId, { winnerProfileId });
 
-    await this.applyEloChanges(gameId, { ...game, winnerProfileId }, match);
+    const applied = await this.applyEloChanges(gameId, { ...game, winnerProfileId }, match);
 
-    console.info(`[AutoResolve] Game ${gameId} resolved with single-side result (1-day timeout)`);
+    // applyEloChanges가 false(=이미 다른 인스턴스에서 처리)면 알림/메시지 스킵
+    if (applied === false) return;
+
+    // 채팅방에 자동 확정 시스템 메시지 전송 + WS broadcast
+    if (match.chatRoomId) {
+      const messageRepo = this.dataSource.getRepository(Message);
+      const chatRoomRepo = this.dataSource.getRepository(ChatRoom);
+      const sysMsg = messageRepo.create({
+        chatRoomId: match.chatRoomId,
+        senderId: (match.requesterProfile as any).userId,
+        messageType: MessageType.SYSTEM,
+        content: '상대방이 3분 내에 결과를 입력하지 않아 제출된 결과로 경기가 자동 확정되었습니다.',
+        extraData: { type: 'GAME_AUTO_RESOLVED' },
+      });
+      const savedMsg = await messageRepo.save(sysMsg);
+      await chatRoomRepo.update(match.chatRoomId, { lastMessageAt: new Date() });
+
+      // 채팅방에 실시간 시스템 메시지 브로드캐스트 (직접 emit)
+      const autoResolveMsgData = {
+        id: savedMsg.id,
+        roomId: match.chatRoomId,
+        sender: null,
+        content: savedMsg.content,
+        messageType: 'SYSTEM',
+        extraData: savedMsg.extraData,
+        readAt: null,
+        createdAt: savedMsg.createdAt,
+      };
+      try {
+        const io = (global as any).__io;
+        if (io) {
+          io.to(`room:${match.chatRoomId}`).emit('NEW_MESSAGE', autoResolveMsgData);
+        } else {
+          await redis.publish('chat_room_message', JSON.stringify({ roomId: match.chatRoomId, message: autoResolveMsgData }));
+        }
+      } catch (pubErr) {
+        console.warn('[AutoResolve] chat message broadcast failed:', pubErr);
+      }
+    }
+
+    // 경기 완료 → COMPLETED 상태 실시간 전달 (WS 먼저, push 나중)
+    try {
+      await redis.publish('match_lifecycle', JSON.stringify({
+        event: 'MATCH_STATUS_CHANGED',
+        matchId: match.id,
+        data: { matchId: match.id, status: 'COMPLETED', gameId },
+      }));
+    } catch (pubErr) {
+      console.warn('[AutoResolve] match_lifecycle publish failed:', pubErr);
+    }
+
+    // 양쪽 유저에게 MATCH_COMPLETED 알림
+    if (this.notificationService) {
+      const message = '상대방 미입력으로 경기 결과가 자동 확정되었습니다. 점수가 반영되었습니다.';
+      await this.notificationService.sendBulk([
+        {
+          userId: (match.requesterProfile as any).userId,
+          type: 'MATCH_COMPLETED',
+          title: '경기 자동 완료',
+          body: message,
+          data: { matchId: match.id, gameId, deepLink: `/matches/${match.id}` },
+        },
+        {
+          userId: (match.opponentProfile as any).userId,
+          type: 'MATCH_COMPLETED',
+          title: '경기 자동 완료',
+          body: message,
+          data: { matchId: match.id, gameId, deepLink: `/matches/${match.id}` },
+        },
+      ]);
+    }
+
+    console.info(`[AutoResolve] Game ${gameId} resolved with single-side result (3-min timeout)`);
   }
 
   // ─────────────────────────────────────

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../config/theme.dart';
+import '../../core/utils/permission_helper.dart';
 import '../../providers/auth_provider.dart';
 import '../../repositories/game_repository.dart';
 import '../../repositories/upload_repository.dart';
@@ -26,6 +27,7 @@ enum GameResult { win, draw, loss }
 class _GameResultInputScreenState extends ConsumerState<GameResultInputScreen> {
   final List<String> _uploadedImageUrls = [];
   bool _isLoading = false;
+  final _verificationCodeController = TextEditingController();
 
   /// 선택된 경기 결과 (null = 미선택)
   GameResult? _selectedResult;
@@ -75,6 +77,7 @@ class _GameResultInputScreenState extends ConsumerState<GameResultInputScreen> {
 
   @override
   void dispose() {
+    _verificationCodeController.dispose();
     super.dispose();
   }
 
@@ -83,6 +86,8 @@ class _GameResultInputScreenState extends ConsumerState<GameResultInputScreen> {
       AppToast.warning('최대 3장까지 첨부 가능합니다.');
       return;
     }
+
+    if (!mounted) return;
 
     final picker = ImagePicker();
     final remaining = 3 - _uploadedImageUrls.length;
@@ -114,6 +119,12 @@ class _GameResultInputScreenState extends ConsumerState<GameResultInputScreen> {
       return;
     }
 
+    final code = _verificationCodeController.text.trim();
+    if (code.length != 4) {
+      AppToast.warning('상대방의 4자리 인증번호를 입력해주세요');
+      return;
+    }
+
     if (_myProfileId == null || _opponentProfileId == null) {
       AppToast.error('참가자 정보를 불러오지 못했습니다. 다시 시도해주세요.');
       return;
@@ -138,6 +149,7 @@ class _GameResultInputScreenState extends ConsumerState<GameResultInputScreen> {
         myResult: _selectedResult!.name.toUpperCase(),
         winnerId: winnerId,
         mannerScore: _mannerScore,
+        verificationCode: code,
       );
 
       // 증빙 이미지가 있으면 서버에 전송
@@ -250,6 +262,50 @@ class _GameResultInputScreenState extends ConsumerState<GameResultInputScreen> {
                   ),
                 ),
               ],
+            ),
+
+            const SizedBox(height: 28),
+
+            // ─── 상대방 인증번호 입력 ───
+            _SectionHeader(title: '상대방 인증번호'),
+            const SizedBox(height: 4),
+            const Text(
+              '상대방에게 인증번호를 확인하고 입력해주세요.',
+              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _verificationCodeController,
+              keyboardType: TextInputType.number,
+              maxLength: 4,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+                letterSpacing: 12,
+              ),
+              decoration: InputDecoration(
+                counterText: '',
+                hintText: '● ● ● ●',
+                hintStyle: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white.withOpacity(0.15),
+                  letterSpacing: 12,
+                ),
+                filled: true,
+                fillColor: const Color(0xFF1E1E1E),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide.none,
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: AppTheme.primaryColor, width: 2),
+                ),
+                contentPadding: const EdgeInsets.symmetric(vertical: 14),
+              ),
             ),
 
             const SizedBox(height: 28),

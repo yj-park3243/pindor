@@ -1,3 +1,5 @@
+import '../config/sports.dart';
+
 /// 매칭 모델
 class Match {
   final String id;
@@ -21,6 +23,8 @@ class Match {
   final String? desiredDate; // 매칭 요청 희망 날짜
   final String? desiredTimeSlot; // 매칭 요청 희망 시간대
   final bool myResultSubmitted; // 내가 결과를 이미 제출했는지
+  final int? myScoreChange; // 내 점수 변동 (+28, -15 등)
+  final String? myVerificationCode; // 나의 4자리 인증번호
 
   const Match({
     required this.id,
@@ -44,6 +48,8 @@ class Match {
     this.desiredDate,
     this.desiredTimeSlot,
     this.myResultSubmitted = false,
+    this.myScoreChange,
+    this.myVerificationCode,
   });
 
   factory Match.fromJson(Map<String, dynamic> json) {
@@ -76,6 +82,8 @@ class Match {
       desiredDate: json['desiredDate'] as String?,
       desiredTimeSlot: json['desiredTimeSlot'] as String?,
       myResultSubmitted: json['myResultSubmitted'] as bool? ?? false,
+      myScoreChange: json['myScoreChange'] as int?,
+      myVerificationCode: json['myVerificationCode'] as String?,
     );
   }
 
@@ -100,6 +108,9 @@ class Match {
         'encounterCount': encounterCount,
         if (desiredDate != null) 'desiredDate': desiredDate,
         if (desiredTimeSlot != null) 'desiredTimeSlot': desiredTimeSlot,
+        if (myScoreChange != null) 'myScoreChange': myScoreChange,
+        if (myVerificationCode != null) 'myVerificationCode': myVerificationCode,
+        'myResultSubmitted': myResultSubmitted,
       };
 
   /// 서버 응답의 acceptances 배열 또는 myAcceptance 단일 객체 모두 처리
@@ -167,20 +178,7 @@ class Match {
     }
   }
 
-  String get sportTypeDisplayName {
-    switch (sportType) {
-      case 'GOLF':
-        return '골프';
-      case 'BILLIARDS':
-        return '당구';
-      case 'TENNIS':
-        return '테니스';
-      case 'TABLE_TENNIS':
-        return '탁구';
-      default:
-        return sportType;
-    }
-  }
+  String get sportTypeDisplayName => sportLabel(sportType);
 }
 
 /// 매칭 상대 정보

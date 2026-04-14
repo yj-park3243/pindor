@@ -39,6 +39,9 @@ import { reportsRoutes } from './modules/reports/reports.routes.js';
 import { versionRoutes } from './modules/version/version.routes.js';
 import { noticesRoutes } from './modules/notices/notices.routes.js';
 import { disputesRoutes } from './modules/disputes/disputes.routes.js';
+import { errorLogRoutes } from './modules/error-logs/error-log.routes.js';
+import { adminErrorLogsRoutes } from './modules/admin/admin-error-logs.routes.js';
+import { adminAnalyticsRoutes } from './modules/admin/admin-analytics.routes.js';
 
 export async function createApp(): Promise<FastifyInstance> {
   const fastify = Fastify({
@@ -294,6 +297,9 @@ export async function createApp(): Promise<FastifyInstance> {
   await fastify.register(versionRoutes, { prefix: V1_PREFIX });
   await fastify.register(noticesRoutes, { prefix: V1_PREFIX });
   await fastify.register(disputesRoutes, { prefix: V1_PREFIX });
+  await fastify.register(errorLogRoutes, { prefix: V1_PREFIX });
+  await fastify.register(adminErrorLogsRoutes, { prefix: V1_PREFIX });
+  await fastify.register(adminAnalyticsRoutes, { prefix: V1_PREFIX });
 
   // ─────────────────────────────────────
   // 헬스체크 엔드포인트

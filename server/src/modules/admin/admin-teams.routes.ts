@@ -13,6 +13,7 @@ import {
 import { requireAdmin } from './admin.middleware.js';
 import { AppDataSource } from '../../config/database.js';
 import { AppError, ErrorCode } from '../../shared/errors/app-error.js';
+import { parsePageParams, paginatedResponse } from '../../shared/pagination.js';
 
 export async function adminTeamsRoutes(fastify: FastifyInstance): Promise<void> {
   // ─── GET /admin/team-matches ── 팀 매치 목록 (반드시 /admin/teams/:id 보다 먼저 등록)
@@ -24,11 +25,12 @@ export async function adminTeamsRoutes(fastify: FastifyInstance): Promise<void> 
     },
     async (
       request: FastifyRequest<{
-        Querystring: { status?: string; sportType?: string; cursor?: string; limit?: number };
+        Querystring: { status?: string; sportType?: string; page?: number; pageSize?: number };
       }>,
       reply: FastifyReply,
     ) => {
-      const { status, sportType, cursor, limit = 20 } = request.query;
+      const { status, sportType } = request.query;
+      const { page, pageSize, skip } = parsePageParams(request.query);
 
       const teamMatchRepo = AppDataSource.getRepository(TeamMatch);
       const qb = teamMatchRepo
@@ -42,20 +44,14 @@ export async function adminTeamsRoutes(fastify: FastifyInstance): Promise<void> 
       if (sportType) {
         qb.andWhere('teamMatch.sportType = :sportType', { sportType: sportType as SportType });
       }
-      if (cursor) {
-        qb.andWhere('teamMatch.createdAt < :cursor', { cursor: new Date(cursor) });
-      }
 
-      const matches = await qb
+      const [items, total] = await qb
         .orderBy('teamMatch.createdAt', 'DESC')
-        .take(Number(limit) + 1)
-        .getMany();
+        .skip(skip)
+        .take(pageSize)
+        .getManyAndCount();
 
-      const hasMore = matches.length > Number(limit);
-      const items = hasMore ? matches.slice(0, Number(limit)) : matches;
-      const nextCursor = hasMore ? items[items.length - 1].createdAt.toISOString() : null;
-
-      return reply.send({ success: true, data: items, meta: { cursor: nextCursor, hasMore } });
+      return reply.send({ success: true, data: paginatedResponse(items, total, page, pageSize) });
     },
   );
 
@@ -72,13 +68,14 @@ export async function adminTeamsRoutes(fastify: FastifyInstance): Promise<void> 
           search?: string;
           sportType?: string;
           status?: string;
-          cursor?: string;
-          limit?: number;
+          page?: number;
+          pageSize?: number;
         };
       }>,
       reply: FastifyReply,
     ) => {
-      const { search, sportType, status, cursor, limit = 20 } = request.query;
+      const { search, sportType, status } = request.query;
+      const { page, pageSize, skip } = parsePageParams(request.query);
 
       const teamRepo = AppDataSource.getRepository(Team);
       const qb = teamRepo.createQueryBuilder('team');
@@ -92,20 +89,14 @@ export async function adminTeamsRoutes(fastify: FastifyInstance): Promise<void> 
       if (status) {
         qb.andWhere('team.status = :status', { status: status as TeamStatus });
       }
-      if (cursor) {
-        qb.andWhere('team.createdAt < :cursor', { cursor: new Date(cursor) });
-      }
 
-      const teams = await qb
+      const [items, total] = await qb
         .orderBy('team.createdAt', 'DESC')
-        .take(Number(limit) + 1)
-        .getMany();
+        .skip(skip)
+        .take(pageSize)
+        .getManyAndCount();
 
-      const hasMore = teams.length > Number(limit);
-      const items = hasMore ? teams.slice(0, Number(limit)) : teams;
-      const nextCursor = hasMore ? items[items.length - 1].createdAt.toISOString() : null;
-
-      return reply.send({ success: true, data: items, meta: { cursor: nextCursor, hasMore } });
+      return reply.send({ success: true, data: paginatedResponse(items, total, page, pageSize) });
     },
   );
 

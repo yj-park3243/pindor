@@ -45,6 +45,15 @@ export const matchAcceptTimeoutWorker = new Worker<MatchAcceptTimeoutJobData>(
       job.data;
 
     // ──────────────────────────────────
+    // [accept-reminder] 수락 리마인더 알림 처리
+    // ──────────────────────────────────
+    if (job.name === 'accept-reminder') {
+      const { reminderUserId, reminderLabel } = job.data as any;
+      await handleAcceptReminder(matchId, reminderUserId, reminderLabel);
+      return;
+    }
+
+    // ──────────────────────────────────
     // [delayed-match] 지연 매칭 처리
     // ──────────────────────────────────
     if (job.name === 'delayed-match') {
@@ -73,6 +82,44 @@ export const matchAcceptTimeoutWorker = new Worker<MatchAcceptTimeoutJobData>(
   },
   { connection: bullmqRedis, concurrency: 5 },
 );
+
+// ─────────────────────────────────────
+// 수락 리마인더 처리 (accept-reminder)
+// ─────────────────────────────────────
+
+async function handleAcceptReminder(
+  matchId: string,
+  userId: string,
+  label: string,
+): Promise<void> {
+  if (!AppDataSource.isInitialized) {
+    await AppDataSource.initialize();
+  }
+
+  const matchRepo = AppDataSource.getRepository(Match);
+
+  // 매칭이 아직 PENDING_ACCEPT 상태인지 확인 — 이미 수락/취소된 경우 스킵
+  const match = await matchRepo.findOne({ where: { id: matchId } });
+  if (!match || (match.status as string) !== 'PENDING_ACCEPT') {
+    console.info(
+      `[AcceptReminder] Skipping reminder (${label}) — match not in PENDING_ACCEPT: ${matchId}`,
+    );
+    return;
+  }
+
+  await redis.publish(
+    'system_notification',
+    JSON.stringify({
+      userId,
+      type: 'MATCH_ACCEPT_REMINDER',
+      title: '매칭 수락 알림',
+      body: `매칭 수락 시간이 ${label} 남았습니다!`,
+      data: { matchId, deepLink: `/matches/${matchId}/accept` },
+    }),
+  );
+
+  console.info(`[AcceptReminder] Sent reminder (${label}) to user ${userId} for match ${matchId}`);
+}
 
 // ─────────────────────────────────────
 // 지연 매칭 처리 (delayed-match)
@@ -190,6 +237,34 @@ async function handleDelayedMatch(
         jobId: `accept-timeout-${savedMatch.id}`,
       },
     );
+
+    // 매칭 수락 리마인더 job 등록 (5분전, 3분전, 1분전)
+    // 수락 만료가 10분이므로 생성 후 5분, 7분, 9분에 발송
+    const reminders = [
+      { delay: 5 * 60 * 1000, label: '5분' },
+      { delay: 7 * 60 * 1000, label: '3분' },
+      { delay: 9 * 60 * 1000, label: '1분' },
+    ];
+    for (const { delay, label } of reminders) {
+      for (const userId of [requesterUserId, opponentUserId]) {
+        await matchAcceptTimeoutQueue.add(
+          'accept-reminder',
+          {
+            matchId: savedMatch.id,
+            requesterUserId,
+            opponentUserId,
+            requesterRequestId,
+            opponentRequestId,
+            reminderUserId: userId,
+            reminderLabel: label,
+          } as any,
+          {
+            delay,
+            jobId: `accept-reminder-${savedMatch.id}-${userId}-${label}`,
+          },
+        );
+      }
+    }
 
     // 알림 발송
     const requesterAge = (requesterProfile.user as any)?.birthDate
@@ -437,6 +512,17 @@ async function handleAcceptTimeout(
       );
     }
   });
+
+  // 타임아웃 취소 → CANCELLED 상태 실시간 전달
+  try {
+    await redis.publish('match_lifecycle', JSON.stringify({
+      event: 'MATCH_STATUS_CHANGED',
+      matchId,
+      data: { matchId, status: 'CANCELLED', reason: 'ACCEPT_TIMEOUT' },
+    }));
+  } catch (pubErr) {
+    console.warn('[AcceptTimeout] match_lifecycle publish failed:', pubErr);
+  }
 
   console.info(`[AcceptTimeout] Match cancelled due to timeout: ${matchId}`);
 }

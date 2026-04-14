@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../config/theme.dart';
+import '../../core/utils/permission_helper.dart';
 import '../../repositories/dispute_repository.dart';
 import '../../repositories/upload_repository.dart';
 import '../../widgets/common/app_toast.dart';
@@ -38,6 +39,8 @@ class _CreateDisputeScreenState extends ConsumerState<CreateDisputeScreen> {
       AppToast.warning('최대 3장까지 첨부 가능합니다.');
       return;
     }
+
+    if (!mounted) return;
 
     final picker = ImagePicker();
     final remaining = 3 - _imageUrls.length;

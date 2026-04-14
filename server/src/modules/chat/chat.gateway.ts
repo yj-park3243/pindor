@@ -20,12 +20,22 @@ interface JoinRoomData {
 interface SendMessageData {
   roomId: string;
   content: string;
-  messageType: 'TEXT' | 'IMAGE' | 'LOCATION';
+  messageType: 'TEXT' | 'IMAGE' | 'LOCATION' | 'VERIFICATION_CODE';
   extraData?: Record<string, unknown>;
 }
 
 interface TypingData {
   roomId: string;
+}
+
+// 매칭 요청 룸 입장/퇴장 데이터
+interface JoinMatchRequestData {
+  requestId: string;
+}
+
+// 매칭 룸 입장/퇴장 데이터
+interface JoinMatchData {
+  matchId: string;
 }
 
 // ─────────────────────────────────────
@@ -108,6 +118,49 @@ export function setupSocketGateway(io: Server, redis: Redis): void {
     await redis.sadd('online_users', userId);
     await redis.set(`user_socket:${userId}`, socket.id, 'EX', 86400);
 
+    // ─── Analytics: DAU / 시간대별 / 세션 추적 ───
+    const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD (UTC)
+    const currentHour = new Date().getUTCHours();
+
+    // DAU 추적 (일별 유니크 유저)
+    await redis.sadd(`dau:${todayStr}`, userId);
+    await redis.expire(`dau:${todayStr}`, 172800); // 48시간 후 자동 삭제
+
+    // 시간대별 접속자 추적
+    await redis.sadd(`hourly:${todayStr}:${currentHour}`, userId);
+    await redis.expire(`hourly:${todayStr}:${currentHour}`, 172800);
+
+    // 세션 시작 시간 기록 (체류 시간 계산용)
+    await redis.set(`session_start:${userId}`, Date.now().toString(), 'EX', 86400);
+
+    // ─── 재연결 시 매칭 관련 룸 자동 복구 ───
+    // 연결 해제 시에도 룸 추적 정보를 유지하므로 재연결 시 자동으로 재입장
+    try {
+      // 매칭 요청 룸 복구
+      const matchRequestRooms = await redis.smembers(`user_matchrequest_rooms:${userId}`);
+      for (const requestId of matchRequestRooms) {
+        await socket.join(`matchrequest:${requestId}`);
+      }
+
+      // 매칭 룸 복구 (활성 상태인 매칭만)
+      const matchRooms = await redis.smembers(`user_match_rooms:${userId}`);
+      for (const matchId of matchRooms) {
+        // 매칭이 아직 활성 상태인지 확인
+        const matchRow = await matchRepo.findOne({
+          where: { id: matchId },
+          select: { id: true, status: true } as any,
+        });
+        if (matchRow && !['COMPLETED', 'CANCELLED'].includes(matchRow.status as string)) {
+          await socket.join(`match:${matchId}`);
+        } else {
+          // 완료/취소된 매칭은 추적 목록에서 제거
+          await redis.srem(`user_match_rooms:${userId}`, matchId);
+        }
+      }
+    } catch (reconnectErr) {
+      console.warn(`[WS] Failed to restore rooms for ${userId}:`, reconnectErr);
+    }
+
     console.info(`[WS] Connected: ${userId} (${socket.id})`);
 
     // ─── 채팅방 입장 ───
@@ -173,8 +226,8 @@ export function setupSocketGateway(io: Server, redis: Redis): void {
     // ─── 메시지 전송 ───
     socket.on('SEND_MESSAGE', async (data: SendMessageData): Promise<void> => {
       try {
-        // LOCATION 타입은 content 없이 extraData로 전송
-        if (!data.roomId || (data.messageType !== 'LOCATION' && !data.content)) {
+        // LOCATION/VERIFICATION_CODE 타입은 content 없이 extraData로 전송
+        if (!data.roomId || (!['LOCATION', 'VERIFICATION_CODE'].includes(data.messageType) && !data.content)) {
           socket.emit('ERROR', { code: 'INVALID_DATA', message: '필수 데이터가 없습니다.' });
           return;
         }
@@ -198,7 +251,11 @@ export function setupSocketGateway(io: Server, redis: Redis): void {
           chatRoomId: data.roomId,
           senderId: userId,
           messageType: data.messageType as any,
-          content: data.messageType === 'LOCATION' ? '위치를 공유했습니다' : data.content,
+          content: data.messageType === 'LOCATION'
+            ? '위치를 공유했습니다'
+            : data.messageType === 'VERIFICATION_CODE'
+            ? '인증번호를 전송했습니다'
+            : data.content,
           extraData: data.extraData ?? {},
         });
         const savedMessage = await messageRepo.save(newMessage);
@@ -217,10 +274,16 @@ export function setupSocketGateway(io: Server, redis: Redis): void {
         await chatRoomRepo.update(data.roomId, { lastMessageAt: savedMessage.createdAt });
 
         // 같은 채팅방의 모든 소켓에 실시간 전달
+        // TypeORM 엔티티 직렬화 이슈 방지를 위해 sender를 plain object로 전달
         io.to(`room:${data.roomId}`).emit('NEW_MESSAGE', {
           id: message.id,
           roomId: data.roomId,
-          sender: message.sender,
+          senderId: message.sender.id,
+          sender: {
+            id: message.sender.id,
+            nickname: message.sender.nickname,
+            profileImageUrl: message.sender.profileImageUrl,
+          },
           content: message.content,
           messageType: message.messageType,
           extraData: message.extraData,
@@ -249,17 +312,28 @@ export function setupSocketGateway(io: Server, redis: Redis): void {
               : data.messageType === 'LOCATION'
               ? 'CHAT_LOCATION'
               : 'CHAT_MESSAGE';
+          const senderName = message.sender.nickname;
+          const notifTitle =
+            data.messageType === 'IMAGE'
+              ? `${senderName}님이 사진을 보냈습니다`
+              : data.messageType === 'LOCATION'
+              ? `${senderName}님이 위치를 공유했습니다`
+              : data.messageType === 'VERIFICATION_CODE'
+              ? `${senderName}님이 인증번호를 보냈습니다`
+              : `${senderName}님이 메시지를 보냈습니다`;
           const notifBody =
             data.messageType === 'IMAGE'
-              ? '사진을 보냈습니다'
+              ? '사진을 확인해보세요'
               : data.messageType === 'LOCATION'
-              ? '위치를 공유했습니다'
+              ? '위치를 확인해보세요'
+              : data.messageType === 'VERIFICATION_CODE'
+              ? '매칭 결과 입력 시 사용할 인증번호입니다'
               : data.content.substring(0, 100);
 
           // socket.io를 통해 알림 전송 (user:${opponentUserId} 룸)
           io.to(`user:${opponentUserId}`).emit('notification', {
             type: notifType,
-            title: message.sender.nickname,
+            title: notifTitle,
             body: notifBody,
             data: {
               roomId: data.roomId,
@@ -276,7 +350,7 @@ export function setupSocketGateway(io: Server, redis: Redis): void {
             JSON.stringify({
               userId: opponentUserId,
               type: notifType,
-              title: message.sender.nickname,
+              title: notifTitle,
               body: notifBody,
               data: {
                 roomId: data.roomId,
@@ -310,11 +384,118 @@ export function setupSocketGateway(io: Server, redis: Redis): void {
       });
     });
 
+    // ─── 매칭 요청 룸 입장 ───
+    // 클라이언트가 매칭 요청 생성 후 실시간 매칭 알림을 받기 위해 룸에 입장
+    socket.on('JOIN_MATCH_REQUEST', async (data: JoinMatchRequestData): Promise<void> => {
+      try {
+        const { requestId } = data;
+        if (!requestId) {
+          socket.emit('ERROR', { code: 'INVALID_DATA', message: '요청 ID가 없습니다.' });
+          return;
+        }
+        await socket.join(`matchrequest:${requestId}`);
+        // 재연결 복구를 위해 Redis에 룸 추적 정보 저장
+        await redis.sadd(`user_matchrequest_rooms:${userId}`, requestId);
+        socket.emit('MATCH_REQUEST_ROOM_JOINED', { requestId });
+        console.info(`[WS] ${userId} joined matchrequest:${requestId}`);
+      } catch (err) {
+        console.error('[WS] JOIN_MATCH_REQUEST error:', err);
+        socket.emit('ERROR', { code: 'INTERNAL_ERROR', message: '오류가 발생했습니다.' });
+      }
+    });
+
+    // ─── 매칭 요청 룸 퇴장 ───
+    socket.on('LEAVE_MATCH_REQUEST', async (data: JoinMatchRequestData): Promise<void> => {
+      try {
+        const { requestId } = data;
+        if (!requestId) return;
+        await socket.leave(`matchrequest:${requestId}`);
+        await redis.srem(`user_matchrequest_rooms:${userId}`, requestId);
+        socket.emit('MATCH_REQUEST_ROOM_LEFT', { requestId });
+        console.info(`[WS] ${userId} left matchrequest:${requestId}`);
+      } catch (err) {
+        console.error('[WS] LEAVE_MATCH_REQUEST error:', err);
+      }
+    });
+
+    // ─── 매칭 룸 입장 ───
+    // 클라이언트가 매칭 상세 화면 진입 시 실시간 상태 변경을 받기 위해 룸에 입장
+    socket.on('JOIN_MATCH', async (data: JoinMatchData): Promise<void> => {
+      try {
+        const { matchId } = data;
+        if (!matchId) {
+          socket.emit('ERROR', { code: 'INVALID_DATA', message: '매칭 ID가 없습니다.' });
+          return;
+        }
+
+        // 참여자 여부 확인
+        const match = await matchRepo.findOne({
+          where: { id: matchId },
+          relations: {
+            requesterProfile: true,
+            opponentProfile: true,
+          },
+        });
+
+        if (!match) {
+          socket.emit('ERROR', { code: 'MATCH_NOT_FOUND', message: '매칭을 찾을 수 없습니다.' });
+          return;
+        }
+
+        const participantIds = [
+          match.requesterProfile.userId,
+          match.opponentProfile.userId,
+        ];
+
+        if (!participantIds.includes(userId)) {
+          socket.emit('ERROR', { code: 'FORBIDDEN', message: '접근 권한이 없습니다.' });
+          return;
+        }
+
+        await socket.join(`match:${matchId}`);
+        // 재연결 복구를 위해 Redis에 룸 추적 정보 저장
+        await redis.sadd(`user_match_rooms:${userId}`, matchId);
+        socket.emit('MATCH_ROOM_JOINED', { matchId });
+        console.info(`[WS] ${userId} joined match:${matchId}`);
+      } catch (err) {
+        console.error('[WS] JOIN_MATCH error:', err);
+        socket.emit('ERROR', { code: 'INTERNAL_ERROR', message: '오류가 발생했습니다.' });
+      }
+    });
+
+    // ─── 매칭 룸 퇴장 ───
+    socket.on('LEAVE_MATCH', async (data: JoinMatchData): Promise<void> => {
+      try {
+        const { matchId } = data;
+        if (!matchId) return;
+        await socket.leave(`match:${matchId}`);
+        await redis.srem(`user_match_rooms:${userId}`, matchId);
+        socket.emit('MATCH_ROOM_LEFT', { matchId });
+        console.info(`[WS] ${userId} left match:${matchId}`);
+      } catch (err) {
+        console.error('[WS] LEAVE_MATCH error:', err);
+      }
+    });
+
     // ─── 연결 해제 ───
+    // 룸 추적 정보는 재연결 복구를 위해 삭제하지 않음
     socket.on('disconnect', async () => {
       await redis.srem('online_users', userId);
       await redis.del(`user_socket:${userId}`);
       await redis.del(`user_active_room:${userId}`);
+
+      // ─── Analytics: 세션 종료 → 체류 시간 기록 ───
+      const sessionStart = await redis.get(`session_start:${userId}`);
+      if (sessionStart) {
+        const duration = Math.floor((Date.now() - parseInt(sessionStart, 10)) / 1000); // 초
+        if (duration > 0 && duration < 86400) { // 24시간 이하만 유효한 세션으로 처리
+          const todayStr = new Date().toISOString().split('T')[0];
+          await redis.rpush(`sessions:${todayStr}`, duration.toString());
+          await redis.expire(`sessions:${todayStr}`, 172800);
+        }
+        await redis.del(`session_start:${userId}`);
+      }
+
       console.info(`[WS] Disconnected: ${userId}`);
     });
 

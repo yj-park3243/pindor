@@ -110,7 +110,7 @@ export function RankingPage() {
       title: '점수',
       dataIndex: 'score',
       key: 'score',
-      render: (s: number) => <strong style={{ color: '#1890ff' }}>{s.toLocaleString()}</strong>,
+      render: (s: number) => <strong style={{ color: '#1890ff' }}>{(s ?? 0).toLocaleString()}</strong>,
       sorter: true,
       width: 100,
     },
@@ -237,7 +237,7 @@ export function RankingPage() {
                         onChange={(v) => { setPinId(v); setPage(1); }}
                         showSearch
                         optionFilterProp="label"
-                        options={pins?.items.map((p) => ({
+                        options={pins?.items?.map((p) => ({
                           value: p.id,
                           label: p.name,
                         })) || []}
@@ -280,7 +280,7 @@ export function RankingPage() {
                       current: page,
                       pageSize: 20,
                       total: rankings?.total || 0,
-                      showTotal: (total) => `총 ${total.toLocaleString()}명`,
+                      showTotal: (total) => `총 ${(total ?? 0).toLocaleString()}명`,
                       onChange: setPage,
                     }}
                     scroll={{ x: 800 }}

@@ -31,14 +31,14 @@ class AppTheme {
   static const Color textDisabled = Color(0xFF4B5563);    // 다크 그레이
   static const Color textOnPrimary = Color(0xFFFFFFFF);
 
-  // ─── 티어 색상 (7단계) ───
-  static const Color grandmasterColor = Color(0xFFFF4500); // 레드 오렌지
-  static const Color masterColor = Color(0xFF9B59B6);      // 퍼플
-  static const Color platinumColor = Color(0xFFE5E4E2);    // 플래티넘
-  static const Color goldColor = Color(0xFFFFD700);        // 골드
-  static const Color silverColor = Color(0xFFC0C0C0);      // 실버
-  static const Color bronzeColor = Color(0xFFCD7F32);      // 브론즈
-  static const Color ironColor = Color(0xFF71797E);        // 아이언 (다크그레이)
+  // ─── 티어 색상 (7단계, 다크 배경 최적화) ───
+  static const Color grandmasterColor = Color(0xFFFF3D3D); // 레드
+  static const Color masterColor = Color(0xFFBB6BD9);      // 퍼플
+  static const Color platinumColor = Color(0xFF4DD9E8);    // 시안
+  static const Color goldColor = Color(0xFFFFCC00);        // 골드
+  static const Color silverColor = Color(0xFFB0C4DE);      // 라이트 스틸블루
+  static const Color bronzeColor = Color(0xFFE8923E);      // 브론즈 오렌지
+  static const Color ironColor = Color(0xFF8E99A4);        // 쿨 그레이
 
   static Color tierColor(String tier) {
     switch (tier.toUpperCase()) {
@@ -58,6 +58,34 @@ class AppTheme {
         return ironColor;
       default:
         return ironColor;
+    }
+  }
+
+  /// 티어 약어
+  static String tierShort(String tier) {
+    switch (tier.toUpperCase()) {
+      case 'GRANDMASTER': return 'GM';
+      case 'MASTER': return 'MA';
+      case 'PLATINUM': return 'PT';
+      case 'GOLD': return 'GD';
+      case 'SILVER': return 'SV';
+      case 'BRONZE': return 'BZ';
+      case 'IRON': return 'IR';
+      default: return tier.length >= 2 ? tier.substring(0, 2).toUpperCase() : tier;
+    }
+  }
+
+  /// 티어 한글명
+  static String tierName(String tier) {
+    switch (tier.toUpperCase()) {
+      case 'GRANDMASTER': return '그랜드마스터';
+      case 'MASTER': return '마스터';
+      case 'PLATINUM': return '플래티넘';
+      case 'GOLD': return '골드';
+      case 'SILVER': return '실버';
+      case 'BRONZE': return '브론즈';
+      case 'IRON': return '아이언';
+      default: return tier;
     }
   }
 

@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>계정 삭제 요청 — 핀돌</title>
+  <meta name="description" content="핀돌 서비스 계정 및 관련 데이터 삭제를 요청할 수 있습니다." />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --blue: #1A73E8;
+      --blue-dark: #1558b0;
+      --blue-light: #4a9ef5;
+      --green: #34A853;
+      --dark: #0d1117;
+      --dark2: #161b22;
+      --dark3: #21262d;
+      --white: #ffffff;
+      --radius: 16px;
+      --radius-sm: 8px;
+      --transition: all 0.35s cubic-bezier(0.4,0,0.2,1);
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo',
+                   'Noto Sans KR', sans-serif;
+      background: var(--dark);
+      color: var(--white);
+      overflow-x: hidden;
+    }
+    a { text-decoration: none; color: inherit; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--dark); }
+    ::-webkit-scrollbar-thumb { background: var(--blue); border-radius: 3px; }
+
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      padding: 0 clamp(16px, 4vw, 64px); height: 64px;
+      display: flex; align-items: center; justify-content: space-between;
+      background: rgba(13, 17, 23, 0.92);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .nav-brand {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 22px; font-weight: 800; letter-spacing: -0.5px;
+    }
+    .nav-logo {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--blue), var(--blue-light), var(--green));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; font-weight: 900; color: white;
+      box-shadow: 0 0 16px rgba(26,115,232,0.5);
+    }
+    .nav-home {
+      font-size: 14px; font-weight: 500; color: rgba(255,255,255,0.6);
+      padding: 8px 20px; border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 24px; transition: var(--transition);
+    }
+    .nav-home:hover {
+      color: white; border-color: rgba(255,255,255,0.3);
+      background: rgba(255,255,255,0.06);
+    }
+
+    .page-wrap { max-width: 800px; margin: 0 auto; padding: 108px 24px 80px; }
+    .page-header {
+      margin-bottom: 48px; padding-bottom: 32px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .page-tag {
+      display: inline-block; padding: 5px 14px;
+      background: rgba(232, 73, 26, 0.15); border: 1px solid rgba(232, 73, 26, 0.3);
+      border-radius: 20px; font-size: 11px; font-weight: 600;
+      color: #f59e0b; letter-spacing: 1.5px; text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    .page-title {
+      font-size: clamp(26px, 4vw, 40px); font-weight: 800;
+      letter-spacing: -1px; line-height: 1.2; color: white;
+    }
+    .page-meta {
+      margin-top: 12px; font-size: 13px;
+      color: rgba(255,255,255,0.35); line-height: 1.8;
+    }
+
+    .section { margin-bottom: 48px; }
+    .section-title {
+      font-size: 18px; font-weight: 700; color: white;
+      margin-bottom: 16px; padding-left: 14px;
+      border-left: 3px solid var(--blue); line-height: 1.4;
+    }
+    .section-body {
+      font-size: 15px; color: rgba(255,255,255,0.72); line-height: 1.9;
+    }
+    .section-body p { margin-bottom: 12px; }
+    .section-body ul { padding-left: 20px; margin: 10px 0; }
+    .section-body ul li { margin-bottom: 8px; line-height: 1.7; }
+    .section-body ul li::marker { color: var(--blue-light); }
+    .section-body strong { color: rgba(255,255,255,0.9); font-weight: 600; }
+
+    .notice-box {
+      background: rgba(245, 158, 11, 0.08);
+      border: 1px solid rgba(245, 158, 11, 0.2);
+      border-radius: var(--radius-sm);
+      padding: 16px 20px; margin: 16px 0;
+      font-size: 14px; color: rgba(255,255,255,0.65); line-height: 1.7;
+    }
+
+    .info-table {
+      width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;
+    }
+    .info-table th {
+      background: rgba(26,115,232,0.12); color: var(--blue-light);
+      font-weight: 600; padding: 12px 16px; text-align: left;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .info-table td {
+      padding: 12px 16px; border: 1px solid rgba(255,255,255,0.06);
+      color: rgba(255,255,255,0.72); line-height: 1.6; vertical-align: top;
+    }
+
+    .cta-section {
+      background: linear-gradient(135deg, rgba(232, 73, 26, 0.1), rgba(245, 158, 11, 0.06));
+      border: 1px solid rgba(245, 158, 11, 0.2);
+      border-radius: var(--radius); padding: 40px 32px; text-align: center;
+      margin-top: 48px;
+    }
+    .cta-title { font-size: 20px; font-weight: 700; color: white; margin-bottom: 12px; }
+    .cta-desc {
+      font-size: 14px; color: rgba(255,255,255,0.5);
+      margin-bottom: 24px; line-height: 1.6;
+    }
+    .cta-email {
+      display: inline-block; padding: 14px 32px;
+      background: var(--blue); color: white; border-radius: 24px;
+      font-size: 15px; font-weight: 600; transition: var(--transition);
+      box-shadow: 0 0 20px rgba(26,115,232,0.35);
+    }
+    .cta-email:hover {
+      background: var(--blue-dark);
+      box-shadow: 0 0 30px rgba(26,115,232,0.55);
+      transform: translateY(-1px);
+    }
+
+    footer {
+      background: #080c10; padding: 40px clamp(16px, 5vw, 100px);
+      border-top: 1px solid rgba(255,255,255,0.05);
+    }
+    .footer-inner {
+      max-width: 1100px; margin: 0 auto;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 20px;
+    }
+    .footer-brand { display: flex; align-items: center; gap: 10px; }
+    .footer-brand-text { font-size: 18px; font-weight: 800; color: rgba(255,255,255,0.6); }
+    .footer-links { display: flex; gap: 24px; flex-wrap: wrap; }
+    .footer-links a { font-size: 13px; color: rgba(255,255,255,0.4); transition: color 0.2s; }
+    .footer-links a:hover { color: rgba(255,255,255,0.7); }
+    .footer-copy { font-size: 12px; color: rgba(255,255,255,0.25); }
+
+    @media (max-width: 768px) {
+      .page-wrap { padding: 88px 16px 60px; }
+      .info-table { font-size: 13px; }
+      .info-table th, .info-table td { padding: 10px 12px; }
+      .footer-inner { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav class="navbar">
+    <a href="index.html" class="nav-brand">
+      <div class="nav-logo">P</div>
+      핀돌
+    </a>
+    <a href="index.html" class="nav-home">홈으로</a>
+  </nav>
+
+  <main class="page-wrap">
+
+    <div class="page-header">
+      <div class="page-tag">Account Deletion</div>
+      <h1 class="page-title">계정 및 데이터 삭제 요청</h1>
+      <div class="page-meta">
+        서비스명: 핀돌 &nbsp;|&nbsp; 운영: 디자인비 (박용주)
+      </div>
+    </div>
+
+    <div class="notice-box">
+      핀돌 서비스의 계정 삭제를 요청하시면 회원 정보 및 관련 데이터가 영구적으로 삭제됩니다. 삭제가 완료되면 동일한 계정으로 다시 로그인하거나 데이터를 복구할 수 없습니다.
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">삭제되는 데이터</h2>
+      <div class="section-body">
+        <p>계정 삭제 요청 시 다음 데이터가 영구적으로 삭제됩니다.</p>
+        <ul>
+          <li><strong>계정 정보:</strong> 이메일, 닉네임, 프로필 사진, 성별, 생년월일</li>
+          <li><strong>소셜 로그인 연동 정보:</strong> Apple, Google, Kakao 연동 데이터</li>
+          <li><strong>매칭 및 경기 기록:</strong> 매칭 요청, 매칭 결과, 경기 기록, 점수 이력</li>
+          <li><strong>채팅 기록:</strong> 모든 채팅 메시지 및 채팅방 정보</li>
+          <li><strong>커뮤니티 활동:</strong> 게시글, 댓글</li>
+          <li><strong>스포츠 프로필:</strong> 종목별 점수, 티어, 전적</li>
+          <li><strong>알림 내역:</strong> 모든 푸시 알림 및 앱 내 알림 기록</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">삭제 처리 절차</h2>
+      <div class="section-body">
+        <table class="info-table">
+          <thead>
+            <tr>
+              <th>단계</th>
+              <th>내용</th>
+              <th>소요 기간</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>1. 요청</strong></td>
+              <td>아래 이메일로 계정 삭제 요청 (가입 이메일 또는 닉네임 기재)</td>
+              <td>-</td>
+            </tr>
+            <tr>
+              <td><strong>2. 본인 확인</strong></td>
+              <td>가입 시 사용한 이메일 또는 소셜 계정 정보로 본인 확인</td>
+              <td>1~2 영업일</td>
+            </tr>
+            <tr>
+              <td><strong>3. 삭제 처리</strong></td>
+              <td>계정 비활성화 후 30일 이내 모든 데이터 영구 삭제</td>
+              <td>최대 30일</td>
+            </tr>
+            <tr>
+              <td><strong>4. 완료 안내</strong></td>
+              <td>삭제 완료 후 이메일로 결과 안내</td>
+              <td>-</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">삭제 후 보관되는 데이터</h2>
+      <div class="section-body">
+        <p>관계 법령에 따라 아래 데이터는 일정 기간 보관 후 파기됩니다.</p>
+        <ul>
+          <li>계약 또는 청약 철회 기록: <strong>5년</strong> (전자상거래법)</li>
+          <li>소비자 불만 또는 분쟁 처리 기록: <strong>3년</strong> (전자상거래법)</li>
+          <li>접속 로그: <strong>3개월</strong> (통신비밀보호법)</li>
+        </ul>
+        <p>위 법정 보존 기간이 경과하면 해당 데이터도 완전히 파기됩니다.</p>
+      </div>
+    </div>
+
+    <div class="cta-section">
+      <div class="cta-title">계정 삭제를 요청하시겠습니까?</div>
+      <div class="cta-desc">
+        아래 이메일로 가입 시 사용한 이메일 주소 또는 닉네임을 포함하여<br>
+        계정 삭제를 요청해 주세요.
+      </div>
+      <a href="mailto:yjyj3243@gmail.com?subject=[핀돌] 계정 삭제 요청&body=가입 이메일 또는 닉네임:%0A삭제 사유(선택):" class="cta-email">
+        yjyj3243@gmail.com 으로 요청하기
+      </a>
+    </div>
+
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="nav-logo">P</div>
+        <span class="footer-brand-text">핀돌</span>
+      </div>
+      <div class="footer-links">
+        <a href="terms.html">이용약관</a>
+        <a href="privacy.html">개인정보처리방침</a>
+        <a href="account-deletion.html">계정 삭제</a>
+        <a href="support.html">고객지원</a>
+      </div>
+      <div class="footer-copy">&copy; 2026 핀돌. All rights reserved.</div>
+    </div>
+  </footer>
+
+</body>
+</html>

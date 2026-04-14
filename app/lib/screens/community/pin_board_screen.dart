@@ -12,6 +12,7 @@ import '../../providers/community_provider.dart';
 import '../../providers/sport_preference_provider.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/error_view.dart';
+import '../../widgets/common/tier_badge.dart';
 
 
 /// 핀 게시판 화면
@@ -232,8 +233,9 @@ class _PinBoardScreenState extends ConsumerState<PinBoardScreen> {
           return _PostListTile(
             post: post,
             onTap: () async {
+              final sport = allSports[_tabIndex].value;
               await context
-                  .push('/pins/${widget.pinId}/board/posts/${post.id}');
+                  .push('/pins/${widget.pinId}/board/posts/${post.id}?sportType=$sport');
               ref.read(postListProvider(key).notifier).refresh();
             },
             onLike: () => ref
@@ -358,6 +360,10 @@ class _PostListTile extends StatelessWidget {
                     fontWeight: FontWeight.w500,
                   ),
                 ),
+                if (post.authorTier != null) ...[
+                  const SizedBox(width: 4),
+                  TierBadge(tier: post.authorTier!),
+                ],
                 const Spacer(),
                 _StatIcon(
                     icon: Icons.visibility_outlined, value: post.viewCount),

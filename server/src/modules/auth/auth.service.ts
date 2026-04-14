@@ -107,7 +107,40 @@ export class AuthService {
       };
     }
 
-    // 신규 사용자 — 회원 가입
+    // 같은 이메일로 이미 가입된 유저가 있으면 카카오 계정만 연결
+    if (email) {
+      const existingUser = await userRepo.findOne({ where: { email } });
+      if (existingUser) {
+        if (existingUser.status === 'SUSPENDED') throw new AppError(ErrorCode.USER_SUSPENDED, 403);
+        if (existingUser.status === 'WITHDRAWN') throw new AppError(ErrorCode.USER_WITHDRAWN, 403);
+
+        await socialAccountRepo.save(socialAccountRepo.create({
+          userId: existingUser.id,
+          provider: SocialProvider.KAKAO,
+          providerId,
+        }));
+        await userRepo.update(existingUser.id, {
+          lastLoginAt: new Date(),
+          ...(gender && !existingUser.gender && { gender }),
+          ...(birthDate && !existingUser.birthDate && { birthDate }),
+        });
+
+        const tokens = await issueTokenPair({ userId: existingUser.id, email: existingUser.email });
+        await this.storeRefreshToken(existingUser.id, tokens.refreshToken);
+
+        return {
+          ...tokens,
+          user: {
+            id: existingUser.id,
+            nickname: existingUser.nickname,
+            profileImageUrl: existingUser.profileImageUrl,
+            isNewUser: false,
+          },
+        };
+      }
+    }
+
+    // 완전 신규 사용자 — 회원 가입
     isNewUser = true;
 
     const uniqueNickname = await this.generateUniqueNickname(nickname);
@@ -211,7 +244,36 @@ export class AuthService {
       };
     }
 
-    // 신규 사용자 — 회원 가입
+    // 같은 이메일로 이미 가입된 유저가 있으면 Google 계정만 연결
+    if (email) {
+      const existingUser = await userRepo.findOne({ where: { email } });
+      if (existingUser) {
+        if (existingUser.status === 'SUSPENDED') throw new AppError(ErrorCode.USER_SUSPENDED, 403);
+        if (existingUser.status === 'WITHDRAWN') throw new AppError(ErrorCode.USER_WITHDRAWN, 403);
+
+        await socialAccountRepo.save(socialAccountRepo.create({
+          userId: existingUser.id,
+          provider: SocialProvider.GOOGLE,
+          providerId,
+        }));
+        await userRepo.update(existingUser.id, { lastLoginAt: new Date() });
+
+        const tokens = await issueTokenPair({ userId: existingUser.id, email: existingUser.email });
+        await this.storeRefreshToken(existingUser.id, tokens.refreshToken);
+
+        return {
+          ...tokens,
+          user: {
+            id: existingUser.id,
+            nickname: existingUser.nickname,
+            profileImageUrl: existingUser.profileImageUrl,
+            isNewUser: false,
+          },
+        };
+      }
+    }
+
+    // 완전 신규 사용자 — 회원 가입
     const uniqueNickname = await this.generateUniqueNickname(nickname);
 
     const user = await this.dataSource.transaction(async (manager) => {

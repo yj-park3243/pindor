@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../config/router.dart';
 import '../../config/theme.dart';
 import '../../providers/auth_provider.dart';
@@ -16,6 +17,13 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _isLoading = false;
+
+  void _openUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
 
   Future<void> _loginWithApple() async {
     setState(() => _isLoading = true);
@@ -248,13 +256,33 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               // 약관 동의 안내
               Padding(
                 padding: const EdgeInsets.only(bottom: 20),
-                child: Text(
-                  '로그인 시 서비스 이용약관 및 개인정보 처리방침에\n동의하는 것으로 간주합니다.',
+                child: RichText(
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: AppTheme.textDisabled,
-                    height: 1.6,
+                  text: TextSpan(
+                    style: const TextStyle(fontSize: 11, color: AppTheme.textDisabled, height: 1.6),
+                    children: [
+                      const TextSpan(text: '로그인 시 '),
+                      WidgetSpan(
+                        child: GestureDetector(
+                          onTap: () => _openUrl('https://pins.kr/terms.html'),
+                          child: const Text(
+                            '서비스 이용약관',
+                            style: TextStyle(fontSize: 11, color: AppTheme.primaryColor, height: 1.6, decoration: TextDecoration.underline, decorationColor: AppTheme.primaryColor),
+                          ),
+                        ),
+                      ),
+                      const TextSpan(text: ' 및 '),
+                      WidgetSpan(
+                        child: GestureDetector(
+                          onTap: () => _openUrl('https://pins.kr/privacy.html'),
+                          child: const Text(
+                            '개인정보 처리방침',
+                            style: TextStyle(fontSize: 11, color: AppTheme.primaryColor, height: 1.6, decoration: TextDecoration.underline, decorationColor: AppTheme.primaryColor),
+                          ),
+                        ),
+                      ),
+                      const TextSpan(text: '에\n동의하는 것으로 간주합니다.'),
+                    ],
                   ),
                 ),
               ),

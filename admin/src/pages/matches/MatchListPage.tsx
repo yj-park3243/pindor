@@ -183,7 +183,7 @@ export function MatchListPage() {
       <Card style={{ borderRadius: 8 }}>
         <div style={{ marginBottom: 12 }}>
           <Space>
-            <Text type="secondary">총 {data?.total.toLocaleString() || 0}건</Text>
+            <Text type="secondary">총 {(data?.total ?? 0).toLocaleString()}건</Text>
             {['CHAT', 'CONFIRMED'].includes(status || '') && (
               <Tag color="blue">활성 매칭만 표시 중</Tag>
             )}
@@ -199,7 +199,7 @@ export function MatchListPage() {
             current: page,
             pageSize: 20,
             total: data?.total || 0,
-            showTotal: (total) => `총 ${total.toLocaleString()}건`,
+            showTotal: (total) => `총 ${(total ?? 0).toLocaleString()}건`,
             onChange: setPage,
           }}
           scroll={{ x: 900 }}

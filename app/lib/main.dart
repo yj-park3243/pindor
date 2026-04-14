@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'firebase_options.dart';
@@ -9,7 +10,9 @@ import 'package:timeago/timeago.dart' as timeago;
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'config/router.dart';
 import 'config/theme.dart';
+import 'providers/font_scale_provider.dart';
 import 'core/network/api_client.dart';
+import 'core/error/error_reporter.dart';
 import 'core/push/local_notification_service.dart';
 import 'core/push/push_notification_service.dart';
 import 'providers/auth_provider.dart';
@@ -34,55 +37,85 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  // runZonedGuarded: Zone 내 비동기 에러 캐치
+  await runZonedGuarded(
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
 
-  // 상태바 스타일 설정 (투명 배경, 어두운 아이콘)
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-      systemNavigationBarColor: Colors.white,
-      systemNavigationBarIconBrightness: Brightness.dark,
-    ),
-  );
+      // 상태바 스타일 설정 (투명 배경, 어두운 아이콘)
+      SystemChrome.setSystemUIOverlayStyle(
+        const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.dark,
+          systemNavigationBarColor: Colors.white,
+          systemNavigationBarIconBrightness: Brightness.dark,
+        ),
+      );
 
-  // 화면 방향 고정 (세로)
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
+      // 화면 방향 고정 (세로)
+      await SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
+      ]);
 
-  // Firebase 초기화
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+      // Firebase 초기화
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
 
-  // API 클라이언트 초기화
-  ApiClient.instance.initialize();
+      // API 클라이언트 초기화
+      ApiClient.instance.initialize();
 
-  // 네이버 지도 SDK 초기화
-  await FlutterNaverMap().init(
-    clientId: '539desbv96',
-    onAuthFailed: (ex) => debugPrint('NaverMap auth failed: $ex'),
-  );
+      // 에러 리포터 초기화 (API 클라이언트 이후)
+      ErrorReporter.instance.initialize();
 
-  // FCM 백그라운드 핸들러 등록
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+      // Flutter 프레임워크 에러 핸들러 등록
+      final originalOnError = FlutterError.onError;
+      FlutterError.onError = (FlutterErrorDetails details) {
+        // 기존 핸들러 유지 (디버그 콘솔 출력 등)
+        originalOnError?.call(details);
+        ErrorReporter.instance.reportError(
+          details.exception,
+          details.stack,
+          screenName: details.context?.toDescription(),
+        );
+      };
 
-  // 로컬 알림 서비스 초기화 (Android 채널 생성)
-  await LocalNotificationService.instance.initialize();
+      // 플랫폼 디스패처 비동기 에러 핸들러 등록
+      PlatformDispatcher.instance.onError = (error, stack) {
+        ErrorReporter.instance.reportError(error, stack);
+        return true; // true 반환 시 기본 에러 처리 스킵
+      };
 
-  // timeago 한국어 로케일 설정
-  timeago.setLocaleMessages('ko', timeago.KoMessages());
+      // 네이버 지도 SDK 초기화
+      await FlutterNaverMap().init(
+        clientId: '539desbv96',
+        onAuthFailed: (ex) => debugPrint('NaverMap auth failed: $ex'),
+      );
 
-  // 이미지 메모리 캐시 한도 설정 (200MB, 최대 500장)
-  PaintingBinding.instance.imageCache.maximumSizeBytes = 200 * 1024 * 1024;
-  PaintingBinding.instance.imageCache.maximumSize = 500;
+      // FCM 백그라운드 핸들러 등록
+      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-  runApp(
-    const ProviderScope(
-      child: PindorApp(),
-    ),
+      // 로컬 알림 서비스 초기화 (Android 채널 생성)
+      await LocalNotificationService.instance.initialize();
+
+      // timeago 한국어 로케일 설정
+      timeago.setLocaleMessages('ko', timeago.KoMessages());
+
+      // 이미지 메모리 캐시 한도 설정 (200MB, 최대 500장)
+      PaintingBinding.instance.imageCache.maximumSizeBytes = 200 * 1024 * 1024;
+      PaintingBinding.instance.imageCache.maximumSize = 500;
+
+      runApp(
+        const ProviderScope(
+          child: PindorApp(),
+        ),
+      );
+    },
+    // Zone 내 캐치되지 않은 에러 처리
+    (error, stack) {
+      ErrorReporter.instance.reportError(error, stack);
+    },
   );
 }
 
@@ -105,7 +138,13 @@ class PindorApp extends ConsumerWidget {
 
       // 빌더: 푸시 알림 서비스 초기화 (앱 컨텍스트 확보 후)
       builder: (context, child) {
-        return _AppInitializer(child: child ?? const SizedBox.shrink());
+        final fontScale = ref.watch(fontScaleProvider);
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: TextScaler.linear(fontScale),
+          ),
+          child: _AppInitializer(child: child ?? const SizedBox.shrink()),
+        );
       },
     );
   }

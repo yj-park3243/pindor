@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../config/router.dart';
+import '../../config/sports.dart' as sports_config;
 import '../../config/theme.dart';
 import '../../models/match.dart';
 import '../../models/match_request.dart';
@@ -12,18 +14,19 @@ import '../../providers/auth_provider.dart';
 import '../../repositories/matching_repository.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/error_view.dart';
-import '../../widgets/common/empty_state.dart';
 import '../../widgets/common/app_toast.dart';
 import '../../widgets/common/user_avatar.dart';
 import '../../widgets/common/score_display.dart';
 import '../../providers/chat_provider.dart';
+import '../../core/network/socket_service.dart';
+import 'package:bottom_picker/bottom_picker.dart';
 
 
 /// 매칭 목록 화면 (PRD SCREEN-020)
-/// 진행중/완료/취소 SegmentedButton 탭
-/// PENDING_ACCEPT 상태 매칭이 있으면 전체화면 잠금 모드로 전환
+/// 전체 매칭을 한 화면에 통합: 진행중 우선 → 날짜 최신순
+/// PENDING_ACCEPT 상태 매칭이 있으면 MatchAcceptScreen으로 리다이렉트
 class MatchListScreen extends ConsumerStatefulWidget {
-  final int initialTab;
+  final int initialTab; // 하위 호환성 유지 (현재 사용 안 함)
 
   const MatchListScreen({super.key, this.initialTab = 0});
 
@@ -32,40 +35,58 @@ class MatchListScreen extends ConsumerStatefulWidget {
 }
 
 class _MatchListScreenState extends ConsumerState<MatchListScreen> {
-  late int _selectedIndex;
-  Timer? _autoRefreshTimer;
   bool _redirectedToAccept = false; // 무한 루프 방지 가드
+  final Set<String> _joinedMatchRooms = {};
 
-  static const _tabs = ['진행중', '완료', '취소'];
-  static const List<String?> _statuses = [null, 'COMPLETED', 'CANCELLED'];
+  // 검색 필터
+  bool _showFilters = false;
+  String? _filterSport; // null = 전체
+  String? _filterPin; // null = 전체
+  String _filterPeriod = 'ALL'; // ALL, TODAY, WEEK, MONTH
+  String _filterSort = 'NEWEST'; // NEWEST, OLDEST
 
   @override
   void initState() {
     super.initState();
-    _selectedIndex = widget.initialTab.clamp(0, _tabs.length - 1);
     // 화면 진입 시 매칭 목록 + 요청 목록 새로고침
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.invalidate(matchListProvider(null));
       ref.invalidate(matchRequestProvider);
     });
-    // WAITING 요청이 있으면 30초마다 자동 갱신 (소켓 알림 누락 대비)
-    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (mounted) {
-        ref.invalidate(matchListProvider(null));
-        ref.invalidate(matchRequestProvider);
+  }
+
+  /// 활성 상태(PENDING_ACCEPT, CHAT, CONFIRMED)의 매칭 룸에 소켓 입장
+  void _joinActiveMatchRooms() {
+    final matches = ref.read(matchListProvider(null)).valueOrNull;
+    if (matches == null) return;
+
+    for (final match in matches) {
+      final status = match.status;
+      if (status == 'PENDING_ACCEPT' || status == 'CHAT' || status == 'CONFIRMED') {
+        if (!_joinedMatchRooms.contains(match.id)) {
+          _joinedMatchRooms.add(match.id);
+          SocketService.instance.joinMatch(match.id);
+        }
       }
-    });
+    }
   }
 
   @override
   void dispose() {
-    _autoRefreshTimer?.cancel();
+    // 룸 퇴장은 main_tab_screen의 글로벌 리스너가 COMPLETED/CANCELLED 시 담당
+    _joinedMatchRooms.clear();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final allMatchesAsync = ref.watch(matchListProvider(null));
+
+    // 매칭 목록 로드 완료 시 활성 매칭 룸 조인 (소켓 이벤트 처리는 main_tab_screen에서 담당)
+    ref.listen(matchListProvider(null), (prev, next) {
+      if (next.hasValue) _joinActiveMatchRooms();
+    });
+
     // PENDING_ACCEPT 중 내가 아직 수락 안 한 매칭만 잠금 대상
     final myId = ref.watch(currentUserProvider)?.id;
     final pendingMatches = allMatchesAsync.valueOrNull
@@ -97,97 +118,286 @@ class _MatchListScreenState extends ConsumerState<MatchListScreen> {
       _redirectedToAccept = false;
     }
 
+    final requestsAsync = ref.watch(matchRequestProvider);
+    final waitingRequests =
+        requestsAsync.valueOrNull?.sent.where((r) => r.isWaiting).toList() ?? [];
+    final waitingCount = waitingRequests.length;
+
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         title: const Text('매칭'),
         backgroundColor: const Color(0xFF0A0A0A),
         elevation: 0,
-        actions: const [],
+        actions: [
+          IconButton(
+            icon: Icon(
+              _showFilters ? Icons.search_off : Icons.search,
+              color: _showFilters ? AppTheme.primaryColor : AppTheme.textSecondary,
+            ),
+            onPressed: () => setState(() => _showFilters = !_showFilters),
+          ),
+        ],
       ),
       body: Column(
         children: [
-          // ─── 노쇼 제한 배너 (TODO: API에서 matchBanUntil 제공 시 연동) ───
-          // ignore: dead_code
-          if (false)
-            Container(
-              margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.red.shade50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.red.shade200),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.block, color: Colors.red),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      '노쇼로 인해 매칭이 제한되었습니다.\n제한 해제 후 매칭 가능합니다.',
-                      style: TextStyle(fontSize: 13),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          // 매칭 규칙 안내 배너
+          _MatchRuleInfoBanner(),
+          // 검색 필터 패널
+          if (_showFilters) _buildFilterPanel(context),
+          Expanded(child: allMatchesAsync.when(
+        loading: () => const FullScreenLoading(),
+        error: (e, _) => ErrorView(
+          message: '매칭 목록을 불러올 수 없습니다.',
+          onRetry: () {
+            ref.invalidate(matchListProvider(null));
+            ref.invalidate(matchRequestProvider);
+          },
+        ),
+        data: (matchList) {
+          // 진행중(CHAT/CONFIRMED/PENDING_ACCEPT) 매칭 + 완료/취소된 매칭 포함한 정렬
+          // - CHAT, CONFIRMED, 내가 수락한 PENDING_ACCEPT만 화면에 표시 (진행중 그룹)
+          // - COMPLETED / CANCELLED도 날짜 최신순으로 그 뒤에 표시
+          final filteredList = matchList.where((m) {
+            if (m.isChat || m.isConfirmed) return true;
+            // 내가 수락 완료한 PENDING_ACCEPT (상대 응답 대기 중)도 표시
+            if (m.isPendingAccept &&
+                m.acceptances?.any((a) => a.accepted == true) == true) return true;
+            // 완료/취소 매칭도 표시
+            if (m.isCompleted || m.isCancelled) return true;
+            return false;
+          }).toList();
 
-          // 커스텀 탭 바
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-            child: Container(
-              height: 40,
-              padding: const EdgeInsets.all(3),
-              decoration: BoxDecoration(
-                color: const Color(0xFFEEEFF1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                children: List.generate(_tabs.length, (i) {
-                  final selected = _selectedIndex == i;
-                  return Expanded(
-                    child: GestureDetector(
-                      onTap: () => setState(() => _selectedIndex = i),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
-                        decoration: BoxDecoration(
-                          color: selected ? AppTheme.primaryColor : Colors.transparent,
-                          borderRadius: BorderRadius.circular(8),
-                          boxShadow: selected
-                              ? [
-                                  BoxShadow(
-                                    color: AppTheme.primaryColor.withOpacity(0.25),
-                                    blurRadius: 6,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ]
-                              : null,
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          _tabs[i],
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                            color: selected ? Colors.white : const Color(0xFF9CA3AF),
-                          ),
-                        ),
+          // 검색 필터 적용
+          var filtered2 = [...filteredList];
+          if (_filterSport != null) {
+            filtered2 = filtered2.where((m) => m.sportType == _filterSport).toList();
+          }
+          if (_filterPin != null) {
+            filtered2 = filtered2.where((m) => m.pinName == _filterPin).toList();
+          }
+          if (_filterPeriod != 'ALL') {
+            final now = DateTime.now();
+            final cutoff = _filterPeriod == 'TODAY'
+                ? DateTime(now.year, now.month, now.day)
+                : _filterPeriod == 'WEEK'
+                    ? now.subtract(const Duration(days: 7))
+                    : now.subtract(const Duration(days: 30));
+            filtered2 = filtered2.where((m) => m.createdAt.isAfter(cutoff)).toList();
+          }
+
+          // 정렬: 진행중 매칭(CHAT/CONFIRMED/PENDING_ACCEPT) → 완료/취소
+          final sorted = [...filtered2];
+          sorted.sort((a, b) {
+            final aActive = a.isChat || a.isConfirmed || a.isPendingAccept;
+            final bActive = b.isChat || b.isConfirmed || b.isPendingAccept;
+            if (aActive && !bActive) return -1;
+            if (!aActive && bActive) return 1;
+            return _filterSort == 'NEWEST'
+                ? b.createdAt.compareTo(a.createdAt)
+                : a.createdAt.compareTo(b.createdAt);
+          });
+
+          // 3단 분리: 진행중 매칭 → 대기 요청 → 완료된 매칭
+          final activeMatches = sorted.where((m) => m.isChat || m.isConfirmed || m.isPendingAccept).toList();
+          final completedMatches = sorted.where((m) => !m.isChat && !m.isConfirmed && !m.isPendingAccept).toList();
+
+          // 빈 상태: 매칭도 없고 대기 요청도 없는 경우
+          if (sorted.isEmpty && waitingCount == 0) {
+            // matchRequestProvider 아직 로딩 중이면 로딩 표시
+            if (requestsAsync.isLoading) return const FullScreenLoading();
+
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor.withOpacity(0.18),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.push_pin_rounded,
+                        size: 36,
+                        color: AppTheme.primaryColor,
                       ),
                     ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      '매칭이 없어요',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '핀에서 매칭을 잡아보세요',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: AppTheme.textSecondary,
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    ElevatedButton.icon(
+                      onPressed: () => context.go(AppRoutes.map),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryColor,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 28, vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      icon: const Icon(Icons.map_rounded, size: 18),
+                      label: const Text(
+                        '매칭 잡으러 가기',
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          // 대기 요청만 있고 매칭 목록이 비어있는 경우
+          if (sorted.isEmpty && waitingCount > 0) {
+            return ListView(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              children: [
+                ...waitingRequests.map((req) => _WaitingRequestCard(request: req)),
+              ],
+            );
+          }
+
+          // 진행중 매칭 → 대기 요청 → 완료된 매칭
+          final totalItems = activeMatches.length + waitingCount + completedMatches.length;
+
+          return RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(matchListProvider(null));
+              ref.invalidate(matchRequestProvider);
+            },
+            child: ListView.builder(
+              padding: const EdgeInsets.only(top: 4, bottom: 100),
+              itemCount: totalItems,
+              itemBuilder: (context, index) {
+                // 1) 진행중 매칭
+                if (index < activeMatches.length) {
+                  final match = activeMatches[index];
+                  return _MatchListTile(
+                    match: match,
+                    onTap: () => context.go('${AppRoutes.matchList}/${match.id}'),
                   );
-                }),
+                }
+                // 2) 대기 요청
+                final afterActive = index - activeMatches.length;
+                if (afterActive < waitingCount) {
+                  return _WaitingRequestCard(request: waitingRequests[afterActive]);
+                }
+                // 3) 완료된 매칭
+                final completedIndex = afterActive - waitingCount;
+                final match = completedMatches[completedIndex];
+                return _MatchListTile(
+                  match: match,
+                  onTap: () => context.go('${AppRoutes.matchList}/${match.id}'),
+                );
+              },
+            ),
+          );
+        },
+      )),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterPanel(BuildContext context) {
+    final matches = ref.read(matchListProvider(null)).valueOrNull ?? [];
+    final sportTypes = matches.map((m) => m.sportType).toSet().toList()..sort();
+    final pinNames = matches.where((m) => m.pinName != null).map((m) => m.pinName!).toSet().toList()..sort();
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF141414),
+        border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.06))),
+      ),
+      child: Row(
+        children: [
+          // 종목 드롭다운
+          Expanded(
+            child: _buildDropdown(
+              icon: Icons.sports_rounded,
+              value: _filterSport == null ? '전체 종목' : sports_config.sportLabel(_filterSport!),
+              onTap: () => _showSelectSheet(
+                context,
+                title: '종목 선택',
+                items: [null, ...sportTypes],
+                labelBuilder: (v) => v == null ? '전체 종목' : sports_config.sportLabel(v),
+                selected: _filterSport,
+                onSelected: (v) => setState(() => _filterSport = v),
               ),
             ),
           ),
+          const SizedBox(width: 8),
 
-          // 탭 콘텐츠
+          // 핀 드롭다운
           Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 200),
-              child: _MatchTabView(
-                key: ValueKey(_selectedIndex),
-                status: _statuses[_selectedIndex],
-                isActiveFilter: _selectedIndex == 0,
+            child: _buildDropdown(
+              icon: Icons.location_on_outlined,
+              value: _filterPin ?? '전체 핀',
+              onTap: () => _showSelectSheet(
+                context,
+                title: '핀 선택',
+                items: [null, ...pinNames],
+                labelBuilder: (v) => v ?? '전체 핀',
+                selected: _filterPin,
+                onSelected: (v) => setState(() => _filterPin = v),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+
+          // 기간 드롭다운
+          _buildDropdown(
+            icon: Icons.calendar_today_rounded,
+            value: _filterPeriod == 'ALL' ? '전체' : _filterPeriod == 'TODAY' ? '오늘' : _filterPeriod == 'WEEK' ? '주간' : '월간',
+            compact: true,
+            onTap: () => _showSelectSheet(
+              context,
+              title: '기간 선택',
+              items: ['ALL', 'TODAY', 'WEEK', 'MONTH'],
+              labelBuilder: (v) => v == 'ALL' ? '전체' : v == 'TODAY' ? '오늘' : v == 'WEEK' ? '이번 주' : '이번 달',
+              selected: _filterPeriod,
+              onSelected: (v) => setState(() => _filterPeriod = v ?? 'ALL'),
+            ),
+          ),
+          const SizedBox(width: 8),
+
+          // 정렬 토글
+          GestureDetector(
+            onTap: () => setState(() => _filterSort = _filterSort == 'NEWEST' ? 'OLDEST' : 'NEWEST'),
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF2A2A2A),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                _filterSort == 'NEWEST' ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
+                size: 16,
+                color: AppTheme.primaryColor,
               ),
             ),
           ),
@@ -195,188 +405,107 @@ class _MatchListScreenState extends ConsumerState<MatchListScreen> {
       ),
     );
   }
+
+  Widget _buildDropdown({
+    required IconData icon,
+    required String value,
+    required VoidCallback onTap,
+    bool compact = false,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: compact ? 10 : 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFF2A2A2A),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
+          children: [
+            Icon(icon, size: 14, color: AppTheme.textSecondary),
+            const SizedBox(width: 6),
+            if (!compact) Expanded(
+              child: Text(value, style: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis),
+            ) else Text(value, style: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w500)),
+            const SizedBox(width: 4),
+            const Icon(Icons.expand_more, size: 14, color: AppTheme.textDisabled),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showSelectSheet<T>(
+    BuildContext context, {
+    required String title,
+    required List<T> items,
+    required String Function(T) labelBuilder,
+    required T selected,
+    required void Function(T) onSelected,
+  }) {
+    final selectedIndex = items.indexOf(selected).clamp(0, items.length - 1);
+
+    BottomPicker(
+      items: items.map((item) => Text(
+        labelBuilder(item),
+        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.white),
+      )).toList(),
+      selectedItemIndex: selectedIndex,
+      backgroundColor: const Color(0xFF1E1E1E),
+      headerBuilder: (_) => Padding(
+        padding: const EdgeInsets.only(top: 8, bottom: 4),
+        child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
+      ),
+      buttonSingleColor: AppTheme.primaryColor,
+      buttonContent: const Center(
+        child: Text('선택', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
+      ),
+      pickerTextStyle: const TextStyle(fontSize: 16, color: Colors.white),
+      onSubmit: (index) {
+        onSelected(items[index]);
+      },
+      dismissable: true,
+    ).show(context);
+  }
 }
 
-class _MatchTabView extends ConsumerWidget {
-  final String? status;
 
-  /// true이면 전체 조회 후 CHAT/CONFIRMED만 로컬 필터링
-  final bool isActiveFilter;
+/// 매칭 대기 중 배너 — 2줄 간단 표시
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
 
-  const _MatchTabView({
-    super.key,
-    required this.status,
-    this.isActiveFilter = false,
-  });
+  const _FilterChip({required this.label, required this.selected, required this.onTap});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final matches = ref.watch(matchListProvider(status));
-
-    return matches.when(
-      loading: () => const FullScreenLoading(),
-      error: (e, _) => ErrorView(
-        message: '매칭 목록을 불러올 수 없습니다.',
-        onRetry: () => ref.invalidate(matchListProvider(status)),
-      ),
-      data: (matchList) {
-        // 진행중 탭: CHAT, CONFIRMED + 내가 수락한 PENDING_ACCEPT
-        final filteredList = isActiveFilter
-            ? matchList.where((m) {
-                if (m.isChat || m.isConfirmed) return true;
-                // 내가 수락 완료한 PENDING_ACCEPT (상대 응답 대기 중) 도 표시
-                if (m.isPendingAccept && m.acceptances?.any((a) => a.accepted == true) == true) return true;
-                return false;
-              }).toList()
-            : matchList;
-
-        final requestsAsync = ref.watch(matchRequestProvider);
-        final waitingRequests = isActiveFilter
-            ? (requestsAsync.valueOrNull?.sent.where((r) => r.isWaiting).toList() ?? [])
-            : <MatchRequest>[];
-        final waitingCount = waitingRequests.length;
-
-        if (filteredList.isEmpty && !isActiveFilter) {
-          return EmptyState(
-            icon: Icons.sports_score_rounded,
-            title: status == 'COMPLETED'
-                ? '완료된 매칭이 없습니다'
-                : '취소된 매칭이 없습니다',
-          );
-        }
-
-        if (filteredList.isEmpty && isActiveFilter) {
-          // matchRequestProvider 아직 로딩 중이면 로딩 표시
-          if (requestsAsync.isLoading) {
-            return const FullScreenLoading();
-          }
-
-          if (waitingCount > 0) {
-            return ListView(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              children: [
-                ...waitingRequests.map((req) => _WaitingRequestCard(request: req)),
-                _MatchSlotBanner(activeCount: waitingCount),
-              ],
-            );
-          }
-
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 72,
-                    height: 72,
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryColor.withOpacity(0.18),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.push_pin_rounded,
-                      size: 36,
-                      color: AppTheme.primaryColor,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  const Text(
-                    '매칭이 없어요',
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    '핀에서 매칭을 잡아보세요',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: AppTheme.textSecondary,
-                      height: 1.5,
-                    ),
-                  ),
-                  const SizedBox(height: 28),
-                  ElevatedButton.icon(
-                    onPressed: () => context.go(AppRoutes.map),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryColor,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 28, vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    icon: const Icon(Icons.map_rounded, size: 18),
-                    label: const Text(
-                      '매칭 잡으러 가기',
-                      style: TextStyle(
-                          fontSize: 15, fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-
-        // 매칭 목록: 진행중 매치(날짜순) → 대기중 요청 → 슬롯 배너(맨 아래)
-        final totalActiveCount = filteredList.length + waitingCount;
-        // 진행중 매치를 날짜순 정렬
-        if (isActiveFilter && filteredList.length > 1) {
-          filteredList.sort((a, b) {
-            final aDate = a.scheduledDate ?? a.createdAt.toIso8601String();
-            final bDate = b.scheduledDate ?? b.createdAt.toIso8601String();
-            return aDate.compareTo(bDate);
-          });
-        }
-        // 순서: [0..N-1] 매치 카드 → [N..N+W-1] 대기 카드 → [마지막] 배너
-        final bannerCount = isActiveFilter ? 1 : 0;
-        final totalItems = filteredList.length + (isActiveFilter ? waitingCount : 0) + bannerCount;
-        return RefreshIndicator(
-          onRefresh: () async {
-            ref.invalidate(matchListProvider(status));
-            ref.invalidate(matchRequestProvider);
-          },
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            itemCount: totalItems,
-            itemBuilder: (context, index) {
-              if (isActiveFilter) {
-                // 매치 카드
-                if (index < filteredList.length) {
-                  return _MatchListTile(
-                    match: filteredList[index],
-                    onTap: () => context.go(
-                        '${AppRoutes.matchList}/${filteredList[index].id}'),
-                  );
-                }
-                // 대기 카드
-                final waitingIndex = index - filteredList.length;
-                if (waitingIndex < waitingRequests.length) {
-                  return _WaitingRequestCard(request: waitingRequests[waitingIndex]);
-                }
-                // 슬롯 배너 (맨 아래)
-                return _MatchSlotBanner(activeCount: totalActiveCount);
-              }
-              return _MatchListTile(
-                match: filteredList[index],
-                onTap: () => context
-                    .go('${AppRoutes.matchList}/${filteredList[index].id}'),
-              );
-            },
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: selected ? AppTheme.primaryColor.withValues(alpha: 0.2) : const Color(0xFF2A2A2A),
+            borderRadius: BorderRadius.circular(8),
+            border: selected ? Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.5)) : null,
           ),
-        );
-      },
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              color: selected ? AppTheme.primaryColor : AppTheme.textSecondary,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
 
-/// 매칭 대기 중 배너 — 2줄 간단 표시
 class _MatchingWaitingBanner extends StatelessWidget {
   final int waitingCount;
 
@@ -430,25 +559,10 @@ class _WaitingRequestCard extends ConsumerWidget {
 
   const _WaitingRequestCard({required this.request});
 
-  String _sportLabel(String sportType) {
-    switch (sportType) {
-      case 'GOLF':
-        return '골프';
-      case 'BILLIARDS':
-        return '당구';
-      case 'TENNIS':
-        return '테니스';
-      case 'TABLE_TENNIS':
-        return '탁구';
-      default:
-        return sportType;
-    }
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final pinLabel = request.pinName ?? request.locationName ?? '핀 미지정';
-    final sportLabel = _sportLabel(request.sportType);
+    final sportLabel = sports_config.sportLabel(request.sportType);
     final timeLabel = request.timeSlotDisplayName;
     final dateLabel = request.desiredDate ?? '날짜 미정';
 
@@ -769,7 +883,7 @@ class _PendingMatchCardState extends ConsumerState<_PendingMatchCard> {
         ref.invalidate(matchListProvider(null));
         final chatRoomId = acceptState.chatRoomId;
         if (chatRoomId != null && chatRoomId.isNotEmpty && mounted) {
-          context.go('${AppRoutes.chatList}/$chatRoomId');
+          context.push('/chats/$chatRoomId');
         } else if (mounted) {
           context.go(AppRoutes.matchList);
         }
@@ -835,7 +949,7 @@ class _PendingMatchCardState extends ConsumerState<_PendingMatchCard> {
             mounted) {
           final chatRoomId = next.updatedMatch!.chatRoomId;
           if (chatRoomId.isNotEmpty) {
-            context.go('${AppRoutes.chatList}/$chatRoomId');
+            context.push('/chats/$chatRoomId');
           } else {
             ref.invalidate(matchListProvider(null));
           }
@@ -1095,41 +1209,60 @@ class _PendingMatchCardState extends ConsumerState<_PendingMatchCard> {
   }
 }
 
-/// 매칭 슬롯 카운터 배너 (진행중 탭 최상단)
-class _MatchSlotBanner extends StatelessWidget {
-  final int activeCount;
-
-  const _MatchSlotBanner({required this.activeCount});
+/// 매칭 규칙 안내 배너 (매칭 잡고 있거나 진행중일 때만 표시)
+class _MatchRuleInfoBanner extends ConsumerWidget {
+  const _MatchRuleInfoBanner();
 
   @override
-  Widget build(BuildContext context) {
-    final remaining = 2 - activeCount;
-    if (remaining <= 0) return const SizedBox.shrink();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final matches = ref.watch(matchListProvider(null)).valueOrNull ?? [];
+    final requests = ref.watch(matchRequestProvider).valueOrNull;
+    final hasWaiting = requests?.sent.any((r) => r.isWaiting) ?? false;
+    final hasActive = matches.any((m) => m.isChat || m.isConfirmed || m.isPendingAccept);
 
+    if (!hasWaiting && !hasActive) return const SizedBox.shrink();
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: AppTheme.primaryColor.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(10),
+        color: const Color(0xFF4CAF50).withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: AppTheme.primaryColor.withOpacity(0.2),
+          color: const Color(0xFF4CAF50).withOpacity(0.2),
         ),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.sports_score_rounded,
-            size: 15,
-            color: AppTheme.primaryColor,
+          Container(
+            width: 20,
+            height: 20,
+            margin: const EdgeInsets.only(top: 1),
+            decoration: BoxDecoration(
+              color: const Color(0xFF4CAF50).withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+            child: const Center(
+              child: Text(
+                '!',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF4CAF50),
+                ),
+              ),
+            ),
           ),
-          const SizedBox(width: 8),
-          Text(
-            '매칭 가능: $remaining개 남음 (오늘/내일)',
-            style: TextStyle(
-              fontSize: 12,
-              color: AppTheme.textSecondary,
-              fontWeight: FontWeight.w500,
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '일자 별로 진행중인 매칭이 있으면 추가 매칭은 불가합니다.\n'
+              '오늘 경기가 끝나면 새 매칭을 잡을 수 있고, 내일 경기도 1개 예약할 수 있습니다.',
+              style: const TextStyle(
+                fontSize: 13,
+                color: Color(0xFF81C784),
+                height: 1.5,
+              ),
             ),
           ),
         ],
@@ -1138,11 +1271,51 @@ class _MatchSlotBanner extends StatelessWidget {
   }
 }
 
-class _MatchListTile extends ConsumerWidget {
+class _MatchListTile extends ConsumerStatefulWidget {
   final Match match;
   final VoidCallback? onTap;
 
   const _MatchListTile({required this.match, this.onTap});
+
+  @override
+  ConsumerState<_MatchListTile> createState() => _MatchListTileState();
+}
+
+class _MatchListTileState extends ConsumerState<_MatchListTile>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _lightController;
+  late final Animation<double> _lightX;
+  late final Animation<double> _lightY;
+  late final double _seed;
+
+  @override
+  void initState() {
+    super.initState();
+    final hash = widget.match.id.hashCode;
+    _seed = ((hash & 0xFFFF) % 1000) / 1000.0;
+    final seed2 = (((hash >> 16) & 0xFFFF) % 1000) / 1000.0;
+    final duration = Duration(milliseconds: 4000 + ((_seed * 3000).toInt()));
+    _lightController = AnimationController(vsync: this, duration: duration)
+      ..repeat(reverse: true);
+    // 시작점/끝점 모두 seed 기반 랜덤 → 카드마다 완전히 다른 궤적
+    final startX = -0.8 + seed2 * 1.6; // -0.8 ~ 0.8
+    final startY = -0.6 + _seed * 1.2;  // -0.6 ~ 0.6
+    final endX = -0.8 + _seed * 1.6;
+    final endY = -0.6 + seed2 * 1.2;
+    _lightX = Tween<double>(begin: startX, end: endX)
+        .animate(CurvedAnimation(parent: _lightController, curve: Curves.easeInOut));
+    _lightY = Tween<double>(begin: startY, end: endY)
+        .animate(CurvedAnimation(parent: _lightController, curve: const Interval(0.15, 0.85, curve: Curves.easeInOutSine)));
+  }
+
+  @override
+  void dispose() {
+    _lightController.dispose();
+    super.dispose();
+  }
+
+  Match get match => widget.match;
+  VoidCallback? get onTap => widget.onTap;
 
   /// scheduledDate(YYYY-MM-DD)를 "오늘" / "내일" / 날짜 문자열로 변환
   String _dateLabel(String? scheduledDate) {
@@ -1161,8 +1334,19 @@ class _MatchListTile extends ConsumerWidget {
     }
   }
 
-  /// 진행중 상태에서 좌측 강조 색상
+  /// 좌측 강조 색상
   Color _statusAccentColor() {
+    if (match.isCompleted && match.gameResult != null) {
+      switch (match.gameResult) {
+        case 'WIN':
+          return const Color(0xFF22C55E); // 선명한 초록
+        case 'LOSS':
+          return const Color(0xFFEF4444); // 선명한 빨강
+        case 'DRAW':
+          return const Color(0xFF9CA3AF);
+      }
+    }
+    if (match.isCancelled) return const Color(0xFF9CA3AF);
     switch (match.status) {
       case 'PENDING_ACCEPT':
         return Colors.amber;
@@ -1176,221 +1360,172 @@ class _MatchListTile extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final accentColor = _statusAccentColor();
     final unreadCount = (match.chatRoomId.isNotEmpty)
         ? ref.watch(roomUnreadCountProvider(match.chatRoomId))
         : 0;
 
+    final tierColor = AppTheme.tierColor(match.opponent.tier);
+
     return Stack(
       children: [
-      Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.circular(14),
-        border: Border(
-          left: BorderSide(color: accentColor, width: 3.5),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: InkWell(
+      AnimatedBuilder(
+        animation: _lightController,
+        builder: (context, child) => GestureDetector(
         onTap: onTap,
-        borderRadius: const BorderRadius.only(
-          topRight: Radius.circular(14),
-          bottomRight: Radius.circular(14),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 18),
-          child: Row(
-            children: [
-              UserAvatar(
-                imageUrl: match.opponent.profileImageUrl,
-                size: 60,
-                nickname: match.opponent.nickname,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 상단 행: 닉네임 + 점수 + 우측 배지
-                    Row(
-                      children: [
-                        Text(
-                          match.opponent.nickname,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 15,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        // 상대방 배치 게임 또는 점수 뱃지
-                        if (match.opponent.isPlacement)
-                          ScoreText(
-                            score: match.opponent.displayScore ??
-                                match.opponent.currentScore ??
-                                0,
-                            isPlacement: true,
-                            placementGamesRemaining:
-                                match.opponent.placementGamesRemaining,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                          )
-                        else if ((match.opponent.displayScore ??
-                                match.opponent.currentScore) !=
-                            null)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color:
-                                  AppTheme.primaryColor.withOpacity(0.18),
-                              borderRadius: BorderRadius.circular(5),
-                            ),
-                            child: Text(
-                              '${match.opponent.displayScore ?? match.opponent.currentScore}점',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: AppTheme.primaryColor,
-                              ),
-                            ),
-                          ),
-                        const Spacer(),
-                        // 친선 게임 배지
-                        if (match.isCasual) ...[
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.orange.shade50,
-                              borderRadius: BorderRadius.circular(5),
-                              border: Border.all(
-                                  color: Colors.orange.shade200),
-                            ),
-                            child: Text(
-                              '친선',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.orange.shade700,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                        ],
-                        _StatusChip(status: match.status),
-                      ],
-                    ),
-
-                    const SizedBox(height: 6),
-
-                    // 진행중 상태 인디케이터 (CHAT / CONFIRMED)
-                    if (match.isChat || match.isConfirmed)
-                      _ActiveStatusRow(match: match),
-
-                    const SizedBox(height: 4),
-
-                    // 종목 + 날짜
-                    Row(
-                      children: [
-                        Icon(
-                          _getSportIcon(match.sportTypeDisplayName),
-                          size: 13,
-                          color: AppTheme.textSecondary,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          match.sportTypeDisplayName,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: AppTheme.textSecondary,
-                          ),
-                        ),
-                        if (match.scheduledDate != null) ...[
-                          const Text(
-                            ' · ',
-                            style:
-                                TextStyle(color: AppTheme.textSecondary),
-                          ),
-                          // 날짜 배지 ("오늘" / "내일" / 날짜)
-                          _DateBadge(
-                              label: _dateLabel(match.scheduledDate)),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 3),
-                    if (match.venueName != null)
-                      Row(
-                        children: [
-                          const Icon(Icons.location_on_outlined,
-                              size: 12, color: AppTheme.textDisabled),
-                          const SizedBox(width: 3),
-                          Expanded(
-                            child: Text(
-                              match.venueName!,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: AppTheme.textDisabled,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-
-                    // PENDING_ACCEPT — 핀 위치 + 희망 시간 + 만남 횟수
-                    if (match.isPendingAccept) ...[
-                      const SizedBox(height: 6),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 4,
-                        children: [
-                          if (match.pinName != null)
-                            _InfoChip(
-                              icon: Icons.location_on_rounded,
-                              text: match.pinName!,
-                            ),
-                          if (match.desiredDate != null)
-                            _InfoChip(
-                              icon: Icons.calendar_today_rounded,
-                              text: '${_dateLabel(match.desiredDate)}${match.desiredTimeSlot != null && match.desiredTimeSlot != 'ANY' ? ' ${match.desiredTimeSlotDisplayName}' : ''}',
-                            ),
-                          _InfoChip(
-                            icon: match.encounterCount > 0
-                                ? Icons.people_rounded
-                                : Icons.person_add_rounded,
-                            text: match.encounterCount > 0
-                                ? '${match.encounterCount}번 만남'
-                                : '첫 매칭',
-                            color: match.encounterCount > 0
-                                ? const Color(0xFF10B981)
-                                : null,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Icon(
-                Icons.arrow_forward_ios,
-                size: 13,
-                color: AppTheme.textDisabled,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            color: Color.lerp(const Color(0xFF1E1E1E), accentColor, 0.15),
+            border: Border.all(color: accentColor.withValues(alpha: 0.25), width: 1),
+            boxShadow: [
+              BoxShadow(
+                color: accentColor.withValues(alpha: 0.10),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
+          foregroundDecoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            gradient: RadialGradient(
+              center: Alignment(_lightX.value, _lightY.value),
+              radius: 1.5,
+              colors: [
+                accentColor.withValues(alpha: 0.25),
+                accentColor.withValues(alpha: 0.05),
+                Colors.transparent,
+              ],
+              stops: const [0.0, 0.5, 1.0],
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                // 큰 아바타 + 티어 테두리
+                Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: tierColor.withValues(alpha: 0.5), width: 2),
+                  ),
+                  child: UserAvatar(
+                    imageUrl: match.opponent.profileImageUrl,
+                    size: 56,
+                    nickname: match.opponent.nickname,
+                  ),
+                ),
+                const SizedBox(width: 14),
+
+                // 정보 영역
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 1행: 닉네임 + 결과
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              match.opponent.nickname,
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          if (match.isCasual)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 4),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                                child: Text('친선', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.orange.shade300)),
+                              ),
+                            ),
+                          if (match.isCompleted && match.gameResult != null)
+                            _GameResultChip(gameResult: match.gameResult!, scoreChange: match.myScoreChange, isCasual: match.isCasual)
+                          else
+                            _StatusChip(status: match.status),
+                        ],
+                      ),
+
+                      const SizedBox(height: 6),
+
+                      // 진행중 상태
+                      if (match.isChat || match.isConfirmed)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: _ActiveStatusRow(match: match),
+                        ),
+
+                      // 2행: 티어
+                      if (!match.opponent.isPlacement)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: tierColor.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              match.opponent.tier,
+                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: tierColor),
+                            ),
+                          ),
+                        ),
+
+                      // 3행: 종목 / 날짜 / 핀
+                      Row(
+                        children: [
+                          Icon(sports_config.sportIcon(match.sportType), size: 12, color: const Color(0xFFB0B7C3)),
+                          const SizedBox(width: 3),
+                          Text(match.sportTypeDisplayName, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFFB0B7C3))),
+                          if (match.desiredDate != null) ...[
+                            const Text(' / ', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF6B7580))),
+                            Text(
+                              '${_dateLabel(match.desiredDate)}${match.desiredTimeSlot != null && match.desiredTimeSlot != 'ANY' ? ' ${match.desiredTimeSlotDisplayName}' : ''}',
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF8B95A5)),
+                            ),
+                          ],
+                          if (match.pinName != null) ...[
+                            const Text(' / ', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF6B7580))),
+                            Flexible(
+                              child: Text(match.pinName!, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF8B95A5)), overflow: TextOverflow.ellipsis),
+                            ),
+                          ],
+                        ],
+                      ),
+
+                      // PENDING_ACCEPT 칩
+                      if (match.isPendingAccept) ...[
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: [
+                            _InfoChip(
+                              icon: match.encounterCount > 0 ? Icons.people_rounded : Icons.person_add_rounded,
+                              text: match.encounterCount > 0 ? '${match.encounterCount}번 만남' : '첫 매칭',
+                              color: match.encounterCount > 0 ? const Color(0xFF10B981) : null,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
-    ),
+      ),
       // 읽지 않은 메시지 배지
       if (unreadCount > 0)
         Positioned(
@@ -1416,20 +1551,6 @@ class _MatchListTile extends ConsumerWidget {
     );
   }
 
-  IconData _getSportIcon(String sport) {
-    switch (sport) {
-      case '골프':
-        return Icons.sports_golf;
-      case '테니스':
-      case '탁구':
-      case '배드민턴':
-        return Icons.sports_tennis;
-      case '볼링':
-        return Icons.sports;
-      default:
-        return Icons.sports_score;
-    }
-  }
 }
 
 /// PENDING_ACCEPT 카드용 정보 칩
@@ -1541,6 +1662,87 @@ class _DateBadge extends StatelessWidget {
               isToday ? AppTheme.secondaryColor : Colors.blue.shade700,
         ),
       ),
+    );
+  }
+}
+
+class _GameResultChip extends StatelessWidget {
+  final String gameResult;
+  final int? scoreChange;
+  final bool isCasual;
+
+  const _GameResultChip({
+    required this.gameResult,
+    this.scoreChange,
+    this.isCasual = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    String label;
+    Color color;
+
+    switch (gameResult) {
+      case 'WIN':
+        label = '승리';
+        color = AppTheme.secondaryColor;
+        break;
+      case 'LOSS':
+        label = '패배';
+        color = AppTheme.errorColor;
+        break;
+      case 'DRAW':
+        label = '무승부';
+        color = const Color(0xFF9CA3AF);
+        break;
+      case 'DISPUTED':
+        label = '이의제기';
+        color = Colors.orange;
+        break;
+      case 'NO_RESULT':
+        label = '미입력';
+        color = const Color(0xFF6B7280);
+        break;
+      default:
+        label = '완료';
+        color = const Color(0xFF9CA3AF);
+    }
+
+    final hasScore = scoreChange != null && scoreChange != 0 && !isCasual;
+    final sign = (scoreChange ?? 0) > 0 ? '+' : '';
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        if (hasScore) ...[
+          const SizedBox(width: 4),
+          Text(
+            '$sign$scoreChange',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: (scoreChange ?? 0) > 0
+                  ? AppTheme.secondaryColor
+                  : AppTheme.errorColor,
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -1719,3 +1921,4 @@ Future<bool?> _showConfirmSheet({
     ),
   );
 }
+

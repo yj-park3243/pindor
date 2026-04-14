@@ -1,14 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import '../../config/router.dart';
+import '../../config/sports.dart';
 import '../../config/theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/matching_provider.dart';
 import '../../providers/notice_provider.dart';
 import '../../providers/notification_provider.dart';
 import '../profile/profile_screen.dart' show selectedPinProvider;
+import '../../providers/socket_provider.dart';
 import '../../providers/sport_preference_provider.dart';
+import '../../providers/ranking_provider.dart';
+import '../../providers/pin_provider.dart';
 import '../../models/match.dart';
 import '../../models/pin.dart';
 import '../../models/post.dart';
@@ -50,6 +55,16 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // 소켓으로 MATCH_PENDING_ACCEPT 알림이 오면 배너를 즉시 갱신
+    ref.listen(socketNotificationProvider, (prev, next) {
+      next.whenData((data) {
+        final type = data['type'] as String?;
+        if (type == 'MATCH_PENDING_ACCEPT') {
+          ref.invalidate(pendingAcceptMatchesProvider);
+        }
+      });
+    });
+
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       appBar: _PindorAppBar(
@@ -101,7 +116,7 @@ class HomeScreen extends ConsumerWidget {
                     ),
                     child: const Row(
                       children: [
-                        Icon(Icons.flash_on_rounded,
+                        Icon(Symbols.bolt_rounded,
                             color: Colors.white, size: 28),
                         SizedBox(width: 12),
                         Expanded(
@@ -127,7 +142,7 @@ class HomeScreen extends ConsumerWidget {
                             ],
                           ),
                         ),
-                        Icon(Icons.arrow_forward_ios,
+                        Icon(Symbols.arrow_forward_ios_rounded,
                             color: Colors.white70, size: 16),
                       ],
                     ),
@@ -150,7 +165,7 @@ class HomeScreen extends ConsumerWidget {
               // ─── 게시판 최신글 ───
               _PinBoardPreview(),
 
-              const SizedBox(height: 32),
+              const SizedBox(height: 100),
             ],
           ),
         ),
@@ -276,7 +291,7 @@ class _MyPinStatusCard extends ConsumerWidget {
               .where((p) => p.sportType == selectedSport && p.isActive)
               .firstOrNull;
 
-          final sportDisplayName = _sportDisplayName(selectedSport);
+          final sportDisplayName = sportLabel(selectedSport);
 
           return Container(
             padding: const EdgeInsets.all(18),
@@ -336,38 +351,50 @@ class _MyPinStatusCard extends ConsumerWidget {
                 IntrinsicHeight(
                   child: Row(
                     children: [
-                      _StatItem(
-                        icon: Icons.emoji_events_rounded,
-                        iconColor: const Color(0xFFF59E0B),
-                        label: '순위',
-                        value: profile != null ? '미집계' : '-',
-                      ),
+                      Builder(builder: (context) {
+                        final rankAsync = ref.watch(pinRankingBySportProvider(
+                          (pinId: pin.id, sportType: selectedSport),
+                        ));
+                        final myRank = rankAsync.valueOrNull?.myRank;
+                        return _StatItem(
+                          icon: Icons.emoji_events_rounded,
+                          iconColor: const Color(0xFFF59E0B),
+                          label: '순위',
+                          value: myRank != null ? '${myRank.rank}위' : '-',
+                        );
+                      }),
                       const VerticalDivider(
                         width: 24,
                         thickness: 1,
                         color: Color(0xFF2A2A2A),
                       ),
-                      _StatItem(
-                        icon: Icons.star_rounded,
-                        iconColor: AppTheme.primaryColor,
-                        label: '점수',
-                        value: profile == null
-                            ? '-'
-                            : profile.isPlacement
-                                ? '배치중'
-                                : '${profile.displayScore ?? profile.currentScore}점',
-                      ),
+                      Builder(builder: (context) {
+                        final rankAsync2 = ref.watch(pinRankingBySportProvider(
+                          (pinId: pin.id, sportType: selectedSport),
+                        ));
+                        final myRank2 = rankAsync2.valueOrNull?.myRank;
+                        return _StatItem(
+                          icon: Icons.star_rounded,
+                          iconColor: AppTheme.primaryColor,
+                          label: '점수',
+                          value: myRank2 != null ? '${myRank2.score}점' : '-',
+                        );
+                      }),
                       const VerticalDivider(
                         width: 24,
                         thickness: 1,
                         color: Color(0xFF2A2A2A),
                       ),
-                      _StatItem(
-                        icon: Icons.people_rounded,
-                        iconColor: const Color(0xFF10B981),
-                        label: '활동 중',
-                        value: '${pin.userCount}명',
-                      ),
+                      Builder(builder: (context) {
+                        final pinDetailAsync = ref.watch(pinDetailProvider(pin.id));
+                        final freshPin = pinDetailAsync.valueOrNull;
+                        return _StatItem(
+                          icon: Icons.people_rounded,
+                          iconColor: const Color(0xFF10B981),
+                          label: '활동 중',
+                          value: '${freshPin?.userCount ?? pin.userCount}명',
+                        );
+                      }),
                     ],
                   ),
                 ),
@@ -426,7 +453,7 @@ class _MyPinStatusCard extends ConsumerWidget {
                             ),
                             SizedBox(width: 3),
                             Icon(
-                              Icons.arrow_forward_ios,
+                              Symbols.arrow_forward_ios_rounded,
                               size: 11,
                               color: AppTheme.primaryColor,
                             ),
@@ -444,20 +471,6 @@ class _MyPinStatusCard extends ConsumerWidget {
     );
   }
 
-  String _sportDisplayName(String sportType) {
-    switch (sportType) {
-      case 'GOLF':
-        return '골프';
-      case 'BILLIARDS':
-        return '당구';
-      case 'TENNIS':
-        return '테니스';
-      case 'TABLE_TENNIS':
-        return '탁구';
-      default:
-        return sportType;
-    }
-  }
 }
 
 /// 통계 항목 위젯 (순위/점수/활동유저 각 셀)
@@ -747,7 +760,7 @@ class _PendingAcceptBanner extends ConsumerWidget {
                   ),
                 ),
                 const Icon(
-                  Icons.arrow_forward_ios,
+                  Symbols.arrow_forward_ios_rounded,
                   color: Colors.white70,
                   size: 14,
                 ),
@@ -806,7 +819,7 @@ class _PinnedNoticeBanner extends ConsumerWidget {
                 ),
                 const SizedBox(width: 6),
                 const Icon(
-                  Icons.arrow_forward_ios,
+                  Symbols.arrow_forward_ios_rounded,
                   size: 12,
                   color: Color(0xFFD97706),
                 ),
@@ -842,7 +855,7 @@ class _PreviewTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: () => context.go('/pins/$pinId/posts/$postId'),
+      onTap: () => context.push('/pins/$pinId/board/posts/$postId'),
       borderRadius: BorderRadius.circular(14),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
@@ -961,26 +974,12 @@ class _RecentMatchHistory extends ConsumerWidget {
                 child: _emptyMatchBox('최근 전적이 없습니다.'),
               );
             }
-            return Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E1E1E),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFF2A2A2A), width: 1),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.03),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Column(
                 children: [
-                  for (int i = 0; i < matches.length; i++) ...[
-                    if (i > 0) const Divider(height: 1, indent: 16),
-                    _MatchHistoryTile(match: matches[i]),
-                  ],
+                  for (final match in matches)
+                    _MatchHistoryTile(match: match),
                 ],
               ),
             );
@@ -1008,7 +1007,7 @@ class _RecentMatchHistory extends ConsumerWidget {
   }
 }
 
-/// 최근 전적 개별 타일
+/// 최근 전적 개별 타일 (매칭 목록 카드와 동일 스타일)
 class _MatchHistoryTile extends StatelessWidget {
   final Match match;
 
@@ -1016,118 +1015,135 @@ class _MatchHistoryTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final result = match.gameResult; // WIN | LOSS | DRAW | null
-    final isWin = result == 'WIN';
-    final isLoss = result == 'LOSS';
-    final isDraw = result == 'DRAW';
+    final result = match.gameResult;
+    final tierColor = AppTheme.tierColor(match.opponent.tier);
 
-    Color resultColor;
-    String resultText;
-    if (isWin) {
-      resultColor = const Color(0xFF2563EB);
-      resultText = '승';
-    } else if (isLoss) {
-      resultColor = const Color(0xFFDC2626);
-      resultText = '패';
-    } else if (isDraw) {
-      resultColor = const Color(0xFF9CA3AF);
-      resultText = '무';
+    // 상태 액센트 색상
+    Color accentColor;
+    if (match.isCompleted && result != null) {
+      accentColor = result == 'WIN'
+          ? const Color(0xFF10B981)
+          : result == 'LOSS'
+              ? const Color(0xFFEF4444)
+              : const Color(0xFF6B7280);
     } else {
-      resultColor = const Color(0xFF9CA3AF);
-      resultText = '-';
+      accentColor = const Color(0xFFD1D5DB);
+    }
+
+    // 결과 텍스트
+    String resultText;
+    Color resultBgColor;
+    Color resultTextColor;
+    if (result == 'WIN') {
+      resultText = '승리';
+      resultBgColor = const Color(0xFF10B981).withValues(alpha: 0.15);
+      resultTextColor = const Color(0xFF10B981);
+    } else if (result == 'LOSS') {
+      resultText = '패배';
+      resultBgColor = const Color(0xFFEF4444).withValues(alpha: 0.15);
+      resultTextColor = const Color(0xFFEF4444);
+    } else if (result == 'DRAW') {
+      resultText = '무승부';
+      resultBgColor = const Color(0xFF6B7280).withValues(alpha: 0.15);
+      resultTextColor = const Color(0xFF6B7280);
+    } else {
+      resultText = '진행중';
+      resultBgColor = AppTheme.primaryColor.withValues(alpha: 0.15);
+      resultTextColor = AppTheme.primaryColor;
     }
 
     final dateStr = _formatDate(match.completedAt ?? match.createdAt);
 
-    return InkWell(
-      onTap: () => context.go('${AppRoutes.matchList}/${match.id}'),
-      borderRadius: BorderRadius.circular(14),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Row(
-          children: [
-            // 승/패/무 뱃지
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: resultColor.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                resultText,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: resultColor,
+    return GestureDetector(
+      onTap: () => context.push('${AppRoutes.matchList}/${match.id}'),
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          gradient: LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [
+              accentColor.withValues(alpha: 0.12),
+              const Color(0xFF1A1A1A),
+            ],
+          ),
+          border: Border.all(color: accentColor.withValues(alpha: 0.2), width: 1),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              // 아바타 + 티어 테두리
+              Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: tierColor.withValues(alpha: 0.5), width: 2),
+                ),
+                child: UserAvatar(
+                  imageUrl: match.opponent.profileImageUrl,
+                  size: 48,
+                  nickname: match.opponent.nickname,
                 ),
               ),
-            ),
-            const SizedBox(width: 12),
-            // 상대 아바타
-            UserAvatar(
-              imageUrl: match.opponent.profileImageUrl,
-              size: 36,
-              nickname: match.opponent.nickname,
-            ),
-            const SizedBox(width: 10),
-            // 상대 닉네임 + 종목/날짜
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          match.opponent.nickname,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      if (match.isCasual) ...[
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 5, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: Colors.orange.shade50,
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(color: Colors.orange.shade200),
-                          ),
+              const SizedBox(width: 12),
+
+              // 정보
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 닉네임 + 티어 + 결과
+                    Row(
+                      children: [
+                        Flexible(
                           child: Text(
-                            '친선',
-                            style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.orange.shade700,
-                            ),
+                            match.opponent.nickname,
+                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white),
+                            overflow: TextOverflow.ellipsis,
                           ),
+                        ),
+                        if (!match.opponent.isPlacement) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: tierColor.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(5),
+                            ),
+                            child: Text(match.opponent.tier, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: tierColor)),
+                          ),
+                        ],
+                        const Spacer(),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: resultBgColor,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(resultText, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: resultTextColor)),
                         ),
                       ],
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${match.sportTypeDisplayName} · $dateStr',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppTheme.textSecondary,
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 5),
+                    // 종목 + 날짜 + 핀
+                    Row(
+                      children: [
+                        Icon(sportIcon(match.sportType), size: 12, color: AppTheme.textSecondary),
+                        const SizedBox(width: 3),
+                        Text(match.sportTypeDisplayName, style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                        Text(' · $dateStr', style: const TextStyle(fontSize: 11, color: AppTheme.textDisabled)),
+                        if (match.pinName != null) ...[
+                          Text(' · ', style: const TextStyle(fontSize: 11, color: AppTheme.textDisabled)),
+                          Flexible(child: Text(match.pinName!, style: const TextStyle(fontSize: 11, color: AppTheme.textDisabled), overflow: TextOverflow.ellipsis)),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const Icon(
-              Icons.arrow_forward_ios,
-              size: 12,
-              color: AppTheme.textDisabled,
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

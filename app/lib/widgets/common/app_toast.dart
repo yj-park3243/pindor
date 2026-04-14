@@ -1,24 +1,36 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 
-/// Glass 스타일 토스트 (상단 표시, 탭하면 사라짐)
+/// 매칭 카드 스타일 토스트 (상단 표시, 탭하면 사라짐)
 class AppToast {
-  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
 
-  static void error(String message) {
-    _show(message, icon: Icons.error_outline_rounded);
+  static void error(String message, {bool bottom = false}) {
+    _show(message,
+        icon: Icons.error_outline_rounded,
+        color: const Color(0xFFEF4444),
+        bottom: bottom);
   }
 
-  static void success(String message) {
-    _show(message, icon: Icons.check_circle_rounded);
+  static void success(String message, {bool bottom = false}) {
+    _show(message,
+        icon: Icons.check_circle_rounded,
+        color: const Color(0xFF22C55E),
+        bottom: bottom);
   }
 
-  static void info(String message) {
-    _show(message, icon: Icons.info_outline_rounded);
+  static void info(String message, {bool bottom = false}) {
+    _show(message,
+        icon: Icons.info_outline_rounded,
+        color: const Color(0xFF3B82F6),
+        bottom: bottom);
   }
 
-  static void warning(String message) {
-    _show(message, icon: Icons.warning_amber_rounded);
+  static void warning(String message, {bool bottom = false}) {
+    _show(message,
+        icon: Icons.warning_amber_rounded,
+        color: const Color(0xFFF59E0B),
+        bottom: bottom);
   }
 
   static OverlayEntry? _currentEntry;
@@ -26,11 +38,11 @@ class AppToast {
   static void _show(
     String message, {
     required IconData icon,
-    Duration duration = const Duration(seconds: 2),
+    required Color color,
+    Duration duration = const Duration(seconds: 3),
+    bool bottom = false,
   }) {
-    final context = navigatorKey.currentContext;
-    if (context == null) return;
-    final overlay = Overlay.maybeOf(context);
+    final overlay = navigatorKey.currentState?.overlay;
     if (overlay == null) return;
 
     _currentEntry?.remove();
@@ -38,41 +50,14 @@ class AppToast {
 
     late OverlayEntry entry;
     entry = OverlayEntry(
-      builder: (_) => _GlassToastOverlay(
+      builder: (_) => _ToastOverlay(
         duration: duration,
+        bottom: bottom,
         onDismissed: () {
           entry.remove();
           if (_currentEntry == entry) _currentEntry = null;
         },
-        child: _GlassToast(message: message, icon: icon),
-      ),
-    );
-    _currentEntry = entry;
-    overlay.insert(entry);
-  }
-
-  /// SnackBar 대체 — context 기반 (navigatorKey 없이 사용 가능)
-  static void showFromContext(
-    BuildContext context,
-    String message, {
-    IconData icon = Icons.info_outline_rounded,
-    Duration duration = const Duration(seconds: 2),
-  }) {
-    final overlay = Overlay.maybeOf(context);
-    if (overlay == null) return;
-
-    _currentEntry?.remove();
-    _currentEntry = null;
-
-    late OverlayEntry entry;
-    entry = OverlayEntry(
-      builder: (_) => _GlassToastOverlay(
-        duration: duration,
-        onDismissed: () {
-          entry.remove();
-          if (_currentEntry == entry) _currentEntry = null;
-        },
-        child: _GlassToast(message: message, icon: icon),
+        child: _ToastCard(message: message, icon: icon, color: color),
       ),
     );
     _currentEntry = entry;
@@ -80,76 +65,96 @@ class AppToast {
   }
 }
 
-class _GlassToast extends StatelessWidget {
+class _ToastCard extends StatelessWidget {
   final String message;
   final IconData icon;
-  const _GlassToast({required this.message, required this.icon});
+  final Color color;
+  const _ToastCard(
+      {required this.message, required this.icon, required this.color});
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 56),
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            color: Colors.black.withValues(alpha: 0.75),
-            border: Border.all(
-                color: Colors.white.withValues(alpha: 0.15), width: 1.2),
-            boxShadow: [
-              BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.25),
-                  blurRadius: 24,
-                  offset: const Offset(0, 10)),
-            ],
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.4), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.15),
+            blurRadius: 20,
+            offset: const Offset(0, 6),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.14),
-                  border:
-                      Border.all(color: Colors.white.withValues(alpha: 0.20)),
-                ),
-                child: Icon(icon, size: 20, color: Colors.white),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 상단 컬러 바
+          Container(
+            height: 2,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
               ),
-              const SizedBox(width: 12),
-              Flexible(
-                child: Text(message,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(icon, size: 22, color: color),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    message,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.2,
-                    )),
-              ),
-            ],
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      height: 1.4,
+                    ),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
 }
 
-class _GlassToastOverlay extends StatefulWidget {
+class _ToastOverlay extends StatefulWidget {
   final Widget child;
   final Duration duration;
   final VoidCallback onDismissed;
-  const _GlassToastOverlay(
-      {required this.child, required this.duration, required this.onDismissed});
+  final bool bottom;
+  const _ToastOverlay(
+      {required this.child, required this.duration, required this.onDismissed, this.bottom = false});
 
   @override
-  State<_GlassToastOverlay> createState() => _GlassToastOverlayState();
+  State<_ToastOverlay> createState() => _ToastOverlayState();
 }
 
-class _GlassToastOverlayState extends State<_GlassToastOverlay>
+class _ToastOverlayState extends State<_ToastOverlay>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _fadeAnimation;
@@ -161,15 +166,14 @@ class _GlassToastOverlayState extends State<_GlassToastOverlay>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 320),
-      reverseDuration: const Duration(milliseconds: 220),
+      duration: const Duration(milliseconds: 350),
+      reverseDuration: const Duration(milliseconds: 250),
     );
     _fadeAnimation =
         CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic);
     _slideAnimation =
-        Tween<Offset>(begin: const Offset(0, -0.12), end: Offset.zero)
-            .animate(
-                CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
+        Tween<Offset>(begin: Offset(0, widget.bottom ? 1.0 : -1.0), end: Offset.zero).animate(
+            CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
     _showAndHide();
   }
 
@@ -202,21 +206,26 @@ class _GlassToastOverlayState extends State<_GlassToastOverlay>
 
   @override
   Widget build(BuildContext context) {
-    final topPadding = MediaQuery.of(context).padding.top + 16;
-    final screenWidth = MediaQuery.of(context).size.width;
-    final horizontalPad = screenWidth * 0.06;
+    final topPadding = MediaQuery.of(context).padding.top + 8;
+    final bottomPadding = MediaQuery.of(context).padding.bottom + 16;
     return Positioned(
-      top: topPadding,
-      left: horizontalPad,
-      right: horizontalPad,
-      child: GestureDetector(
-        onTap: _onTap,
-        child: Material(
-          color: Colors.transparent,
-          child: FadeTransition(
-            opacity: _fadeAnimation,
-            child: SlideTransition(
-                position: _slideAnimation, child: widget.child),
+      top: widget.bottom ? null : topPadding,
+      bottom: widget.bottom ? bottomPadding : null,
+      left: 16,
+      right: 16,
+      child: Dismissible(
+        key: UniqueKey(),
+        direction: widget.bottom ? DismissDirection.down : DismissDirection.up,
+        onDismissed: (_) => _dismiss(),
+        child: GestureDetector(
+          onTap: _onTap,
+          child: Material(
+            color: Colors.transparent,
+            child: FadeTransition(
+              opacity: _fadeAnimation,
+              child: SlideTransition(
+                  position: _slideAnimation, child: widget.child),
+            ),
           ),
         ),
       ),

@@ -3,6 +3,7 @@ import { AdminRole, Post, Comment, PostCategory } from '../../entities/index.js'
 import { requireAdmin } from './admin.middleware.js';
 import { AppDataSource } from '../../config/database.js';
 import { AppError, ErrorCode } from '../../shared/errors/app-error.js';
+import { parsePageParams, paginatedResponse } from '../../shared/pagination.js';
 
 export async function adminPostsRoutes(fastify: FastifyInstance): Promise<void> {
   // ─── GET /admin/posts ── 게시글 목록
@@ -18,13 +19,14 @@ export async function adminPostsRoutes(fastify: FastifyInstance): Promise<void> 
           category?: string;
           pinId?: string;
           search?: string;
-          cursor?: string;
-          limit?: number;
+          page?: number;
+          pageSize?: number;
         };
       }>,
       reply: FastifyReply,
     ) => {
-      const { category, pinId, search, cursor, limit = 20 } = request.query;
+      const { category, pinId, search } = request.query;
+      const { page, pageSize, skip } = parsePageParams(request.query);
 
       const postRepo = AppDataSource.getRepository(Post);
       const qb = postRepo
@@ -43,20 +45,14 @@ export async function adminPostsRoutes(fastify: FastifyInstance): Promise<void> 
           search: `%${search}%`,
         });
       }
-      if (cursor) {
-        qb.andWhere('post.createdAt < :cursor', { cursor: new Date(cursor) });
-      }
 
-      const posts = await qb
+      const [items, total] = await qb
         .orderBy('post.createdAt', 'DESC')
-        .take(Number(limit) + 1)
-        .getMany();
+        .skip(skip)
+        .take(pageSize)
+        .getManyAndCount();
 
-      const hasMore = posts.length > Number(limit);
-      const items = hasMore ? posts.slice(0, Number(limit)) : posts;
-      const nextCursor = hasMore ? items[items.length - 1].createdAt.toISOString() : null;
-
-      return reply.send({ success: true, data: items, meta: { cursor: nextCursor, hasMore } });
+      return reply.send({ success: true, data: paginatedResponse(items, total, page, pageSize) });
     },
   );
 

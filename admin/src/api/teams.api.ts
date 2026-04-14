@@ -7,7 +7,7 @@ export interface TeamListParams {
   sportType?: string;
   status?: string;
   page?: number;
-  limit?: number;
+  pageSize?: number;
 }
 
 export interface TeamMatchListParams {

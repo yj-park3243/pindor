@@ -89,14 +89,14 @@ class _SportProfileSetupScreenState
           child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 진행 표시 바 (2/3)
+            // 진행 표시 바 (3/4)
             _buildStepIndicator(),
             const SizedBox(height: 6),
             const Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  '2단계: 스포츠 프로필',
+                  '3단계: 스포츠 프로필',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -104,7 +104,7 @@ class _SportProfileSetupScreenState
                   ),
                 ),
                 Text(
-                  '2 / 3',
+                  '3 / 4',
                   style: TextStyle(
                     fontSize: 12,
                     color: AppTheme.textSecondary,
@@ -267,13 +267,13 @@ class _SportProfileSetupScreenState
   Widget _buildStepIndicator() {
     return Row(
       children: List.generate(
-        3,
+        4,
         (i) => Expanded(
           child: Container(
             margin: const EdgeInsets.only(right: 4),
             height: 5,
             decoration: BoxDecoration(
-              color: i < 2
+              color: i < 3
                   ? AppTheme.primaryColor
                   : const Color(0xFF2A2A2A),
               borderRadius: BorderRadius.circular(3),

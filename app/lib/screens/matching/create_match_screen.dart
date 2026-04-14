@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,6 +9,7 @@ import '../../config/theme.dart';
 import '../../providers/sport_preference_provider.dart';
 import '../../providers/matching_provider.dart';
 import '../../widgets/common/app_toast.dart';
+import 'package:bottom_picker/bottom_picker.dart';
 
 /// 매칭 요청 생성 화면
 /// 핀 탭에서 핀 선택 후 진입 — pinId, sportType은 쿼리 파라미터로 받음
@@ -26,6 +28,7 @@ class _CreateMatchScreenState extends ConsumerState<CreateMatchScreen> {
 
   String? _pinId;
   String? _pinName;
+  bool _sportExpanded = false;
 
   // 오늘 날짜에 이미 WAITING 요청이 있으면 true (날짜 선택 제한용)
   bool _hasTodayWaiting = false;
@@ -55,7 +58,9 @@ class _CreateMatchScreenState extends ConsumerState<CreateMatchScreen> {
   @override
   void initState() {
     super.initState();
-    _selectedDate = DateTime.now(); // 기본값 오늘
+    final now = DateTime.now();
+    // 밤 11시 이후면 기본 날짜를 내일로 설정
+    _selectedDate = now.hour >= 23 ? now.add(const Duration(days: 1)) : now;
     _selectedSport = ref.read(sportPreferenceProvider);
   }
 
@@ -79,27 +84,37 @@ class _CreateMatchScreenState extends ConsumerState<CreateMatchScreen> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final tomorrow = today.add(const Duration(days: 1));
-    // 오늘에 이미 요청이 있으면 내일부터 선택 가능
-    final firstDate = _hasTodayWaiting ? tomorrow : today;
-    final date = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate.isBefore(firstDate) ? firstDate : _selectedDate,
-      firstDate: firstDate,
-      lastDate: tomorrow,
-    );
-    if (date != null) {
-      setState(() {
-        _selectedDate = date;
-        // 당일이면 1시간 전 cutoff 지난 시간대 선택 해제
-        if (date.year == now.year && date.month == now.month && date.day == now.day) {
-          final slot = _timeSlots.where((s) => s.$1 == _selectedTimeSlot).firstOrNull;
-          // 슬롯 종료 1시간 전 이후면 비활성화 (cutoff: 종료 1시간 전)
-          if (slot != null && now.hour >= slot.$4 + 2) {
-            _selectedTimeSlot = 'ANY';
+    // 오늘에 이미 요청이 있거나 밤 11시 이후면 내일부터 선택 가능
+    final firstDate = (_hasTodayWaiting || now.hour >= 23) ? tomorrow : today;
+
+    BottomPicker.date(
+      initialDateTime: _selectedDate.isBefore(firstDate) ? firstDate : _selectedDate,
+      minDateTime: firstDate,
+      maxDateTime: tomorrow,
+      backgroundColor: const Color(0xFF1E1E1E),
+      headerBuilder: (_) => const Padding(
+        padding: EdgeInsets.only(top: 8, bottom: 4),
+        child: Text('날짜 선택', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
+      ),
+      buttonSingleColor: AppTheme.primaryColor,
+      buttonContent: const Center(
+        child: Text('선택', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
+      ),
+      pickerTextStyle: const TextStyle(fontSize: 16, color: Colors.white),
+      onSubmit: (date) {
+        setState(() {
+          _selectedDate = date;
+          // 당일이면 1시간 전 cutoff 지난 시간대 선택 해제
+          if (date.year == now.year && date.month == now.month && date.day == now.day) {
+            final slot = _timeSlots.where((s) => s.$1 == _selectedTimeSlot).firstOrNull;
+            if (slot != null && now.hour >= slot.$4 + 2) {
+              _selectedTimeSlot = 'ANY';
+            }
           }
-        }
-      });
-    }
+        });
+      },
+      dismissable: true,
+    ).show(context);
   }
 
   Future<void> _submit() async {
@@ -108,13 +123,13 @@ class _CreateMatchScreenState extends ConsumerState<CreateMatchScreen> {
       return;
     }
 
-    // 밤 10시 30분 이후 당일 매칭 차단
+    // 밤 11시 이후 당일 매칭 차단
     final now = DateTime.now();
     final isSelectedToday = _selectedDate.year == now.year &&
         _selectedDate.month == now.month &&
         _selectedDate.day == now.day;
-    if (isSelectedToday && (now.hour > 22 || (now.hour == 22 && now.minute >= 30))) {
-      AppToast.warning('밤 10시 30분 이후에는 당일 매칭 요청을 할 수 없습니다.');
+    if (isSelectedToday && now.hour >= 23) {
+      AppToast.warning('밤 11시 이후에는 당일 매칭 요청을 할 수 없습니다.');
       return;
     }
 
@@ -138,14 +153,29 @@ class _CreateMatchScreenState extends ConsumerState<CreateMatchScreen> {
         body['ageRange'] = _ageRange.toInt();
       }
 
-      await ref.read(matchRequestProvider.notifier).createRequest(body);
+      final request = await ref.read(matchRequestProvider.notifier).createRequest(body);
 
       if (mounted) {
-        context.go(AppRoutes.matchList);
-        // 화면 전환 후 토스트 표시
-        Future.delayed(const Duration(milliseconds: 300), () {
-          AppToast.success('매칭 요청이 등록되었습니다!');
-        });
+        if (request.status == 'MATCHED') {
+          // 즉시 매칭 성사 — 소켓 알림이 수락 화면으로 이동시키도록 잠시 대기
+          // 소켓 알림이 먼저 처리되면 이미 이동된 상태이므로 mounted 체크
+          AppToast.success('매칭 상대를 찾았습니다!');
+          await Future.delayed(const Duration(milliseconds: 500));
+          // 소켓이 이미 이동시켰으면 여기서 중단, 아니면 fallback으로 조회해서 이동
+          if (mounted) {
+            final matches = await ref.read(pendingAcceptMatchesProvider.future);
+            if (mounted && matches.isNotEmpty) {
+              context.go('/matches/${matches.first.id}/accept');
+            } else if (mounted) {
+              context.go(AppRoutes.matchList);
+            }
+          }
+        } else {
+          context.go(AppRoutes.matchList);
+          Future.delayed(const Duration(milliseconds: 300), () {
+            AppToast.success('매칭 요청이 등록되었습니다!', bottom: true);
+          });
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -234,11 +264,14 @@ class _CreateMatchScreenState extends ConsumerState<CreateMatchScreen> {
         backgroundColor: const Color(0xFF0A0A0A),
         elevation: 0,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+      body: Column(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
             // ─── 매칭 2개 꽉 찼을 때 안내 배너 ───
             if (isFull)
               Container(
@@ -299,52 +332,114 @@ class _CreateMatchScreenState extends ConsumerState<CreateMatchScreen> {
 
             const SizedBox(height: 16),
 
-            // ─── 1. 종목 선택 ───
+            // ─── 1. 종목 선택 (아코디언) ───
             _SectionCard(
               stepNumber: 1,
               title: '종목 선택',
               icon: Icons.sports_score_rounded,
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: allSports.map((sport) {
-                  final isSelected = _selectedSport == sport.value;
-                  return GestureDetector(
-                    onTap: () => setState(() => _selectedSport = sport.value),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 10),
+              child: Column(
+                children: [
+                  // 현재 선택된 종목 (탭하면 펼침/접기)
+                  GestureDetector(
+                    onTap: () => setState(() => _sportExpanded = !_sportExpanded),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                       decoration: BoxDecoration(
-                        color: isSelected
-                            ? AppTheme.primaryColor
-                            : const Color(0xFF2A2A2A),
-                        borderRadius: BorderRadius.circular(10),
+                        color: AppTheme.primaryColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.3)),
                       ),
                       child: Row(
-                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(sport.icon,
-                              size: 16,
-                              color: isSelected
-                                  ? Colors.white
-                                  : AppTheme.textSecondary),
-                          const SizedBox(width: 6),
+                          Icon(sportIcon(_selectedSport), size: 22, color: AppTheme.primaryColor),
+                          const SizedBox(width: 10),
                           Text(
-                            sport.label,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13,
-                              color: isSelected
-                                  ? Colors.white
-                                  : AppTheme.textPrimary,
-                            ),
+                            sportLabel(_selectedSport),
+                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.primaryColor),
+                          ),
+                          const Spacer(),
+                          AnimatedRotation(
+                            turns: _sportExpanded ? 0.5 : 0,
+                            duration: const Duration(milliseconds: 200),
+                            child: const Icon(Icons.expand_more, color: AppTheme.primaryColor),
                           ),
                         ],
                       ),
                     ),
-                  );
-                }).toList(),
+                  ),
+
+                  // 펼쳐진 종목 그리드 (열림: 아래로 펼침, 닫힘: 위로 슬라이드+스케일 축소)
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 350),
+                    curve: _sportExpanded ? Curves.easeOutBack : Curves.fastOutSlowIn,
+                    alignment: Alignment.topCenter,
+                    child: _sportExpanded
+                        ? TweenAnimationBuilder<double>(
+                            tween: Tween(begin: 0.0, end: 1.0),
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeOutCubic,
+                            builder: (context, value, child) => Opacity(
+                              opacity: value,
+                              child: Transform.translate(
+                                offset: Offset(0, (1 - value) * -20),
+                                child: child,
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.only(top: 12),
+                              child: GridView.count(
+                                crossAxisCount: 4,
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                mainAxisSpacing: 8,
+                                crossAxisSpacing: 8,
+                                childAspectRatio: 0.9,
+                                children: allSports.map((sport) {
+                                  final isSelected = _selectedSport == sport.value;
+                                  return GestureDetector(
+                                    onTap: () => setState(() {
+                                      _selectedSport = sport.value;
+                                      _sportExpanded = false;
+                                    }),
+                                    child: AnimatedContainer(
+                                      duration: const Duration(milliseconds: 180),
+                                      decoration: BoxDecoration(
+                                        color: isSelected
+                                            ? AppTheme.primaryColor.withValues(alpha: 0.15)
+                                            : const Color(0xFF2A2A2A),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: isSelected ? AppTheme.primaryColor : Colors.transparent,
+                                          width: 1.5,
+                                        ),
+                                      ),
+                                      child: Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Icon(sport.icon, size: 24, color: isSelected ? AppTheme.primaryColor : AppTheme.textSecondary),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            sport.label,
+                                            style: TextStyle(
+                                              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                              fontSize: 11,
+                                              color: isSelected ? AppTheme.primaryColor : AppTheme.textPrimary,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            ),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ],
               ),
             ),
 
@@ -745,10 +840,23 @@ class _CreateMatchScreenState extends ConsumerState<CreateMatchScreen> {
               ),
             ],
 
-            const SizedBox(height: 24),
+                  const SizedBox(height: 24),
+                ],
+              ),
+            ),
+          ),
 
-            // 요청 버튼
-            SizedBox(
+          // 요청 버튼 (하단 고정)
+          Container(
+            padding: EdgeInsets.fromLTRB(
+                16, 12, 16, MediaQuery.of(context).padding.bottom + 12),
+            decoration: const BoxDecoration(
+              color: Color(0xFF0A0A0A),
+              border: Border(
+                top: BorderSide(color: Color(0xFF1E1E1E), width: 1),
+              ),
+            ),
+            child: SizedBox(
               width: double.infinity,
               height: 54,
               child: ElevatedButton(
@@ -771,10 +879,8 @@ class _CreateMatchScreenState extends ConsumerState<CreateMatchScreen> {
                       ),
               ),
             ),
-
-            const SizedBox(height: 24),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

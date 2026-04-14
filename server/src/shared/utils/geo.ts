@@ -191,10 +191,10 @@ export async function findNearbyPins(
       p.level,
       ST_Y(p.center::geometry) AS "centerLat",
       ST_X(p.center::geometry) AS "centerLng",
-      COUNT(up.user_id)::int AS "userCount",
+      COUNT(pa.user_id)::int AS "userCount",
       ST_Distance(p.center, ST_GeogFromText($1)) AS "distanceMeters"
     FROM pins p
-    LEFT JOIN user_pins up ON up.pin_id = p.id
+    LEFT JOIN pin_activities pa ON pa.pin_id = p.id
     WHERE p.is_active = TRUE
       AND ST_DWithin(p.center, ST_GeogFromText($1), $2)
     GROUP BY p.id, p.name, p.slug, p.level, p.center

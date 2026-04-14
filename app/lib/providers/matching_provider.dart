@@ -35,10 +35,21 @@ class MatchRequestListState {
   }
 }
 
+/// 소켓 이벤트 등으로 캐시를 무시하고 서버에서 직접 가져와야 할 때 true로 설정
+final matchListForceRefreshProvider = StateProvider<bool>((ref) => false);
+
 /// 매칭 목록 프로바이더 (SWR 패턴)
 final matchListProvider = FutureProvider.autoDispose
     .family<List<Match>, String?>((ref, status) async {
   final repo = ref.read(matchingRepositoryProvider);
+  final forceRefresh = ref.read(matchListForceRefreshProvider);
+
+  // 소켓 이벤트 등으로 강제 갱신이 필요한 경우 서버에서 직접 가져옴
+  if (forceRefresh) {
+    // 빌드 중 다른 provider 수정 불가 → microtask로 지연 리셋
+    Future.microtask(() => ref.read(matchListForceRefreshProvider.notifier).state = false);
+    return repo.getMyMatches(status: status);
+  }
 
   final hasCache = await repo.hasMatchesCache();
   if (hasCache) {
@@ -62,19 +73,21 @@ final matchDetailProvider =
     FutureProvider.autoDispose.family<Match, String>((ref, matchId) async {
   final repo = ref.read(matchingRepositoryProvider);
 
-  // 로컬에서 먼저 조회
+  // 로컬에서 먼저 조회 → 서버에서 항상 최신 데이터도 가져옴
   final local = await repo.getMatchDetailLocal(matchId);
   if (local != null) {
-    // 백그라운드로 최신 데이터 갱신 — 404 시 로컬 캐시 삭제
-    unawaited(repo.getMatchDetail(matchId).then((_) {}).catchError((e) {
+    // 서버에서 최신 데이터 가져오기 시도, 실패하면 로컬 반환
+    try {
+      final fresh = await repo.getMatchDetail(matchId);
+      return fresh;
+    } catch (e) {
       debugPrint('[MatchProvider] detail refresh failed: $e');
-      // 서버에서 매칭을 찾을 수 없으면 로컬 캐시 정리
       if (e.toString().contains('MATCH_002') || e.toString().contains('404') || e.toString().contains('찾을 수 없')) {
         repo.clearLocalCache();
         ref.invalidate(matchListProvider(null));
       }
-    }));
-    return local;
+      return local;
+    }
   }
 
   return repo.getMatchDetail(matchId);
@@ -91,8 +104,8 @@ class MatchRequestNotifier
   Future<MatchRequestListState> _fetchRequests() async {
     final repo = ref.read(matchingRepositoryProvider);
     final results = await Future.wait([
-      repo.getMyMatchRequests(type: 'SENT'),
-      repo.getMyMatchRequests(type: 'RECEIVED'),
+      repo.getMyMatchRequests(type: 'SENT', status: 'WAITING'),
+      repo.getMyMatchRequests(type: 'RECEIVED', status: 'WAITING'),
     ]);
     // desiredDate 오름차순 정렬 (오늘 → 내일)
     final sent = results[0]..sort((a, b) {
@@ -111,10 +124,19 @@ class MatchRequestNotifier
     final repo = ref.read(matchingRepositoryProvider);
     final request = await repo.createMatchRequest(requestData);
     ref.invalidateSelf();
+
+    // WAITING 상태인 경우 소켓 룸에 입장하여 실시간 매칭 성사 알림 수신
+    if (request.status == 'WAITING') {
+      SocketService.instance.joinMatchRequest(request.id);
+    }
+
     return request;
   }
 
   Future<void> cancelRequest(String requestId) async {
+    // 매칭 요청 취소 전 소켓 룸에서 퇴장
+    SocketService.instance.leaveMatchRequest(requestId);
+
     final repo = ref.read(matchingRepositoryProvider);
     await repo.cancelMatchRequest(requestId);
     ref.invalidateSelf();
@@ -172,6 +194,7 @@ class MatchAcceptNotifier
     extends AutoDisposeFamilyNotifier<MatchAcceptState, String> {
   Timer? _pollingTimer;
   StreamSubscription<Map<String, dynamic>>? _socketSub;
+  StreamSubscription<bool>? _connectionSub;
   int _failureCount = 0;
   int _pollIntervalSeconds = 10; // exponential backoff 시작 인터벌
 
@@ -183,6 +206,7 @@ class MatchAcceptNotifier
     ref.onDispose(() {
       _pollingTimer?.cancel();
       _socketSub?.cancel();
+      _connectionSub?.cancel();
     });
     return const MatchAcceptState();
   }
@@ -250,12 +274,12 @@ class MatchAcceptNotifier
       // 이 Notifier가 담당하는 matchId와 무관한 이벤트는 무시
       if (matchId != null && matchId != arg) return;
 
-      if (type == 'MATCH_ACCEPTED') {
+      if (type == 'MATCH_BOTH_ACCEPTED' || type == 'MATCH_ACCEPTED') {
         _socketSub?.cancel();
         _pollingTimer?.cancel();
-        debugPrint('[MatchAccept] 소켓으로 MATCH_ACCEPTED 수신 — 상세 조회');
+        debugPrint('[MatchAccept] 소켓으로 $type 수신 — 상세 조회');
         _fetchMatchDetailAndUpdate();
-      } else if (type == 'MATCH_CANCELLED') {
+      } else if (type == 'MATCH_CANCELLED' || type == 'MATCH_REJECTED' || type == 'MATCH_ACCEPT_TIMEOUT') {
         _socketSub?.cancel();
         _pollingTimer?.cancel();
         state = state.copyWith(acceptStatus: 'CANCELLED');
@@ -263,7 +287,8 @@ class MatchAcceptNotifier
     });
 
     // 소켓 연결이 끊기면 폴링으로 전환
-    SocketService.instance.onConnectionState.listen((connected) {
+    _connectionSub?.cancel();
+    _connectionSub = SocketService.instance.onConnectionState.listen((connected) {
       if (!connected && _socketSub != null) {
         debugPrint('[MatchAccept] 소켓 연결 끊김 — 폴링으로 전환');
         _socketSub?.cancel();
@@ -287,6 +312,8 @@ class MatchAcceptNotifier
     _pollingTimer = null;
     _socketSub?.cancel();
     _socketSub = null;
+    _connectionSub?.cancel();
+    _connectionSub = null;
   }
 
   Future<void> _checkMatchStatus() async {

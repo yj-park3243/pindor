@@ -91,6 +91,7 @@ class Message {
   bool get isImage => messageType == 'IMAGE';
   bool get isSystem => messageType == 'SYSTEM';
   bool get isLocation => messageType == 'LOCATION';
+  bool get isVerificationCode => messageType == 'VERIFICATION_CODE';
 
   /// 위치 메시지 데이터 파싱
   LocationData? get locationData {
@@ -112,11 +113,13 @@ class Message {
 
   /// 소켓 수신 메시지로부터 생성
   factory Message.fromSocketData(Map<String, dynamic> data) {
-    final sender = data['sender'] as Map<String, dynamic>?;
+    final rawSender = data['sender'];
+    final sender = rawSender is Map ? Map<String, dynamic>.from(rawSender) : null;
     return Message(
       id: data['id'] as String? ?? DateTime.now().millisecondsSinceEpoch.toString(),
       chatRoomId: data['roomId'] as String? ?? '',
-      senderId: sender?['id'] as String? ?? '',
+      senderId: sender?['id'] as String? ??
+          data['senderId'] as String? ?? '',
       senderNickname: sender?['nickname'] as String? ?? '',
       senderProfileImageUrl: sender?['profileImageUrl'] as String?,
       messageType: data['messageType'] as String? ?? 'TEXT',

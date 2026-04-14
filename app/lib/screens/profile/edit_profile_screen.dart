@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import '../../config/theme.dart';
+import '../../core/utils/permission_helper.dart';
 import '../../providers/user_provider.dart';
 import '../../repositories/upload_repository.dart';
 import '../../widgets/common/loading_indicator.dart';
@@ -38,6 +39,8 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   }
 
   Future<void> _pickImage() async {
+    if (!mounted) return;
+
     final picker = ImagePicker();
     final xFile = await picker.pickImage(
       source: ImageSource.gallery,

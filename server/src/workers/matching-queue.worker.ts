@@ -408,7 +408,7 @@ export async function processMatchingQueue(): Promise<void> {
             );
           }
 
-          // 6) 양측에 알림 발송 (Redis pub/sub)
+          // 6) 양측에 알림 발송 (Redis pub/sub) + 실시간 매칭 성사 이벤트
           await Promise.all([
             redis.publish(
               'system_notification',
@@ -428,6 +428,23 @@ export async function processMatchingQueue(): Promise<void> {
                 title: '매칭 상대를 찾았습니다!',
                 body: '10분 내에 수락 여부를 결정해 주세요.',
                 data: { matchId: createdMatchId, deepLink: `/matches/${createdMatchId}/accept` },
+              }),
+            ),
+            // matchrequest:{requestId} 룸에서 대기 중인 클라이언트에게 실시간 전달
+            redis.publish(
+              'match_lifecycle',
+              JSON.stringify({
+                event: 'MATCH_FOUND',
+                requestId: pairA.id,
+                data: { matchId: createdMatchId, status: 'PENDING_ACCEPT' },
+              }),
+            ),
+            redis.publish(
+              'match_lifecycle',
+              JSON.stringify({
+                event: 'MATCH_FOUND',
+                requestId: pairB.id,
+                data: { matchId: createdMatchId, status: 'PENDING_ACCEPT' },
               }),
             ),
           ]);

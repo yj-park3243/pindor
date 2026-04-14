@@ -65,6 +65,9 @@ export class User {
   @Column({ name: 'last_login_at', type: 'timestamptz', nullable: true })
   lastLoginAt!: Date | null;
 
+  @Column({ name: 'preferred_sport_type', type: 'varchar', length: 50, nullable: true, default: null })
+  preferredSportType!: string | null;
+
   // Relations
   @OneToMany('SocialAccount', 'user')
   socialAccounts!: SocialAccount[];

@@ -83,7 +83,7 @@ class MessageBubble extends StatelessWidget {
                         const SizedBox(width: 4),
                       ],
                       Text(
-                        DateFormat('HH:mm').format(message.createdAt),
+                        DateFormat('HH:mm').format(message.createdAt.toLocal()),
                         style: const TextStyle(
                           fontSize: 10,
                           color: AppTheme.textDisabled,
@@ -125,6 +125,13 @@ class MessageBubble extends StatelessWidget {
   }
 
   Widget _buildBubble(BuildContext context) {
+    if (message.isVerificationCode) {
+      return _VerificationCodeBubble(
+        message: message,
+        isMine: isMine,
+      );
+    }
+
     if (message.isImage) {
       return _ImageBubble(
         imageUrl: message.imageUrl ?? message.content,
@@ -181,33 +188,38 @@ class _ImageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () => _openFullScreen(context),
-      child: ClipRRect(
-        borderRadius: BorderRadius.only(
-          topLeft: const Radius.circular(14),
-          topRight: const Radius.circular(14),
-          bottomLeft: Radius.circular(isMine ? 14 : 4),
-          bottomRight: Radius.circular(isMine ? 4 : 14),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          maxWidth: 220,
+          maxHeight: 320,
+          minWidth: 100,
+          minHeight: 80,
         ),
-        child: CachedNetworkImage(
-          imageUrl: imageUrl,
-          width: 200,
-          height: 200,
-          fit: BoxFit.cover,
-          memCacheWidth: 400,
-          memCacheHeight: 400,
-          placeholder: (context, url) => Container(
-            width: 200,
-            height: 200,
-            color: const Color(0xFF2A2A2A),
-            child: const Center(
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(14),
+            topRight: const Radius.circular(14),
+            bottomLeft: Radius.circular(isMine ? 14 : 4),
+            bottomRight: Radius.circular(isMine ? 4 : 14),
           ),
-          errorWidget: (context, url, error) => Container(
-            width: 200,
-            height: 200,
-            color: const Color(0xFF2A2A2A),
-            child: const Icon(Icons.broken_image, color: Colors.grey),
+          child: CachedNetworkImage(
+            imageUrl: imageUrl,
+            fit: BoxFit.contain,
+            memCacheWidth: 440,
+            placeholder: (context, url) => Container(
+              width: 200,
+              height: 200,
+              color: const Color(0xFF2A2A2A),
+              child: const Center(
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+            errorWidget: (context, url, error) => Container(
+              width: 200,
+              height: 200,
+              color: const Color(0xFF2A2A2A),
+              child: const Icon(Icons.broken_image, color: Colors.grey),
+            ),
           ),
         ),
       ),
@@ -535,6 +547,92 @@ class _LocationBubble extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 인증번호 메시지 버블
+class _VerificationCodeBubble extends StatelessWidget {
+  final Message message;
+  final bool isMine;
+
+  const _VerificationCodeBubble({required this.message, required this.isMine});
+
+  @override
+  Widget build(BuildContext context) {
+    final code = message.extraData?['verificationCode'] as String? ?? '????';
+
+    return Container(
+      constraints: BoxConstraints(
+        maxWidth: MediaQuery.of(context).size.width * 0.65,
+      ),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isMine
+            ? const Color(0xFF1A1A2E)
+            : const Color(0xFF1A2E1A),
+        borderRadius: BorderRadius.only(
+          topLeft: const Radius.circular(16),
+          topRight: const Radius.circular(16),
+          bottomLeft: Radius.circular(isMine ? 16 : 4),
+          bottomRight: Radius.circular(isMine ? 4 : 16),
+        ),
+        border: Border.all(
+          color: isMine
+              ? AppTheme.primaryColor.withOpacity(0.3)
+              : const Color(0xFF4CAF50).withOpacity(0.3),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.pin_rounded,
+                size: 16,
+                color: isMine ? AppTheme.primaryColor : const Color(0xFF4CAF50),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                isMine ? '인증번호 전송' : '인증번호 수신',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: isMine
+                      ? AppTheme.primaryColor.withOpacity(0.8)
+                      : const Color(0xFF4CAF50).withOpacity(0.8),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Center(
+            child: Text(
+              code.split('').join(' '),
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w900,
+                color: isMine ? AppTheme.primaryColor : const Color(0xFF4CAF50),
+                letterSpacing: 8,
+              ),
+            ),
+          ),
+          if (!isMine) ...[
+            const SizedBox(height: 6),
+            const Center(
+              child: Text(
+                '승부 결과 입력 시 자동으로 입력됩니다',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Color(0xFF9CA3AF),
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

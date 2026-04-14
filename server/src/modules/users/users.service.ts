@@ -105,6 +105,7 @@ export class UsersService {
       status: user.status,
       createdAt: user.createdAt,
       lastLoginAt: user.lastLoginAt,
+      preferredSportType: user.preferredSportType,
       sportsProfiles: activeSportsProfiles,
       location: location
         ? {
@@ -142,6 +143,7 @@ export class UsersService {
       ...(dto.phone && { phone: dto.phone }),
       ...(dto.gender && { gender: dto.gender }),
       ...(dto.birthDate && { birthDate: new Date(dto.birthDate) }),
+      ...(dto.preferredSportType !== undefined && { preferredSportType: dto.preferredSportType }),
     });
 
     const updated = await userRepo.findOne({

@@ -129,7 +129,7 @@ class ChatRepository {
 
   /// HTTP 읽음 처리 (소켓 불가 시 폴백)
   Future<void> markAsReadHttp(String roomId) async {
-    await _api.patch('/chat-rooms/$roomId/read');
+    await _api.patch('/chat-rooms/$roomId/read', body: {});
   }
 
   /// HTTP 폴백 메시지 전송

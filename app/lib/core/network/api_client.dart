@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import '../../config/app_config.dart';
 import '../storage/secure_storage.dart';
 import '../network/socket_service.dart';
+import '../error/error_reporter.dart';
 
 /// Dio 기반 API 클라이언트
 /// - 토큰 자동 첨부 인터셉터
@@ -268,6 +269,22 @@ class _LoggingInterceptor extends Interceptor {
     debugPrint(
         '[API] Error: ${err.response?.statusCode} ${err.requestOptions.path}');
     debugPrint('[API] Error data: ${err.response?.data}');
+
+    // 4xx 클라이언트 에러는 정상 흐름 (401, 404, 409 등) — 리포트 안 함
+    // 5xx 서버 에러 + 네트워크 에러만 리포트 (error-logs 자체는 제외 — 무한 루프 방지)
+    final statusCode = err.response?.statusCode;
+    final isErrorLogApi = err.requestOptions.path.contains('error-logs');
+    if (!isErrorLogApi && (statusCode == null || statusCode >= 500)) {
+      final method = err.requestOptions.method;
+      final path = err.requestOptions.path;
+      final errorData = err.response?.data;
+      ErrorReporter.instance.reportError(
+        'API $method $path → ${statusCode ?? err.type.name}: $errorData',
+        null,
+        screenName: 'API',
+      );
+    }
+
     handler.next(err);
   }
 }

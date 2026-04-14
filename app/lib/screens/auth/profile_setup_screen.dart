@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../config/router.dart';
 import '../../config/theme.dart';
 import '../../core/network/api_client.dart';
+import '../../core/utils/permission_helper.dart';
 import '../../repositories/upload_repository.dart';
 import '../../repositories/user_repository.dart';
 import '../../providers/auth_provider.dart';
@@ -26,6 +28,8 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
   bool _isLoading = false;
   bool _isImageLoading = false;
   String? _nicknameError;
+  bool _agreedToTerms = false;
+  bool _agreedToPrivacy = false;
 
   static const _adjectives = [
     // 속도/힘
@@ -104,6 +108,8 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
   }
 
   Future<void> _pickImage() async {
+    if (!mounted) return;
+
     final picker = ImagePicker();
     final image = await picker.pickImage(
       source: ImageSource.gallery,
@@ -162,7 +168,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
 
       ref.read(authStateProvider.notifier).updateUser(user);
 
-      if (mounted) context.go(AppRoutes.sportProfileSetup);
+      if (mounted) context.go(AppRoutes.fontSizeSetup);
     } on ApiException catch (e) {
       if (e.statusCode == 409 || e.code == 'NICKNAME_TAKEN') {
         setState(() => _nicknameError = '이미 사용 중인 닉네임입니다.');
@@ -205,8 +211,8 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 진행 표시 바 (1/3)
-              const _StepProgressBar(currentStep: 1, totalSteps: 3),
+              // 진행 표시 바 (1/4)
+              const _StepProgressBar(currentStep: 1, totalSteps: 4),
               const SizedBox(height: 6),
               const Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -377,13 +383,30 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                 },
               ),
 
-              const SizedBox(height: 56),
+              const SizedBox(height: 24),
+
+              // 약관 동의
+              _buildAgreementRow(
+                label: '서비스 이용약관',
+                checked: _agreedToTerms,
+                onChanged: (v) => setState(() => _agreedToTerms = v),
+                url: 'https://pins.kr/terms.html',
+              ),
+              const SizedBox(height: 10),
+              _buildAgreementRow(
+                label: '개인정보 처리방침',
+                checked: _agreedToPrivacy,
+                onChanged: (v) => setState(() => _agreedToPrivacy = v),
+                url: 'https://pins.kr/privacy.html',
+              ),
+
+              const SizedBox(height: 24),
 
               SizedBox(
                 width: double.infinity,
                 height: 54,
                 child: ElevatedButton(
-                  onPressed: _isLoading ? null : _submit,
+                  onPressed: (_isLoading || !_agreedToTerms || !_agreedToPrivacy) ? null : _submit,
                   child: _isLoading
                       ? const SizedBox(
                           width: 22,
@@ -404,6 +427,58 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
         ),
         ),
       ),
+    );
+  }
+
+  Widget _buildAgreementRow({
+    required String label,
+    required bool checked,
+    required void Function(bool) onChanged,
+    required String url,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        SizedBox(
+          width: 24,
+          height: 24,
+          child: Checkbox(
+            value: checked,
+            onChanged: (v) => onChanged(v ?? false),
+            activeColor: AppTheme.primaryColor,
+            side: const BorderSide(color: AppTheme.textSecondary),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: GestureDetector(
+            onTap: () => onChanged(!checked),
+            child: Row(
+              children: [
+                Text(label, style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary)),
+                const Text(' (필수)', style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+              ],
+            ),
+          ),
+        ),
+        GestureDetector(
+          onTap: () async {
+            final uri = Uri.parse(url);
+            if (await canLaunchUrl(uri)) {
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+            }
+          },
+          child: const Text(
+            '보기',
+            style: TextStyle(
+              fontSize: 13,
+              color: AppTheme.primaryColor,
+              decoration: TextDecoration.underline,
+              decorationColor: AppTheme.primaryColor,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

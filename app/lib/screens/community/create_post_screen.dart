@@ -6,6 +6,7 @@ import 'dart:io';
 import '../../config/sports.dart';
 import '../../config/theme.dart';
 import '../../core/network/api_client.dart';
+import '../../core/utils/permission_helper.dart';
 import '../../providers/community_provider.dart';
 import '../../providers/sport_preference_provider.dart';
 import '../../repositories/upload_repository.dart';
@@ -48,6 +49,8 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       AppToast.warning('이미지는 최대 4장까지 첨부할 수 있습니다.');
       return;
     }
+
+    if (!mounted) return;
 
     final picker = ImagePicker();
     final xFiles = await picker.pickMultiImage(imageQuality: 80);

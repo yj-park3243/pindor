@@ -209,14 +209,14 @@ export function NoticeListPage() {
       <Card style={{ borderRadius: 8 }}>
         <Table
           columns={columns}
-          dataSource={data?.data || []}
+          dataSource={data?.items || []}
           loading={isLoading}
           rowKey="id"
           pagination={{
             current: page,
             pageSize: 20,
-            total: data?.meta?.total || 0,
-            showTotal: (total) => `총 ${total.toLocaleString()}건`,
+            total: data?.total || 0,
+            showTotal: (total) => `총 ${(total ?? 0).toLocaleString()}건`,
             onChange: setPage,
           }}
           scroll={{ x: 700 }}

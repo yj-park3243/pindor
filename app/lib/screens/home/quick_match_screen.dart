@@ -57,7 +57,7 @@ class _QuickMatchScreenState extends ConsumerState<QuickMatchScreen> {
       });
 
       if (mounted) {
-        AppToast.success('즉시 매칭 요청이 등록되었습니다!');
+        AppToast.success('즉시 매칭 요청이 등록되었습니다!', bottom: true);
         context.go(AppRoutes.matchList);
       }
     } catch (e) {

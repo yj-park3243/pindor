@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:fl_chart/fl_chart.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:intl/intl.dart';
 import '../../config/theme.dart';
 import '../../models/pin.dart';
 import '../../providers/pin_provider.dart';
 import '../../providers/ranking_provider.dart';
-import '../../providers/sport_preference_provider.dart';
 import '../../providers/user_provider.dart';
+import '../profile/profile_screen.dart' show selectedPinProvider;
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/error_view.dart';
 
@@ -25,23 +23,21 @@ class MyRankingScreen extends ConsumerStatefulWidget {
 class _MyRankingScreenState extends ConsumerState<MyRankingScreen> {
   Pin? _selectedPin;
 
-  /// 한 번이라도 내 랭킹이 확인된 핀 ID 집합 (참여 이력 있는 핀)
-  final Set<String> _participatedPinIds = {};
-
-  /// 참여 핀 발견 콜백 — _PinRankingBody에서 호출
-  void _onParticipatedPin(String pinId) {
-    if (!_participatedPinIds.contains(pinId)) {
-      setState(() => _participatedPinIds.add(pinId));
-    }
-  }
-
-  /// 핀 목록을 정렬: 참여 핀 우선 → 거리순 (위치 없으면 이름순)
-  List<Pin> _sortPins(List<Pin> pins, Position? position) {
+  /// 핀 목록을 정렬: 자주 가는 핀 → 경기했던 곳(거리순) → 나머지(거리순)
+  List<Pin> _sortPins(
+    List<Pin> pins,
+    Position? position,
+    String? favoritePinId,
+    Set<String> participatedPinIds,
+  ) {
+    Pin? favorite;
     final participated = <Pin>[];
     final rest = <Pin>[];
 
     for (final pin in pins) {
-      if (_participatedPinIds.contains(pin.id)) {
+      if (pin.id == favoritePinId) {
+        favorite = pin;
+      } else if (participatedPinIds.contains(pin.id)) {
         participated.add(pin);
       } else {
         rest.add(pin);
@@ -62,7 +58,11 @@ class _MyRankingScreenState extends ConsumerState<MyRankingScreen> {
       rest.sort((a, b) => a.name.compareTo(b.name));
     }
 
-    return [...participated, ...rest];
+    return [
+      if (favorite != null) favorite,
+      ...participated,
+      ...rest,
+    ];
   }
 
   @override
@@ -72,6 +72,11 @@ class _MyRankingScreenState extends ConsumerState<MyRankingScreen> {
     // 유저 위치 (저장된 홈 위치)
     final userAsync = ref.watch(userNotifierProvider);
     final userLocation = userAsync.valueOrNull?.location;
+    // 자주 가는 핀
+    final favoritePin = ref.watch(selectedPinProvider);
+    // 경기했던 핀 ID 목록
+    final participatedIds =
+        ref.watch(myParticipatedPinIdsProvider).valueOrNull ?? {};
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
@@ -110,7 +115,12 @@ class _MyRankingScreenState extends ConsumerState<MyRankingScreen> {
                 );
               }
 
-              final sortedPins = _sortPins(dongPins, position);
+              final sortedPins = _sortPins(
+                dongPins,
+                position,
+                favoritePin?.id,
+                participatedIds,
+              );
 
               if (sortedPins.isNotEmpty && _selectedPin == null) {
                 Future.microtask(
@@ -126,7 +136,9 @@ class _MyRankingScreenState extends ConsumerState<MyRankingScreen> {
                   itemBuilder: (context, index) {
                     final pin = sortedPins[index];
                     final isSelected = _selectedPin?.id == pin.id;
-                    final isParticipated = _participatedPinIds.contains(pin.id);
+                    final isParticipated =
+                        pin.id == favoritePin?.id ||
+                        participatedIds.contains(pin.id);
                     return GestureDetector(
                       onTap: () => setState(() => _selectedPin = pin),
                       child: AnimatedContainer(
@@ -192,7 +204,6 @@ class _MyRankingScreenState extends ConsumerState<MyRankingScreen> {
                   )
                 : _PinRankingBody(
                     pinId: _selectedPin!.id,
-                    onParticipated: _onParticipatedPin,
                   ),
           ),
         ],
@@ -204,10 +215,8 @@ class _MyRankingScreenState extends ConsumerState<MyRankingScreen> {
 /// 선택된 핀의 랭킹 표시
 class _PinRankingBody extends ConsumerWidget {
   final String pinId;
-  /// 이 핀에서 내 랭킹이 확인될 때 호출되는 콜백
-  final void Function(String pinId)? onParticipated;
 
-  const _PinRankingBody({required this.pinId, this.onParticipated});
+  const _PinRankingBody({required this.pinId});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -222,13 +231,6 @@ class _PinRankingBody extends ConsumerWidget {
       data: (data) {
         final rankings = data.rankings;
         final myRank = data.myRank;
-
-        // 내 랭킹이 있으면 참여 핀으로 기록
-        if (myRank != null) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            onParticipated?.call(pinId);
-          });
-        }
 
         if (rankings.isEmpty) {
           return const Center(

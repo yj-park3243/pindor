@@ -10,7 +10,7 @@ import {
 } from '../../entities/index.js';
 import { AppError, ErrorCode } from '../../shared/errors/app-error.js';
 import { RankingCache } from './ranking.cache.js';
-import { calculateTierByPercentile, calculateTierFallback } from '../../shared/utils/elo.js';
+import { calculateTierByRank } from '../../shared/utils/elo.js';
 
 export class RankingService {
   private cache: RankingCache;
@@ -31,6 +31,7 @@ export class RankingService {
   ) {
     const pinRepo = AppDataSource.getRepository(Pin);
     const sportsProfileRepo = AppDataSource.getRepository(SportsProfile);
+    const rankingEntryRepo = AppDataSource.getRepository(RankingEntry);
 
     // 핀 존재 확인
     const pin = await pinRepo.findOne({ where: { id: pinId } });
@@ -84,7 +85,12 @@ export class RankingService {
             userProfile.id,
           );
           if (myRankData.rank !== null) {
-            myRank = { rank: myRankData.rank, score: myRankData.score };
+            // DB에서 정확한 tier 조회 (등수 기반으로 계산된 값)
+            const dbEntry = await rankingEntryRepo.findOne({
+              where: { pinId, sportType: sportType as any, sportsProfileId: userProfile.id },
+              select: { tier: true } as any,
+            });
+            myRank = { rank: myRankData.rank, score: myRankData.score, tier: dbEntry?.tier ?? 'IRON' };
           }
         }
       }
@@ -154,7 +160,7 @@ export class RankingService {
         .getOne();
 
       if (myEntry) {
-        myRank = { rank: myEntry.rank, score: myEntry.score };
+        myRank = { rank: myEntry.rank, score: myEntry.score, tier: myEntry.tier };
       }
     }
 
@@ -245,41 +251,39 @@ export class RankingService {
   }
 
   // ─────────────────────────────────────
-  // 퍼센타일 기반 티어 일괄 재계산
+  // 등수 기반 티어 일괄 재계산 (ranking_entries 기준)
   // ─────────────────────────────────────
 
   async recalculateAllTiers(sportType: SportType): Promise<{ updated: number }> {
+    const rankingEntryRepo = AppDataSource.getRepository(RankingEntry);
     const sportsProfileRepo = AppDataSource.getRepository(SportsProfile);
 
-    // 활성 스포츠 프로필 전체 조회 (점수 내림차순)
-    const profiles = await sportsProfileRepo
-      .createQueryBuilder('sp')
-      .innerJoin('sp.user', 'u')
-      .where('sp.sportType = :sportType', { sportType })
-      .andWhere('sp.isActive = true')
-      .andWhere('u.status = :status', { status: 'ACTIVE' })
-      .orderBy('sp.currentScore', 'DESC')
-      .select(['sp.id', 'sp.currentScore', 'sp.tier'])
-      .getMany();
+    // 모든 핀의 해당 종목 랭킹 엔트리 조회
+    const entries = await rankingEntryRepo.find({
+      where: { sportType: sportType as any },
+      order: { pinId: 'ASC', rank: 'ASC' },
+    });
 
-    if (profiles.length === 0) return { updated: 0 };
-
-    // 내림차순 정렬된 점수 배열
-    const allScoresSorted = profiles.map(p => p.currentScore);
-
-    // 유저 수에 따라 퍼센타일 또는 폴백 방식 사용
-    const useFallback = profiles.length < 30;
+    // 핀별 그룹핑
+    const pinGroups = new Map<string, typeof entries>();
+    for (const entry of entries) {
+      const group = pinGroups.get(entry.pinId) ?? [];
+      group.push(entry);
+      pinGroups.set(entry.pinId, group);
+    }
 
     let updatedCount = 0;
 
-    for (const profile of profiles) {
-      const newTier = useFallback
-        ? calculateTierFallback(profile.currentScore)
-        : calculateTierByPercentile(profile.currentScore, allScoresSorted);
-
-      if (newTier !== profile.tier) {
-        await sportsProfileRepo.update(profile.id, { tier: newTier });
-        updatedCount++;
+    for (const [, group] of pinGroups) {
+      const totalPlayers = group.length;
+      for (const entry of group) {
+        const newTier = calculateTierByRank(entry.rank, totalPlayers);
+        if (newTier !== entry.tier) {
+          await rankingEntryRepo.update(entry.id, { tier: newTier });
+          // sports_profiles.tier도 동기화 (대표 핀 기준)
+          await sportsProfileRepo.update(entry.sportsProfileId, { tier: newTier });
+          updatedCount++;
+        }
       }
     }
 
@@ -293,6 +297,7 @@ export class RankingService {
   async getMyRanking(userId: string, sportType: SportType) {
     const sportsProfileRepo = AppDataSource.getRepository(SportsProfile);
     const userPinRepo = AppDataSource.getRepository(UserPin);
+    const rankingEntryRepo2 = AppDataSource.getRepository(RankingEntry);
 
     const profile = await sportsProfileRepo.findOne({
       where: { userId, sportType, isActive: true },
@@ -308,13 +313,36 @@ export class RankingService {
       relations: ['pin'],
     });
 
+    const rankingEntryRepo = AppDataSource.getRepository(RankingEntry);
     const pinRankings = await Promise.all(
       userPins.map(async (up) => {
-        const rankData = await this.cache.getUserRank(up.pinId, sportType, profile.id);
+        // Redis 캐시 우선 조회
+        let rankData = await this.cache.getUserRank(up.pinId, sportType, profile.id);
+
+        // Redis 미스 시 DB fallback
+        if (rankData.rank === null) {
+          const dbEntry = await rankingEntryRepo.findOne({
+            where: { pinId: up.pinId, sportType: sportType as any, sportsProfileId: profile.id },
+          });
+          if (dbEntry) {
+            rankData = { rank: dbEntry.rank, score: dbEntry.score };
+            // Redis 캐시에 저장 (다음 조회 시 캐시 히트)
+            await this.cache.updateScore(up.pinId, sportType, profile.id, dbEntry.score);
+          }
+        }
+
+        const entryScore = rankData.score ?? profile.currentScore;
+        // DB에서 등수 기반 tier 조회
+        const dbTierEntry = await rankingEntryRepo2.findOne({
+          where: { pinId: up.pinId, sportType: sportType as any, sportsProfileId: profile.id },
+          select: { tier: true } as any,
+        });
+        const entryTier = dbTierEntry?.tier ?? 'IRON';
         return {
           pin: { id: up.pin.id, name: up.pin.name, level: up.pin.level },
           rank: rankData.rank,
-          score: rankData.score ?? profile.currentScore,
+          score: entryScore,
+          tier: entryTier,
           isPrimary: up.isPrimary,
         };
       }),

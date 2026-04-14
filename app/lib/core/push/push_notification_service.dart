@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -21,6 +22,11 @@ class PushNotificationService {
 
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   final SecureStorage _storage = SecureStorage.instance;
+
+  // Firebase 리스너 구독 관리
+  StreamSubscription<String>? _tokenRefreshSub;
+  StreamSubscription<RemoteMessage>? _onMessageSub;
+  StreamSubscription<RemoteMessage>? _onMessageOpenedSub;
 
   // 딥링크 처리 콜백 (앱 라우터에서 설정)
   void Function(String deepLink)? onDeepLink;
@@ -80,10 +86,12 @@ class PushNotificationService {
     }
 
     // 토큰 갱신 감지
-    _messaging.onTokenRefresh.listen(_registerToken);
+    _tokenRefreshSub?.cancel();
+    _tokenRefreshSub = _messaging.onTokenRefresh.listen(_registerToken);
 
     // 포그라운드 메시지 핸들러
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    _onMessageSub?.cancel();
+    _onMessageSub = FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       debugPrint('[Push] 포그라운드 메시지: ${message.notification?.title}');
 
       // MATCH_PENDING_ACCEPT는 소켓 상태와 관계없이 딥링크 처리 (소켓 유실 대비)
@@ -100,7 +108,8 @@ class PushNotificationService {
     });
 
     // 백그라운드/종료 상태에서 알림 탭 → 딥링크 처리
-    FirebaseMessaging.onMessageOpenedApp.listen(_handleDeepLink);
+    _onMessageOpenedSub?.cancel();
+    _onMessageOpenedSub = FirebaseMessaging.onMessageOpenedApp.listen(_handleDeepLink);
 
     // 앱이 종료 상태에서 알림 탭으로 실행된 경우
     final initialMessage = await _messaging.getInitialMessage();

@@ -1,9 +1,12 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:geolocator/geolocator.dart';
+import '../../core/utils/location_utils.dart';
 import '../../config/sports.dart';
 import '../../config/theme.dart';
 import '../../models/pin.dart';
@@ -13,13 +16,15 @@ import '../../providers/user_provider.dart';
 import '../../providers/profile_provider.dart';
 import '../../providers/pin_provider.dart';
 import '../../providers/sport_preference_provider.dart';
+import '../../providers/ranking_provider.dart';
+import '../../models/ranking_entry.dart';
 import '../../widgets/map/sport_marker.dart';
 import '../../widgets/common/loading_indicator.dart';
-import '../../widgets/common/score_display.dart';
 import '../../widgets/common/fullscreen_image_viewer.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import '../../core/network/api_client.dart';
 
 /// 자주 가는 핀을 SharedPreferences에 영속 저장하는 프로바이더
 class SelectedPinNotifier extends Notifier<Pin?> {
@@ -46,6 +51,10 @@ class SelectedPinNotifier extends Notifier<Pin?> {
     final prefs = await SharedPreferences.getInstance();
     if (pin != null) {
       await prefs.setString(_key, jsonEncode(pin.toJson()));
+      // 서버에 자주 가는 핀 동기화
+      try {
+        await ApiClient.instance.post('/pins/favorite', body: {'pinId': pin.id});
+      } catch (_) {}
     } else {
       await prefs.remove(_key);
     }
@@ -66,11 +75,6 @@ class ProfileScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
-      appBar: AppBar(
-        title: const Text('내 프로필'),
-        backgroundColor: const Color(0xFF0A0A0A),
-        elevation: 0,
-      ),
       body: userAsync.when(
         loading: () => const FullScreenLoading(),
         error: (e, _) => _ErrorBody(
@@ -83,7 +87,11 @@ class ProfileScreen extends ConsumerWidget {
             );
           }
 
-          final primaryProfile = user.primarySportsProfile;
+          final currentSport = ref.watch(sportPreferenceProvider);
+          // 현재 선택 종목에 해당하는 프로필 (없으면 null — 다른 종목으로 fallback하지 않음)
+          final selectedProfile = user.sportsProfiles
+                  .where((p) => p.sportType == currentSport)
+                  .firstOrNull;
 
           return RefreshIndicator(
             onRefresh: () async {
@@ -98,9 +106,8 @@ class ProfileScreen extends ConsumerWidget {
                   _ProfileHeader(
                     nickname: user.nickname,
                     profileImageUrl: user.profileImageUrl,
-                    score: primaryProfile?.displayScore ?? primaryProfile?.currentScore ?? 1000,
-                    isPlacement: primaryProfile?.isPlacement ?? false,
-                    placementGamesRemaining: primaryProfile?.placementGamesRemaining,
+                    currentSport: currentSport,
+                    profile: selectedProfile,
                   ),
 
                   const SizedBox(height: 16),
@@ -124,6 +131,7 @@ class ProfileScreen extends ConsumerWidget {
                     ),
                     data: (profiles) => _SportProfileSection(
                       profiles: profiles,
+                      currentSport: currentSport,
                     ),
                   ),
 
@@ -176,134 +184,363 @@ class _ErrorBody extends ConsumerWidget {
   }
 }
 
-// ─── 프로필 헤더 ──────────────────────────────────────────────────────────────
+// ─── 프로필 헤더 (홀로그램 카드) ──────────────────────────────────────────────
 
-class _ProfileHeader extends StatelessWidget {
+class _ProfileHeader extends ConsumerStatefulWidget {
   final String nickname;
   final String? profileImageUrl;
-  final int score;
-  final bool isPlacement;
-  final int? placementGamesRemaining;
+  final String currentSport;
+  final SportsProfile? profile;
 
   const _ProfileHeader({
     required this.nickname,
     required this.profileImageUrl,
-    required this.score,
-    this.isPlacement = false,
-    this.placementGamesRemaining,
+    required this.currentSport,
+    this.profile,
   });
 
   @override
+  ConsumerState<_ProfileHeader> createState() => _ProfileHeaderState();
+}
+
+class _ProfileHeaderState extends ConsumerState<_ProfileHeader>
+    with TickerProviderStateMixin {
+  double _currentX = 0.5;
+  double _currentY = 0.5;
+  bool _isTouching = false;
+
+  // 복귀 애니메이션
+  late AnimationController _returnController;
+  late Animation<double> _returnAnimX;
+  late Animation<double> _returnAnimY;
+
+  // 아이들 자동 광원 애니메이션
+  late AnimationController _idleController;
+
+  @override
+  void initState() {
+    super.initState();
+    _returnController = AnimationController(vsync: this, duration: const Duration(milliseconds: 600))
+      ..addListener(() {
+        setState(() {
+          _currentX = _returnAnimX.value;
+          _currentY = _returnAnimY.value;
+        });
+      });
+
+    // 아이들: 4초 주기로 자동 광원 이동
+    _idleController = AnimationController(vsync: this, duration: const Duration(seconds: 4))
+      ..repeat();
+    _idleController.addListener(() {
+      if (!_isTouching && !_returnController.isAnimating) {
+        setState(() {
+          // 원형 궤도로 살짝 움직임 (중심 0.5 ± 0.08)
+          _currentX = 0.5 + 0.08 * cos(_idleController.value * 2 * pi);
+          _currentY = 0.5 + 0.06 * sin(_idleController.value * 2 * pi);
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _returnController.dispose();
+    _idleController.dispose();
+    super.dispose();
+  }
+
+  void _onPanUpdate(DragUpdateDetails details, Size cardSize) {
+    final x = (details.localPosition.dx / cardSize.width).clamp(0.0, 1.0);
+    final y = (details.localPosition.dy / cardSize.height).clamp(0.0, 1.0);
+    setState(() {
+      _currentX += (x - _currentX) * 0.3;
+      _currentY += (y - _currentY) * 0.3;
+      _isTouching = true;
+    });
+  }
+
+  void _onPanEnd() {
+    _isTouching = false;
+    _returnAnimX = Tween<double>(begin: _currentX, end: 0.5)
+        .animate(CurvedAnimation(parent: _returnController, curve: Curves.easeOutCubic));
+    _returnAnimY = Tween<double>(begin: _currentY, end: 0.5)
+        .animate(CurvedAnimation(parent: _returnController, curve: Curves.easeOutCubic));
+    _returnController.forward(from: 0);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 24),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppTheme.primaryColor.withOpacity(0.12),
-            AppTheme.primaryColor.withOpacity(0.12),
-          ],
-        ),
-      ),
-      child: Column(
-        children: [
-          // 아바타 (탭 시 풀스크린 뷰어)
-          GestureDetector(
-            onTap: profileImageUrl != null
-                ? () => showFullscreenImage(context, [profileImageUrl!])
-                : null,
-            child: Container(
-              width: 96,
-              height: 96,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: AppTheme.primaryColor, width: 3),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.primaryColor.withOpacity(0.2),
-                    blurRadius: 16,
-                    spreadRadius: 2,
+    final profile = widget.profile;
+    final isPlacement = profile?.isPlacement ?? false;
+    final placementGamesRemaining = profile?.placementGamesRemaining;
+
+    // 핀 + 랭킹
+    final selectedPin = ref.watch(selectedPinProvider);
+    final rankAsync = selectedPin != null
+        ? ref.watch(pinRankingBySportProvider((pinId: selectedPin.id, sportType: widget.currentSport)))
+        : null;
+    final myRank = rankAsync?.valueOrNull?.myRank;
+
+    // 티어: 핀별 랭킹 티어 우선, 없으면 프로필 티어 fallback
+    final tier = myRank?.tier ?? profile?.tier;
+    final tierColor = tier != null ? AppTheme.tierColor(tier) : AppTheme.primaryColor;
+
+    // 3D 기울기 (최대 ±10도)
+    final rotateX = (_currentY - 0.5) * -20.0 * pi / 180;
+    final rotateY = (_currentX - 0.5) * 20.0 * pi / 180;
+
+    // 광원 Alignment (-1.6 ~ 1.2 범위)
+    final lightAlignX = (_currentX * 2.8) - 1.6;
+    final lightAlignY = (_currentY * 2.0) - 1.0;
+
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final cardSize = Size(constraints.maxWidth, 220);
+            return GestureDetector(
+              onPanUpdate: (d) => _onPanUpdate(d, cardSize),
+              onPanEnd: (_) => _onPanEnd(),
+              onPanCancel: _onPanEnd,
+              child: Transform(
+                alignment: Alignment.center,
+                transform: Matrix4.identity()
+                  ..setEntry(3, 2, 0.0008)
+                  ..rotateX(rotateX)
+                  ..rotateY(rotateY),
+                child: Container(
+                  height: 220,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: tierColor.withValues(alpha: 0.2),
+                      width: 1,
+                    ),
                   ),
-                ],
-              ),
-              child: ClipOval(
-                child: profileImageUrl != null
-                    ? CachedNetworkImage(
-                  imageUrl: profileImageUrl!,
-                  fit: BoxFit.cover,
-                  placeholder: (_, __) => Container(
-                    color: AppTheme.primaryColor.withOpacity(0.2),
-                  ),
-                  errorWidget: (_, __, ___) => Container(
-                    color: AppTheme.primaryColor.withOpacity(0.2),
-                    child: Center(
-                      child: Text(
-                        nickname.isNotEmpty ? nickname[0] : '?',
-                        style: const TextStyle(
-                          fontSize: 40,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.primaryColor,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: Stack(
+                      children: [
+                        // 배경: 티어색을 강하게 반영
+                        Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Color.lerp(const Color(0xFF0F0F1A), tierColor, 0.25)!,
+                                Color.lerp(const Color(0xFF1A1A2E), tierColor, 0.10)!,
+                                const Color(0xFF0A0A14),
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                  ),
-                )
-                    : Container(
-                  color: AppTheme.primaryColor.withOpacity(0.2),
-                  child: Center(
-                    child: Text(
-                      nickname.isNotEmpty ? nickname[0] : '?',
-                      style: const TextStyle(
-                        fontSize: 40,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.primaryColor,
-                      ),
+
+                        // 상단 코너 티어색 글로우
+                        Positioned(
+                          top: -40,
+                          right: -40,
+                          child: Container(
+                            width: 160,
+                            height: 160,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: RadialGradient(
+                                colors: [
+                                  tierColor.withValues(alpha: 0.15),
+                                  tierColor.withValues(alpha: 0.0),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        // 메인 광원 (포인터 따라 이동)
+                        Positioned.fill(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: RadialGradient(
+                                center: Alignment(lightAlignX, lightAlignY),
+                                radius: 0.7,
+                                colors: [
+                                  Colors.white.withValues(alpha: _isTouching ? 0.18 : 0.06),
+                                  Colors.white.withValues(alpha: 0.0),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        // 티어색 광원 (포인터 따라 이동)
+                        Positioned.fill(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: RadialGradient(
+                                center: Alignment(lightAlignX * 0.8, lightAlignY * 0.8),
+                                radius: 1.0,
+                                colors: [
+                                  tierColor.withValues(alpha: _isTouching ? 0.25 : 0.10),
+                                  tierColor.withValues(alpha: 0.0),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        // 카드 컨텐츠
+                        Padding(
+                          padding: const EdgeInsets.all(22),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // 상단: 아바타 + 닉네임 + 설정
+                              Row(
+                                children: [
+                                  GestureDetector(
+                                    onTap: widget.profileImageUrl != null
+                                        ? () => showFullscreenImage(context, [widget.profileImageUrl!])
+                                        : null,
+                                    child: Container(
+                                      width: 56,
+                                      height: 56,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: tierColor.withValues(alpha: 0.5), width: 2),
+                                      ),
+                                      child: ClipOval(
+                                        child: widget.profileImageUrl != null
+                                            ? CachedNetworkImage(
+                                          imageUrl: widget.profileImageUrl!,
+                                          fit: BoxFit.cover,
+                                          placeholder: (_, __) => _AvatarFallback(nickname: widget.nickname, color: tierColor),
+                                          errorWidget: (_, __, ___) => _AvatarFallback(nickname: widget.nickname, color: tierColor),
+                                        )
+                                            : _AvatarFallback(nickname: widget.nickname, color: tierColor),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(widget.nickname, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Colors.white)),
+                                        const SizedBox(height: 2),
+                                        Row(
+                                          children: [
+                                            Icon(sportIcon(widget.currentSport), size: 12, color: Colors.white54),
+                                            const SizedBox(width: 4),
+                                            Text(sportLabel(widget.currentSport), style: const TextStyle(fontSize: 12, color: Colors.white54)),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  GestureDetector(
+                                    onTap: () => GoRouter.of(context).push('/profile/settings'),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withValues(alpha: 0.06),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: const Icon(Symbols.settings_rounded, color: Colors.white54, size: 18),
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              // 매칭 문구
+                              if (profile?.matchMessage != null && profile!.matchMessage!.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: Text(
+                                    '"${profile.matchMessage}"',
+                                    style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.4), fontStyle: FontStyle.italic),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+
+                              const Spacer(),
+
+                              // 하단: 핀별 점수/등수/티어
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  // 좌측: 핀별 점수 + 티어
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        if (profile == null)
+                                          const Text('종목을 추가해주세요', style: TextStyle(fontSize: 14, color: Colors.white38))
+                                        else if (selectedPin == null)
+                                          const Text('핀을 설정해주세요', style: TextStyle(fontSize: 14, color: Colors.white38))
+                                        else if (isPlacement)
+                                            Text(
+                                              '배치 중 (${5 - (placementGamesRemaining ?? 0)}/5)',
+                                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: tierColor),
+                                            )
+                                          else if (myRank != null && myRank.rank > 0) ...[
+                                              // 해당 핀에서 플레이 기록 있음 → 핀별 점수
+                                              Text('${myRank.score}점', style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Colors.white, height: 1)),
+                                              const SizedBox(height: 4),
+                                              Row(
+                                                children: [
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                    decoration: BoxDecoration(color: tierColor.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(6)),
+                                                    child: Text(myRank.tier, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: tierColor)),
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  Text(
+                                                    '${profile.gamesPlayed}전 ${profile.wins}승 ${profile.losses}패',
+                                                    style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.35)),
+                                                  ),
+                                                ],
+                                              ),
+                                            ] else
+                                            // 해당 핀에서 플레이 기록 없음
+                                              Text('${selectedPin.name}에서\n기록이 없습니다', style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.35), height: 1.4)),
+                                      ],
+                                    ),
+                                  ),
+
+                                  // 우측: 핀 + 등수
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      if (selectedPin != null)
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(Symbols.location_on_rounded, size: 12, color: Colors.white38),
+                                            const SizedBox(width: 3),
+                                            Text(selectedPin.name, style: const TextStyle(fontSize: 11, color: Colors.white38)),
+                                          ],
+                                        ),
+                                      if (myRank != null && myRank.rank > 0) ...[
+                                        const SizedBox(height: 4),
+                                        Text('${myRank.rank}위', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: tierColor, height: 1)),
+                                      ],
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
               ),
-            ),
-          ),
-          const SizedBox(height: 18),
-          Text(
-            nickname,
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w800,
-              color: AppTheme.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          if (isPlacement)
-            ScoreText(
-              score: score,
-              isPlacement: true,
-              placementGamesRemaining: placementGamesRemaining,
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-            )
-          else
-            Container(
-              padding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppTheme.primaryColor.withOpacity(0.4)),
-              ),
-              child: Text(
-                '$score점',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: AppTheme.primaryColor,
-                ),
-              ),
-            ),
-        ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -357,6 +594,25 @@ class _RecordSummary extends StatelessWidget {
   }
 }
 
+class _AvatarFallback extends StatelessWidget {
+  final String nickname;
+  final Color color;
+  const _AvatarFallback({required this.nickname, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: color.withValues(alpha: 0.2),
+      child: Center(
+        child: Text(
+          nickname.isNotEmpty ? nickname[0] : '?',
+          style: TextStyle(fontSize: 30, fontWeight: FontWeight.w700, color: color),
+        ),
+      ),
+    );
+  }
+}
+
 class _StatBox extends StatelessWidget {
   final String label;
   final String value;
@@ -404,13 +660,16 @@ class _StatDivider extends StatelessWidget {
 
 // ─── 스포츠 프로필 섹션 ─────────────────────────────────────────────────────────
 
-class _SportProfileSection extends StatelessWidget {
+class _SportProfileSection extends ConsumerWidget {
   final List<SportsProfile> profiles;
+  final String currentSport;
 
-  const _SportProfileSection({required this.profiles});
+  const _SportProfileSection({required this.profiles, required this.currentSport});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selectedPin = ref.watch(selectedPinProvider);
+
     if (profiles.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -464,7 +723,8 @@ class _SportProfileSection extends StatelessWidget {
               ],
             ),
           ),
-          ...profiles.map((p) {
+          // 선택 종목 1개만 표시 (나머지는 상세에서)
+          ...profiles.where((p) => p.sportType == currentSport).take(1).map((p) {
             return GestureDetector(
               onTap: () => context.push('/profile/sports'),
               child: Container(
@@ -500,25 +760,63 @@ class _SportProfileSection extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 2),
-                          Row(
-                            children: [
-                              ScoreText(
-                                score: p.displayScore ?? p.currentScore,
-                                isPlacement: p.isPlacement,
-                                placementGamesRemaining: p.placementGamesRemaining,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                                color: AppTheme.textSecondary,
-                              ),
-                              Text(
-                                ' · ${p.gamesPlayed}경기',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: AppTheme.textSecondary,
+                          Builder(builder: (context) {
+                            final rankAsync = selectedPin != null
+                                ? ref.watch(pinRankingBySportProvider(
+                              (pinId: selectedPin.id, sportType: p.sportType),
+                            ))
+                                : const AsyncValue<PinRankingData>.loading();
+                            final myRank = rankAsync.valueOrNull?.myRank;
+                            final hasPinRecord = myRank != null && myRank.rank > 0;
+
+                            // 핀별 점수/티어 우선, 없으면 "기록 없음"
+                            final pinScore = hasPinRecord ? myRank.score : null;
+                            final pinTier = hasPinRecord ? myRank.tier : null;
+
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (selectedPin == null)
+                                  const Text('핀을 설정해주세요', style: TextStyle(fontSize: 12, color: AppTheme.textDisabled))
+                                else if (hasPinRecord)
+                                  Row(
+                                    children: [
+                                      Text(
+                                        '${pinScore}점 · $pinTier',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                          color: AppTheme.tierColor(pinTier!),
+                                        ),
+                                      ),
+                                      Text(
+                                        ' · ${myRank.rank}위',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: AppTheme.primaryColor,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                else
+                                  Text(
+                                    '${selectedPin.name} 기록 없음',
+                                    style: const TextStyle(fontSize: 12, color: AppTheme.textDisabled),
+                                  ),
+                                const SizedBox(height: 1),
+                                Text(
+                                  hasPinRecord
+                                      ? '${selectedPin?.name ?? ''} · ${myRank!.rank}위'
+                                      : '${p.gamesPlayed}경기 · ${p.wins}승 ${p.losses}패 (전체)',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: AppTheme.textDisabled,
+                                  ),
                                 ),
-                              ),
-                            ],
-                          ),
+                              ],
+                            );
+                          }),
                         ],
                       ),
                     ),
@@ -527,23 +825,25 @@ class _SportProfileSection extends StatelessWidget {
               ),
             );
           }),
-          const SizedBox(height: 4),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () => context.push('/profile/sports'),
-              icon: const Icon(Icons.add, size: 16),
-              label: const Text('종목 추가'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppTheme.primaryColor,
-                side: BorderSide(color: AppTheme.primaryColor.withValues(alpha: 0.5)),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+          if (profiles.length > 1) ...[
+            const SizedBox(height: 4),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => context.push('/profile/sports'),
+                icon: const Icon(Icons.sports_esports_outlined, size: 16),
+                label: Text('전체 종목 보기 (${profiles.length}개)'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppTheme.textSecondary,
+                  side: BorderSide(color: AppTheme.textSecondary.withValues(alpha: 0.3)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
                 ),
-                padding: const EdgeInsets.symmetric(vertical: 10),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -579,19 +879,16 @@ class _ProfileMenu extends ConsumerWidget {
       _MenuItem(
         icon: Icons.campaign_outlined,
         label: '공지사항',
-        subtitle: '서비스 공지 확인',
         onTap: () => context.push('/notices'),
       ),
       _MenuItem(
         icon: Icons.leaderboard_outlined,
         label: '내 랭킹',
-        subtitle: '지역 핀 랭킹 확인',
         onTap: () => context.push('/map/my-ranking'),
       ),
       _MenuItem(
         icon: Icons.support_agent_outlined,
         label: '신고/문의',
-        subtitle: '문의 및 신고 접수',
         onTap: () => context.push('/profile/inquiry'),
       ),
     ];
@@ -641,6 +938,13 @@ class _ProfileMenu extends ConsumerWidget {
         builder: (_) => _PinMapSelectionPage(
           onPinSelected: (pin) {
             ref.read(selectedPinProvider.notifier).select(pin);
+            // 핀 변경 시 새 핀의 모든 종목 랭킹 캐시 갱신
+            final profiles = ref.read(userNotifierProvider).valueOrNull?.sportsProfiles ?? [];
+            for (final p in profiles) {
+              ref.invalidate(pinRankingBySportProvider(
+                (pinId: pin.id, sportType: p.sportType),
+              ));
+            }
           },
         ),
       ),
@@ -799,28 +1103,13 @@ class _PinMapSelectionPageState extends ConsumerState<_PinMapSelectionPage> {
   Future<void> _initLocation() async {
     setState(() => _isLocating = true);
     try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
+      final pos = await LocationUtils.getCurrentPosition();
+      if (pos == null || !mounted) return;
 
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) return;
-
-      final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.medium,
-        timeLimit: const Duration(seconds: 10),
-      );
-
-      if (!mounted) return;
       setState(() => _currentLocation = NLatLng(pos.latitude, pos.longitude));
       _mapController?.updateCamera(
         NCameraUpdate.scrollAndZoomTo(target: _currentLocation, zoom: 13),
       );
-    } catch (e) {
-      debugPrint('[PinMapSelection] Location error: $e');
     } finally {
       if (mounted) setState(() => _isLocating = false);
     }
@@ -901,7 +1190,7 @@ class _PinMapSelectionPageState extends ConsumerState<_PinMapSelectionPage> {
                       zoom: 12,
                     ),
                     mapType: NMapType.basic,
-                    locationButtonEnable: true,
+                    locationButtonEnable: false,
                   ),
                   onMapReady: (controller) {
                     _mapController = controller;

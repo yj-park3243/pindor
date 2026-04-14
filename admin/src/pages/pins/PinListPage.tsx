@@ -139,7 +139,7 @@ export function PinListPage() {
       title: '사용자 수',
       dataIndex: 'userCount',
       key: 'userCount',
-      render: (v: number) => v.toLocaleString(),
+      render: (v: number) => (v ?? 0).toLocaleString(),
       sorter: true,
       width: 100,
     },
@@ -375,7 +375,7 @@ export function PinListPage() {
               current: page,
               pageSize: 20,
               total: data?.total || 0,
-              showTotal: (total) => `총 ${total.toLocaleString()}개`,
+              showTotal: (total) => `총 ${(total ?? 0).toLocaleString()}개`,
               onChange: setPage,
             }}
             onRow={(record) => ({

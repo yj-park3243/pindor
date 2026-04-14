@@ -1,3 +1,6 @@
+import '../config/sports.dart';
+import '../config/theme.dart';
+
 /// 스포츠 프로필 모델
 /// 종목별 점수, 티어, G핸디(골프 전용) 관리
 class SportsProfile {
@@ -193,34 +196,10 @@ class SportsProfile {
   double get winRate => gamesPlayed > 0 ? (wins / gamesPlayed * 100) : 0.0;
 
   String get sportTypeDisplayName {
-    switch (sportType) {
-      case 'GOLF':
-        return '골프';
-      case 'BILLIARDS':
-        return '당구';
-      case 'TENNIS':
-        return '테니스';
-      case 'TABLE_TENNIS':
-        return '탁구';
-      default:
-        return sportType;
-    }
+    return sportLabel(sportType);
   }
 
-  String get tierDisplayName {
-    switch (tier) {
-      case 'BRONZE':
-        return '브론즈';
-      case 'SILVER':
-        return '실버';
-      case 'GOLD':
-        return '골드';
-      case 'PLATINUM':
-        return '플래티넘';
-      default:
-        return tier;
-    }
-  }
+  String get tierDisplayName => AppTheme.tierName(tier);
 
   /// G핸디로 초기 점수 계산
   /// 변동폭을 작게 유지 (950~1050) — 배치 게임에서 실력 반영

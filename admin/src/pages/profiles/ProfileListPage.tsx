@@ -113,7 +113,7 @@ export function ProfileListPage() {
       dataIndex: 'currentScore',
       key: 'currentScore',
       render: (score: number) => (
-        <strong style={{ color: '#1890ff' }}>{score.toLocaleString()}</strong>
+        <strong style={{ color: '#1890ff' }}>{(score ?? 0).toLocaleString()}</strong>
       ),
       sorter: true,
       width: 110,
@@ -140,7 +140,7 @@ export function ProfileListPage() {
       title: 'G핸디',
       dataIndex: 'gHandicap',
       key: 'gHandicap',
-      render: (v: number | null) => v !== null ? v.toFixed(1) : '-',
+      render: (v: number | string | null) => v != null ? Number(v).toFixed(1) : '-',
       width: 80,
     },
     {
@@ -241,7 +241,7 @@ export function ProfileListPage() {
             current: page,
             pageSize,
             total: data?.total || 0,
-            showTotal: (total) => `총 ${total.toLocaleString()}개`,
+            showTotal: (total) => `총 ${(total ?? 0).toLocaleString()}개`,
             onChange: setPage,
           }}
           scroll={{ x: 1000 }}
@@ -334,7 +334,7 @@ export function ProfileListPage() {
             {
               title: '이전 점수',
               dataIndex: 'previousScore',
-              render: (v: number) => v.toLocaleString(),
+              render: (v: number) => (v ?? 0).toLocaleString(),
             },
             {
               title: '변동',
@@ -348,7 +348,7 @@ export function ProfileListPage() {
             {
               title: '새 점수',
               dataIndex: 'newScore',
-              render: (v: number) => <strong>{v.toLocaleString()}</strong>,
+              render: (v: number) => <strong>{(v ?? 0).toLocaleString()}</strong>,
             },
             {
               title: '사유',

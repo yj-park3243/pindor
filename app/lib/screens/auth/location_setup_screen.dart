@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/utils/location_utils.dart';
 import '../../config/router.dart';
 import '../../config/theme.dart';
 import '../../models/pin.dart';
@@ -38,34 +39,15 @@ class _LocationSetupScreenState extends ConsumerState<LocationSetupScreen> {
   }
 
   Future<void> _initLocation() async {
-    try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
+    final pos = await LocationUtils.getCurrentPosition();
+    if (pos == null || !mounted) return;
 
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        return;
-      }
-
-      final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.medium,
-        timeLimit: const Duration(seconds: 10),
-      );
-
-      if (!mounted) return;
-      setState(() {
-        _currentLocation = NLatLng(pos.latitude, pos.longitude);
-      });
-      _mapController?.updateCamera(
-        NCameraUpdate.scrollAndZoomTo(target: _currentLocation, zoom: 13),
-      );
-    } catch (e) {
-      debugPrint('[LocationSetup] Location error: $e');
-    }
+    setState(() {
+      _currentLocation = NLatLng(pos.latitude, pos.longitude);
+    });
+    _mapController?.updateCamera(
+      NCameraUpdate.scrollAndZoomTo(target: _currentLocation, zoom: 13),
+    );
   }
 
   void _addPinMarkers(List<Pin> pins) async {
@@ -146,7 +128,7 @@ class _LocationSetupScreenState extends ConsumerState<LocationSetupScreen> {
       ),
       body: Column(
         children: [
-          // 진행 표시 바 (3/3)
+          // 진행 표시 바 (4/4)
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 0, 24, 0),
             child: Column(
@@ -154,7 +136,7 @@ class _LocationSetupScreenState extends ConsumerState<LocationSetupScreen> {
               children: [
                 Row(
                   children: List.generate(
-                    3,
+                    4,
                     (i) => Expanded(
                       child: Container(
                         margin: const EdgeInsets.only(right: 4),
@@ -172,7 +154,7 @@ class _LocationSetupScreenState extends ConsumerState<LocationSetupScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      '3단계: 핀 선택',
+                      '4단계: 핀 선택',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -180,7 +162,7 @@ class _LocationSetupScreenState extends ConsumerState<LocationSetupScreen> {
                       ),
                     ),
                     Text(
-                      '3 / 3',
+                      '4 / 4',
                       style: TextStyle(
                         fontSize: 12,
                         color: AppTheme.textSecondary,
@@ -225,7 +207,7 @@ class _LocationSetupScreenState extends ConsumerState<LocationSetupScreen> {
                         zoom: 12,
                       ),
                       mapType: NMapType.basic,
-                      locationButtonEnable: true,
+                      locationButtonEnable: false,
                     ),
                     onMapReady: (controller) {
                       _mapController = controller;

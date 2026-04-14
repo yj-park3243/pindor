@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import '../../config/theme.dart';
 
 class ErrorView extends StatelessWidget {
@@ -23,7 +24,7 @@ class ErrorView extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               child: const Icon(
-                Icons.error_outline_rounded,
+                Symbols.error_rounded,
                 size: 42,
                 color: AppTheme.errorColor,
               ),
@@ -40,7 +41,7 @@ class ErrorView extends StatelessWidget {
               const SizedBox(height: 20),
               OutlinedButton.icon(
                 onPressed: onRetry,
-                icon: const Icon(Icons.refresh, size: 18),
+                icon: const Icon(Symbols.refresh_rounded, size: 18),
                 label: const Text('다시 시도'),
               ),
             ],

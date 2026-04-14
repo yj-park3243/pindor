@@ -81,6 +81,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.2"
+  bottom_picker:
+    dependency: "direct main"
+    description:
+      name: bottom_picker
+      sha256: "721b95e389b1c91e387832833fdcd0fa8658a1e3f9b9d75a966af9354bb24ada"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.1.1"
   build:
     dependency: transitive
     description:
@@ -943,6 +951,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.0.2"
+  like_button:
+    dependency: "direct main"
+    description:
+      name: like_button
+      sha256: "8b349521182ea6252b7fe1eaaad5932a9f55f94c3e87849376cfc25c78bac53a"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.1.0"
   lints:
     dependency: transitive
     description:
@@ -999,6 +1015,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.11.1"
+  material_dialogs:
+    dependency: "direct main"
+    description:
+      name: material_dialogs
+      sha256: f072d8c11b3392a2aa6a2f279239e5063654113e1e851b62ef009b500d512f17
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.1.5"
+  material_symbols_icons:
+    dependency: "direct main"
+    description:
+      name: material_symbols_icons
+      sha256: "10a74aaa9e566c92f8aa14809d2dd78156fb93743348ebffec0345c38eb35706"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.2928.1"
   meta:
     dependency: transitive
     description:
@@ -1239,6 +1271,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.5.0"
+  pull_down_button:
+    dependency: "direct main"
+    description:
+      name: pull_down_button
+      sha256: "12cdd8ff187a3150ebdf075e5074299f085579b158d2b4e655ccbafccf95f25b"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.10.2"
   recase:
     dependency: transitive
     description:

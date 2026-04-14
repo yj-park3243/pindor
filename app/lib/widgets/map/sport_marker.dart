@@ -103,10 +103,9 @@ class SportMarkerBuilder {
       final width = (pin.name.length * 14.0 + 32).clamp(70.0, 220.0);
       const height = 46.0;
 
-      final marker = NMarker(
-        id: pin.id,
-        position: NLatLng(pin.centerLatitude, pin.centerLongitude),
-        icon: await NOverlayImage.fromWidget(
+      final NOverlayImage icon;
+      try {
+        icon = await NOverlayImage.fromWidget(
           widget: SizedBox(
             width: width,
             height: height,
@@ -117,7 +116,16 @@ class SportMarkerBuilder {
           ),
           size: Size(width, height),
           context: context,
-        ),
+        );
+      } catch (e) {
+        debugPrint('[SportMarker] NOverlayImage 생성 실패: $e');
+        continue;
+      }
+
+      final marker = NMarker(
+        id: pin.id,
+        position: NLatLng(pin.centerLatitude, pin.centerLongitude),
+        icon: icon,
         anchor: const NPoint(0.5, 1.0),
       );
 

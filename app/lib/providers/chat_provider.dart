@@ -181,11 +181,16 @@ class ChatMessagesNotifier
       debugPrint('[ChatMessages] fetch failed: $e');
     }));
 
-    // 로컬에 있으면 즉시 반환
-    if (localMessages.isNotEmpty) return localMessages;
+    // 로컬에 있으면 즉시 반환 + 인증번호 복원
+    if (localMessages.isNotEmpty) {
+      Future.microtask(() => _restoreReceivedVerificationCode(roomId));
+      return localMessages;
+    }
 
     // 없으면 API 조회 대기
-    return _fetchInitialMessages(roomId);
+    final messages = await _fetchInitialMessages(roomId);
+    Future.microtask(() => _restoreReceivedVerificationCode(roomId));
+    return messages;
   }
 
   Future<List<Message>> _fetchInitialMessages(String roomId) async {
@@ -207,6 +212,8 @@ class ChatMessagesNotifier
     final updated = await repo.getMessagesLocal(roomId);
     if (updated.isNotEmpty && state.hasValue) {
       state = AsyncData(updated);
+      // API에서 새 메시지 fetch 후 인증번호 복원 (오프라인 동안 받은 인증번호 반영)
+      _restoreReceivedVerificationCode(roomId);
     }
   }
 
@@ -234,6 +241,17 @@ class ChatMessagesNotifier
           messageType: message.messageType,
           createdAt: message.createdAt,
         );
+
+        // VERIFICATION_CODE 메시지 수신 시 provider에 코드 저장
+        if (message.isVerificationCode) {
+          final currentUser = ref.read(currentUserProvider);
+          if (message.senderId != currentUser?.id) {
+            final code = message.extraData?['verificationCode'] as String?;
+            if (code != null) {
+              ref.read(receivedVerificationCodeProvider(roomId).notifier).state = code;
+            }
+          }
+        }
 
         // 새 메시지 수신 시 읽음 처리 전송 (내가 현재 채팅방에 있으므로)
         final currentUser = ref.read(currentUserProvider);
@@ -281,6 +299,24 @@ class ChatMessagesNotifier
 
       state = AsyncData(updated);
     });
+  }
+
+  /// 기존 메시지에서 상대방이 보낸 인증번호를 찾아 provider에 복원
+  void _restoreReceivedVerificationCode(String roomId) {
+    final messages = state.valueOrNull;
+    if (messages == null) return;
+    final currentUser = ref.read(currentUserProvider);
+    // 가장 마지막으로 받은 인증번호 메시지를 찾기
+    for (int i = messages.length - 1; i >= 0; i--) {
+      final m = messages[i];
+      if (m.isVerificationCode && m.senderId != currentUser?.id) {
+        final code = m.extraData?['verificationCode'] as String?;
+        if (code != null) {
+          ref.read(receivedVerificationCodeProvider(roomId).notifier).state = code;
+          break;
+        }
+      }
+    }
   }
 
   /// 읽음 처리 (소켓 우선, 실패 시 HTTP 폴백)
@@ -368,6 +404,44 @@ class ChatMessagesNotifier
     }
   }
 
+  /// 인증번호 메시지 전송
+  Future<void> sendVerificationCodeMessage(String verificationCode) async {
+    final extraData = <String, dynamic>{
+      'verificationCode': verificationCode,
+    };
+
+    try {
+      SocketService.instance.sendMessage(
+        _roomId,
+        '인증번호를 전송했습니다',
+        type: 'VERIFICATION_CODE',
+        extraData: extraData,
+      );
+    } catch (_) {
+      try {
+        final repo = ref.read(chatRepositoryProvider);
+        final message = await repo.sendMessage(
+          _roomId,
+          content: '인증번호를 전송했습니다',
+          messageType: 'VERIFICATION_CODE',
+          extraData: extraData,
+        );
+        final currentMessages = state.valueOrNull ?? [];
+        state = AsyncData([...currentMessages, message]);
+      } catch (_) {
+        await ref.read(offlineQueueServiceProvider).enqueue(
+          action: 'SEND_MESSAGE',
+          payload: {
+            'roomId': _roomId,
+            'content': '인증번호를 전송했습니다',
+            'messageType': 'VERIFICATION_CODE',
+            'extraData': extraData,
+          },
+        );
+      }
+    }
+  }
+
   /// 위치 메시지 전송
   Future<void> sendLocationMessage({
     required double latitude,
@@ -419,6 +493,11 @@ final chatMessagesProvider = AsyncNotifierProvider.autoDispose
     .family<ChatMessagesNotifier, List<Message>, String>(
   ChatMessagesNotifier.new,
 );
+
+/// 수신된 인증번호 저장 provider (roomId → verificationCode)
+/// 상대방이 VERIFICATION_CODE 메시지를 보내면 여기에 저장됨
+final receivedVerificationCodeProvider =
+    StateProvider.family<String?, String>((ref, roomId) => null);
 
 /// 메시지 페이지네이션 결과
 class MessageResult {

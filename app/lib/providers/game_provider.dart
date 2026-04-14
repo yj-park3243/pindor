@@ -21,6 +21,7 @@ class GameResultNotifier extends AutoDisposeFamilyAsyncNotifier<Game, String> {
   Future<void> submitResult({
     required String myResult,
     required String winnerId,
+    required String verificationCode,
     int? mannerScore,
   }) async {
     final repo = ref.read(gameRepositoryProvider);
@@ -28,6 +29,7 @@ class GameResultNotifier extends AutoDisposeFamilyAsyncNotifier<Game, String> {
       arg,
       myResult: myResult,
       winnerId: winnerId,
+      verificationCode: verificationCode,
       mannerScore: mannerScore,
     );
     // 결과 제출 후 재조회

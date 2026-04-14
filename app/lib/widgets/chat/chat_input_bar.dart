@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import '../../config/theme.dart';
 
 /// 채팅 입력바 위젯
@@ -59,7 +60,9 @@ class _ChatInputBarState extends State<ChatInputBar> {
         left: 12,
         right: 12,
         top: 10,
-        bottom: MediaQuery.of(context).viewInsets.bottom > 0 ? 10 : 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom > 0
+            ? 10
+            : MediaQuery.of(context).padding.bottom + 10,
       ),
       decoration: const BoxDecoration(
         color: Color(0xFF1E1E1E),
@@ -73,7 +76,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
           // "+" 첨부 버튼
           IconButton(
             onPressed: widget.enabled ? widget.onPlusPressed : null,
-            icon: const Icon(Icons.add_rounded),
+            icon: const Icon(Symbols.add_rounded),
             color: AppTheme.textSecondary,
             constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
             padding: const EdgeInsets.all(4),
@@ -121,7 +124,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
             ),
             child: IconButton(
               onPressed: _hasText && widget.enabled ? _send : null,
-              icon: const Icon(Icons.send_rounded, size: 20),
+              icon: const Icon(Symbols.send_rounded, size: 20),
               color: _hasText ? Colors.white : AppTheme.textDisabled,
               constraints: const BoxConstraints(),
               padding: EdgeInsets.zero,

@@ -17,6 +17,11 @@ export const updateUserSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, '생년월일 형식은 YYYY-MM-DD 입니다.')
     .optional(),
+  preferredSportType: z
+    .string()
+    .max(50)
+    .nullable()
+    .optional(),
 });
 
 export const updateLocationSchema = z.object({

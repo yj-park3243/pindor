@@ -14,6 +14,7 @@ class User {
   final UserLocation? location;
   final String? gender; // MALE | FEMALE | OTHER
   final DateTime? birthDate;
+  final String? preferredSportType;
 
   const User({
     required this.id,
@@ -28,6 +29,7 @@ class User {
     this.location,
     this.gender,
     this.birthDate,
+    this.preferredSportType,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
@@ -53,6 +55,7 @@ class User {
       birthDate: json['birthDate'] != null
           ? DateTime.parse(json['birthDate'] as String)
           : null,
+      preferredSportType: json['preferredSportType'] as String?,
     );
   }
 
@@ -69,6 +72,7 @@ class User {
         'location': location?.toJson(),
         'gender': gender,
         'birthDate': birthDate?.toIso8601String(),
+        'preferredSportType': preferredSportType,
       };
 
   User copyWith({
@@ -80,6 +84,7 @@ class User {
     UserLocation? location,
     String? gender,
     DateTime? birthDate,
+    String? preferredSportType,
   }) {
     return User(
       id: id,
@@ -94,6 +99,7 @@ class User {
       location: location ?? this.location,
       gender: gender ?? this.gender,
       birthDate: birthDate ?? this.birthDate,
+      preferredSportType: preferredSportType ?? this.preferredSportType,
     );
   }
 

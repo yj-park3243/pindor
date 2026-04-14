@@ -38,6 +38,7 @@ class GameRepository {
   Future<void> submitGameResult(
     String gameId, {
     required String myResult,
+    required String verificationCode,
     String? winnerId,
     int myScore = 0,
     int opponentScore = 0,
@@ -47,6 +48,7 @@ class GameRepository {
       '/games/$gameId/result',
       body: {
         'claimedResult': myResult,
+        'verificationCode': verificationCode,
         'myScore': myScore,
         'opponentScore': opponentScore,
         if (winnerId != null) 'winnerId': winnerId,

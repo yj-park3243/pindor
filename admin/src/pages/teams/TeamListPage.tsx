@@ -56,7 +56,7 @@ export function TeamListPage() {
     status: statusFilter,
     sportType: sportTypeFilter,
     page,
-    limit: pageSize,
+    pageSize,
   });
 
   const suspendMutation = useSuspendTeam();
@@ -117,7 +117,7 @@ export function TeamListPage() {
       key: 'teamScore',
       render: (score: number) => (
         <Text strong style={{ color: '#1890ff' }}>
-          {score.toLocaleString()}
+          {(score ?? 0).toLocaleString()}
         </Text>
       ),
       sorter: true,
@@ -290,7 +290,7 @@ export function TeamListPage() {
       <Card style={{ borderRadius: 8 }}>
         <div style={{ marginBottom: 12 }}>
           <Text type="secondary">
-            총 {data?.total.toLocaleString() || 0}개 팀
+            총 {(data?.total ?? 0).toLocaleString()}개 팀
           </Text>
         </div>
 
@@ -307,7 +307,7 @@ export function TeamListPage() {
             total: data?.total || 0,
             showSizeChanger: true,
             showQuickJumper: true,
-            showTotal: (total) => `총 ${total.toLocaleString()}개 팀`,
+            showTotal: (total) => `총 ${(total ?? 0).toLocaleString()}개 팀`,
             onChange: (p, ps) => {
               setPage(p);
               setPageSize(ps);

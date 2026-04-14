@@ -4,6 +4,7 @@ import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../config/theme.dart';
+import '../../core/utils/location_utils.dart';
 
 /// 위치 선택 화면
 /// - 네이버 지도 전체화면
@@ -33,24 +34,11 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
 
   Future<void> _initCurrentLocation() async {
     try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
-
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        return;
-      }
-
-      final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.medium,
-        timeLimit: const Duration(seconds: 8),
+      final pos = await LocationUtils.getCurrentPosition(
+        timeout: const Duration(seconds: 8),
       );
+      if (pos == null || !mounted) return;
 
-      if (!mounted) return;
       setState(() {
         _selectedLocation = NLatLng(pos.latitude, pos.longitude);
       });
@@ -62,8 +50,6 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
           zoom: 15,
         ),
       );
-    } catch (e) {
-      debugPrint('[LocationPicker] 위치 조회 실패: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -130,7 +116,15 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
             ),
             onMapReady: (controller) {
               _mapController = controller;
-              controller.setLocationTrackingMode(NLocationTrackingMode.noFollow);
+              LocationUtils.hasPermission().then((granted) {
+                if (granted && mounted) {
+                  try {
+                    controller.setLocationTrackingMode(NLocationTrackingMode.noFollow);
+                  } catch (e) {
+                    debugPrint('[LocationPicker] 위치 트래킹 설정 실패: $e');
+                  }
+                }
+              });
               // 현재 위치 로딩 완료 후 카메라 이동
               if (!_isLoading) {
                 controller.updateCamera(

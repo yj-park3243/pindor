@@ -3,6 +3,7 @@ import { AppDataSource } from '../../config/database.js';
 import { Notice, AdminRole } from '../../entities/index.js';
 import { requireAdmin } from '../admin/admin.middleware.js';
 import { AppError, ErrorCode } from '../../shared/errors/app-error.js';
+import { parsePageParams, paginatedResponse } from '../../shared/pagination.js';
 
 // ─── 타입 정의 ──────────────────────────────────────────────────────────────
 
@@ -133,6 +134,37 @@ export async function noticesRoutes(fastify: FastifyInstance): Promise<void> {
       return reply.send({
         success: true,
         data: notice,
+      });
+    },
+  );
+
+  // ─── GET /admin/notices ── 공지 목록 (ADMIN 전용, 미발행 포함) ──────────
+  fastify.get(
+    '/admin/notices',
+    {
+      onRequest: [fastify.authenticate, requireAdmin(AdminRole.MODERATOR)],
+      schema: {
+        tags: ['Admin'],
+        summary: '공지사항 목록 (ADMIN, 미발행 포함)',
+        security: [{ bearerAuth: [] }],
+      },
+    },
+    async (
+      request: FastifyRequest<{ Querystring: { page?: number; pageSize?: number } }>,
+      reply: FastifyReply,
+    ) => {
+      const { page, pageSize, skip } = parsePageParams(request.query);
+      const repo = AppDataSource.getRepository(Notice);
+
+      const [items, total] = await repo.findAndCount({
+        order: { isPinned: 'DESC', createdAt: 'DESC' },
+        skip,
+        take: pageSize,
+      });
+
+      return reply.send({
+        success: true,
+        data: paginatedResponse(items, total, page, pageSize),
       });
     },
   );

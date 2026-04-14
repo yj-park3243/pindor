@@ -1,4 +1,5 @@
 import apiClient from '@/config/api';
+import type { PaginatedResponse } from '@/types/common';
 
 export type DisputeStatus = 'PENDING' | 'IN_PROGRESS' | 'RESOLVED';
 
@@ -33,22 +34,11 @@ export interface DisputeUpdateRequest {
   adminReply?: string;
 }
 
-export interface PaginatedDisputeResponse {
-  items: Dispute[];
-  total: number;
-  page: number;
-  pageSize: number;
-  totalPages: number;
-}
-
 export const disputesApi = {
   // 의의 제기 목록 조회
-  list: async (params?: DisputeListParams): Promise<PaginatedDisputeResponse> => {
+  list: async (params?: DisputeListParams): Promise<PaginatedResponse<Dispute>> => {
     const response = await apiClient.get('/admin/disputes', { params });
-    return {
-      items: response.data.data,
-      ...response.data.meta,
-    };
+    return response.data.data;
   },
 
   // 의의 제기 상태 업데이트

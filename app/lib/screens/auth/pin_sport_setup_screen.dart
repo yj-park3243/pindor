@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/utils/location_utils.dart';
 import '../../config/router.dart';
 import '../../config/sports.dart';
 import '../../config/theme.dart';
@@ -55,32 +56,15 @@ class _PinSportSetupScreenState extends ConsumerState<PinSportSetupScreen> {
   Future<void> _initLocation() async {
     setState(() => _isLocating = true);
     try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
+      final pos = await LocationUtils.getCurrentPosition();
+      if (pos == null || !mounted) return;
 
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        return;
-      }
-
-      final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.medium,
-        timeLimit: const Duration(seconds: 10),
-      );
-
-      if (!mounted) return;
       setState(() {
         _currentLocation = NLatLng(pos.latitude, pos.longitude);
       });
       _mapController?.updateCamera(
         NCameraUpdate.scrollAndZoomTo(target: _currentLocation, zoom: 13),
       );
-    } catch (e) {
-      debugPrint('[PinSportSetup] Location error: $e');
     } finally {
       if (mounted) setState(() => _isLocating = false);
     }
@@ -248,7 +232,7 @@ class _PinSportSetupScreenState extends ConsumerState<PinSportSetupScreen> {
                         zoom: 12,
                       ),
                       mapType: NMapType.basic,
-                      locationButtonEnable: true,
+                      locationButtonEnable: false,
                     ),
                     onMapReady: (controller) {
                       _mapController = controller;

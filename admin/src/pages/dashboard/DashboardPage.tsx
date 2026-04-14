@@ -48,39 +48,26 @@ export function DashboardPage() {
     );
   }
 
-  // 실제 데이터가 없을 때 목업 데이터 사용 (개발/데모용)
+  // 실제 API 데이터 사용, 데이터 없을 시 0 또는 빈 배열로 초기화 (가짜 수치 없음)
   const realtimeData = metrics?.realtime ?? {
-    activeUsers: 1243,
-    activeMatchRequests: 87,
-    ongoingMatches: 34,
-    pendingResultVerifications: 12,
+    activeUsers: 0,
+    activeMatchRequests: 0,
+    ongoingMatches: 0,
+    pendingResultVerifications: 0,
   };
 
   const todayData = metrics?.today ?? {
-    newSignups: 45,
-    matchesCreated: 128,
-    matchesCompleted: 73,
-    reportsReceived: 3,
+    newSignups: 0,
+    matchesCreated: 0,
+    matchesCompleted: 0,
+    reportsReceived: 0,
   };
 
-  const dauTrend = metrics?.charts?.dauTrend ?? Array.from({ length: 30 }, (_, i) => ({
-    date: dayjs().subtract(29 - i, 'day').format('MM/DD'),
-    value: Math.floor(800 + Math.random() * 600),
-  }));
+  const dauTrend = metrics?.charts?.dauTrend ?? [];
 
-  const scoreDistribution = metrics?.charts?.scoreDistribution?.buckets ?? [
-    { rangeStart: 800, rangeEnd: 899, count: 320 },
-    { rangeStart: 900, rangeEnd: 999, count: 450 },
-    { rangeStart: 1000, rangeEnd: 1099, count: 580 },
-    { rangeStart: 1100, rangeEnd: 1199, count: 620 },
-    { rangeStart: 1200, rangeEnd: 1299, count: 480 },
-    { rangeStart: 1300, rangeEnd: 1399, count: 280 },
-    { rangeStart: 1400, rangeEnd: 1499, count: 150 },
-    { rangeStart: 1500, rangeEnd: 1649, count: 80 },
-    { rangeStart: 1650, rangeEnd: 1800, count: 40 },
-  ];
+  const scoreDistribution = metrics?.charts?.scoreDistribution?.buckets ?? [];
 
-  const matchSuccessRate = metrics?.charts?.matchSuccessRate ?? 0.68;
+  const matchSuccessRate = metrics?.charts?.matchSuccessRate ?? 0;
 
   return (
     <div>

@@ -32,6 +32,20 @@ final roomMessageProvider =
       .where((data) => data['roomId'] == roomId);
 });
 
+/// 매칭 성사 이벤트 스트림 프로바이더 (matchrequest:{requestId} 룸 기반)
+/// MATCH_FOUND 이벤트 수신 시 { matchId, status } 데이터 전달
+final socketMatchFoundProvider =
+    StreamProvider<Map<String, dynamic>>((ref) {
+  return SocketService.instance.onMatchFound;
+});
+
+/// 매칭 상태 변경 이벤트 스트림 프로바이더 (match:{matchId} 룸 기반)
+/// MATCH_STATUS_CHANGED 이벤트 수신 시 { matchId, status, ... } 데이터 전달
+final socketMatchStatusChangedProvider =
+    StreamProvider<Map<String, dynamic>>((ref) {
+  return SocketService.instance.onMatchStatusChanged;
+});
+
 /// 소켓 서비스 접근 프로바이더
 final socketServiceProvider = Provider<SocketService>((ref) {
   return SocketService.instance;

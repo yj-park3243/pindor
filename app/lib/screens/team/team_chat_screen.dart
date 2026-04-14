@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:pull_down_button/pull_down_button.dart';
 import '../../config/theme.dart';
+import '../../core/utils/permission_helper.dart';
 import '../../models/message.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/chat_provider.dart';
@@ -45,6 +47,8 @@ class _TeamChatScreenState extends ConsumerState<TeamChatScreen> {
   }
 
   Future<void> _sendImage() async {
+    if (!mounted) return;
+
     final picker = ImagePicker();
     final image = await picker.pickImage(
       source: ImageSource.gallery,
@@ -74,24 +78,19 @@ class _TeamChatScreenState extends ConsumerState<TeamChatScreen> {
       appBar: AppBar(
         title: const Text('팀 채팅'),
         actions: [
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              if (value == 'report') {
-                _showReportDialog();
-              }
-            },
+          PullDownButton(
             itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'report',
-                child: Row(
-                  children: [
-                    Icon(Icons.flag_outlined, size: 18, color: Colors.red),
-                    SizedBox(width: 8),
-                    Text('신고', style: TextStyle(color: Colors.red)),
-                  ],
-                ),
+              PullDownMenuItem(
+                title: '신고',
+                icon: Icons.flag_outlined,
+                isDestructive: true,
+                onTap: _showReportDialog,
               ),
             ],
+            buttonBuilder: (context, showMenu) => IconButton(
+              icon: const Icon(Icons.more_vert),
+              onPressed: showMenu,
+            ),
           ),
         ],
       ),

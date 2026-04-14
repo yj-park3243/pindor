@@ -34,7 +34,7 @@ class _PinDetailSheetState extends ConsumerState<PinDetailSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final rankingAsync = ref.watch(pinRankingProvider(widget.pin.id));
+    final rankingAsync = ref.watch(pinRankingBySportProvider((pinId: widget.pin.id, sportType: _selectedSport)));
 
     return Padding(
       padding: const EdgeInsets.all(20),
@@ -150,28 +150,26 @@ class _PinDetailSheetState extends ConsumerState<PinDetailSheet> {
 
           const SizedBox(height: 14),
 
-          // 매칭 신청 버튼 (랭크 / 친선 두 버튼)
+          // 매칭 신청 버튼 (랭크 / 친선 동일 스타일)
           Row(
             children: [
               Expanded(
                 child: SizedBox(
                   height: 48,
-                  child: ElevatedButton.icon(
+                  child: OutlinedButton.icon(
                     onPressed: () {
                       final router = GoRouter.of(context);
                       Navigator.pop(context);
                       router.push('/matches/create?pinId=${widget.pin.id}&pinName=${Uri.encodeComponent(widget.pin.name)}&sportType=$_selectedSport');
                     },
-                    icon: const Icon(Icons.leaderboard, size: 17),
+                    icon: const Icon(Icons.leaderboard, size: 17, color: AppTheme.primaryColor),
                     label: const Text(
                       '랭크 매칭',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.primaryColor),
                     ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryColor,
-                      foregroundColor: Colors.white,
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: AppTheme.primaryColor),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      elevation: 0,
                     ),
                   ),
                 ),

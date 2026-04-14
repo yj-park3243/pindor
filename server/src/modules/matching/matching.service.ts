@@ -13,7 +13,7 @@ import type {
   CancelMatchDto,
 } from './matching.schema.js';
 import type { INotificationService, MatchAcceptTimeoutJobData } from '../../shared/types/index.js';
-import { bullmqRedis } from '../../config/redis.js';
+import { redis, bullmqRedis } from '../../config/redis.js';
 import {
   User,
   SportsProfile,
@@ -24,6 +24,7 @@ import {
   Game,
   Message,
   ScoreHistory,
+  RankingEntry,
 } from '../../entities/index.js';
 import { MatchRequestStatus, RequestType, ScoreChangeType } from '../../entities/index.js';
 
@@ -68,6 +69,20 @@ export class MatchingService {
     this.chatRoomRepo = dataSource.getRepository(ChatRoom);
     this.gameRepo = dataSource.getRepository(Game);
     this.messageRepo = dataSource.getRepository(Message);
+  }
+
+  // ─────────────────────────────────────
+  // 매칭 라이프사이클 이벤트 발행 헬퍼
+  // Redis pub/sub을 통해 Socket.io 서버로 이벤트 전달
+  // ─────────────────────────────────────
+
+  private async emitMatchEvent(event: string, data: Record<string, any>): Promise<void> {
+    try {
+      await redis.publish('match_lifecycle', JSON.stringify({ event, ...data }));
+    } catch (err) {
+      // 이벤트 발행 실패는 비치명적 — 로그만 남기고 계속 진행
+      console.warn(`[MatchService] emitMatchEvent failed (${event}):`, err);
+    }
   }
 
   // ─────────────────────────────────────
@@ -157,8 +172,21 @@ export class MatchingService {
     // ─── 날짜 제한 체크: 오늘 또는 내일만 가능 ───
     const desiredDate = dto.desiredDate;
     if (desiredDate) {
-      const today = new Date().toISOString().split('T')[0];
-      const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+      const now = new Date();
+      const kstNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+      const kstHour = kstNow.getHours();
+      const today = `${kstNow.getFullYear()}-${String(kstNow.getMonth() + 1).padStart(2, '0')}-${String(kstNow.getDate()).padStart(2, '0')}`;
+      const tomorrowDate = new Date(kstNow.getFullYear(), kstNow.getMonth(), kstNow.getDate() + 1);
+      const tomorrow = `${tomorrowDate.getFullYear()}-${String(tomorrowDate.getMonth() + 1).padStart(2, '0')}-${String(tomorrowDate.getDate()).padStart(2, '0')}`;
+
+      // 밤 11시 이후 당일 매칭 차단
+      if (desiredDate === today && kstHour >= 23) {
+        throw AppError.badRequest(
+          ErrorCode.VALIDATION_ERROR,
+          '밤 11시 이후에는 당일 매칭 요청을 할 수 없습니다.',
+        );
+      }
+
       if (desiredDate !== today && desiredDate !== tomorrow) {
         throw AppError.badRequest(
           ErrorCode.VALIDATION_ERROR,
@@ -171,13 +199,13 @@ export class MatchingService {
         .createQueryBuilder('mr')
         .where('mr.requester_id = :userId', { userId })
         .andWhere('mr.desired_date = :date', { date: desiredDate })
-        .andWhere('mr.status IN (:...statuses)', { statuses: ['WAITING', 'MATCHED'] })
+        .andWhere('mr.status = :status', { status: 'WAITING' })
         .getOne();
 
       if (existingRequestForDate) {
         throw AppError.conflict(
           ErrorCode.MATCH_ALREADY_EXISTS,
-          '해당 날짜에 이미 매칭 요청이 있습니다.',
+          '해당 날짜에 이미 대기 중인 매칭 요청이 있습니다.',
         );
       }
 
@@ -220,11 +248,11 @@ export class MatchingService {
       );
     }
 
-    // ─── 총 활성 매칭/요청 2개 제한 ───
+    // ─── 총 활성 매칭/요청 2개 제한 (COMPLETED/CANCELLED/EXPIRED 제외) ───
     const totalActiveRequests = await this.matchRequestRepo
       .createQueryBuilder('mr')
       .where('mr.requester_id = :userId', { userId })
-      .andWhere('mr.status IN (:...statuses)', { statuses: ['WAITING', 'MATCHED'] })
+      .andWhere('mr.status = :status', { status: 'WAITING' })
       .getCount();
 
     const totalActiveMatches = await this.matchRepo
@@ -232,24 +260,24 @@ export class MatchingService {
       .leftJoin('m.requesterProfile', 'rp')
       .leftJoin('m.opponentProfile', 'op')
       .where('(rp.userId = :userId OR op.userId = :userId)', { userId })
-      .andWhere('m.status IN (:...statuses)', { statuses: ['CHAT', 'CONFIRMED'] })
+      .andWhere('m.status IN (:...statuses)', { statuses: ['PENDING_ACCEPT', 'CHAT', 'CONFIRMED'] })
       .getCount();
 
     if (totalActiveRequests + totalActiveMatches >= 2) {
       throw AppError.conflict(
         ErrorCode.MATCH_ALREADY_EXISTS,
-        '매칭이 2개 있습니다. 결과 입력 후 다시 신청해주세요.',
+        '진행 중인 매칭이 2개 있습니다. 완료 후 다시 신청해주세요.',
       );
     }
 
-    // 캐주얼 모드 처리: isCasual이 true이면 requestType을 CASUAL로, MMR 범위를 ±300으로 설정
+    // 캐주얼 모드 처리: isCasual이 true이면 requestType을 CASUAL로, MMR 범위를 ±600으로 설정
     const isCasual = (dto as any).isCasual === true;
     if (isCasual) {
       (dto as any).requestType = RequestType.CASUAL;
       // 캐주얼은 더 넓은 MMR 범위 적용 (기본값 덮어쓰기)
       if (dto.minOpponentScore === 800 && dto.maxOpponentScore === 1200) {
-        dto.minOpponentScore = Math.max(100, sportsProfile.currentScore - 300);
-        dto.maxOpponentScore = sportsProfile.currentScore + 300;
+        dto.minOpponentScore = Math.max(100, sportsProfile.currentScore - 600);
+        dto.maxOpponentScore = sportsProfile.currentScore + 600;
       }
     }
 
@@ -647,6 +675,34 @@ export class MatchingService {
         },
       );
 
+      // 매칭 수락 리마인더 job 등록 (5분전, 3분전, 1분전)
+      // 수락 만료가 10분이므로 생성 후 5분, 7분, 9분에 발송
+      const reminders = [
+        { delay: 5 * 60 * 1000, label: '5분' },
+        { delay: 7 * 60 * 1000, label: '3분' },
+        { delay: 9 * 60 * 1000, label: '1분' },
+      ];
+      for (const { delay, label } of reminders) {
+        for (const userId of [opts.requesterUserId, bestCandidate.userId]) {
+          await this.matchAcceptTimeoutQueue.add(
+            'accept-reminder',
+            {
+              matchId: savedMatch.id,
+              requesterUserId: opts.requesterUserId,
+              opponentUserId: bestCandidate.userId,
+              requesterRequestId: requestId,
+              opponentRequestId: bestCandidate.matchRequestId,
+              reminderUserId: userId,
+              reminderLabel: label,
+            } as any,
+            {
+              delay,
+              jobId: `accept-reminder-${savedMatch.id}-${userId}-${label}`,
+            },
+          );
+        }
+      }
+
       // 양측에 알림 발송
       if (this.notificationService) {
         const requesterAge = (requester as any)?.birthDate
@@ -685,6 +741,19 @@ export class MatchingService {
           },
         ]);
       }
+
+      // 실시간 매칭 성사 이벤트 발행 (소켓 룸 기반)
+      // matchrequest:{requestId} 룸에서 대기 중인 클라이언트에게 직접 전달
+      await Promise.all([
+        this.emitMatchEvent('MATCH_FOUND', {
+          requestId,
+          data: { matchId: savedMatch.id, status: 'PENDING_ACCEPT' },
+        }),
+        this.emitMatchEvent('MATCH_FOUND', {
+          requestId: bestCandidate.matchRequestId,
+          data: { matchId: savedMatch.id, status: 'PENDING_ACCEPT' },
+        }),
+      ]);
     });
   }
 
@@ -732,6 +801,7 @@ export class MatchingService {
     if (opponentAcceptance?.accepted === true) {
       // 양측 수락! → Match status를 CHAT으로, ChatRoom 생성
       let createdChatRoomId: string | undefined;
+      let notifData: any = null;
 
       await this.dataSource.transaction(async (manager) => {
         // ChatRoom 생성
@@ -739,10 +809,19 @@ export class MatchingService {
         const savedChatRoom = await manager.save(ChatRoom, chatRoom);
         createdChatRoomId = savedChatRoom.id;
 
-        // Match 상태 CHAT으로 변경 + chatRoomId 연결
+        // 4자리 인증번호 생성 (각 유저에게 하나씩)
+        const genCode = () => String(Math.floor(1000 + Math.random() * 9000));
+        let requesterCode = genCode();
+        let opponentCode = genCode();
+        // 서로 같으면 재생성
+        while (opponentCode === requesterCode) opponentCode = genCode();
+
+        // Match 상태 CHAT으로 변경 + chatRoomId 연결 + 인증번호 저장
         await manager.update(Match, matchId, {
           status: 'CHAT' as any,
           chatRoomId: savedChatRoom.id,
+          requesterVerificationCode: requesterCode,
+          opponentVerificationCode: opponentCode,
         });
 
         // Match 정보 (알림용) 조회
@@ -766,34 +845,66 @@ export class MatchingService {
           resultInputDeadline,
         }));
 
-        // 시스템 메시지 삽입
+        // 시스템 메시지 삽입 (채팅방 생성 1초 전 시간으로 설정 — 항상 맨 위에 표시)
         await manager.save(Message, manager.create(Message, {
           chatRoomId: savedChatRoom.id,
           senderId: match?.requesterProfile?.userId,
           messageType: 'SYSTEM' as any,
           content: '매칭이 성사되었습니다! 상대방과 경기 일정을 조율해 보세요.',
+          createdAt: new Date(Date.now() - 1000),
         }));
 
-        // 양측 알림
-        if (this.notificationService && match) {
-          await this.notificationService.sendBulk([
-            {
-              userId: (match.requesterProfile as any).userId,
-              type: 'MATCH_BOTH_ACCEPTED',
-              title: '매칭이 확정되었습니다!',
-              body: `${(match.opponentProfile as any).user?.nickname ?? ''}님과의 매칭이 확정되었습니다.`,
-              data: { matchId, chatRoomId: savedChatRoom.id, deepLink: `/match/${matchId}/chat` },
-            },
-            {
-              userId: (match.opponentProfile as any).userId,
-              type: 'MATCH_BOTH_ACCEPTED',
-              title: '매칭이 확정되었습니다!',
-              body: `${(match.requesterProfile as any).user?.nickname ?? ''}님과의 매칭이 확정되었습니다.`,
-              data: { matchId, chatRoomId: savedChatRoom.id, deepLink: `/match/${matchId}/chat` },
-            },
-          ]);
-        }
+        // 트랜잭션 내부에서 알림용 데이터 수집
+        notifData = match ? {
+          requesterUserId: (match.requesterProfile as any).userId,
+          opponentUserId: (match.opponentProfile as any).userId,
+          requesterNickname: (match.requesterProfile as any).user?.nickname ?? '',
+          opponentNickname: (match.opponentProfile as any).user?.nickname ?? '',
+          chatRoomId: savedChatRoom.id,
+        } : null;
       });
+
+      // 양측 수락 완료 → CHAT 상태 실시간 전달 (트랜잭션 커밋 후)
+      console.info(`[MatchAccept] 양측 수락 완료 — MATCH_STATUS_CHANGED 발행: matchId=${matchId}, chatRoomId=${createdChatRoomId}`);
+      await this.emitMatchEvent('MATCH_STATUS_CHANGED', {
+        matchId,
+        data: { matchId, status: 'CHAT', chatRoomId: createdChatRoomId },
+      });
+
+      // 양측 알림 (트랜잭션 커밋 후 발송 — 클라이언트가 조회 시 최신 데이터 보장)
+      console.info(`[MatchAccept] MATCH_BOTH_ACCEPTED 알림 발송: notifData=${JSON.stringify(notifData)}, hasService=${!!this.notificationService}`);
+      if (this.notificationService && notifData) {
+        await this.notificationService.sendBulk([
+          {
+            userId: notifData.requesterUserId,
+            type: 'MATCH_BOTH_ACCEPTED',
+            title: '매칭이 확정되었습니다!',
+            body: `${notifData.opponentNickname}님과의 매칭이 확정되었습니다.`,
+            data: { matchId, chatRoomId: notifData.chatRoomId, deepLink: `/matches/${matchId}` },
+          },
+          {
+            userId: notifData.opponentUserId,
+            type: 'MATCH_BOTH_ACCEPTED',
+            title: '매칭이 확정되었습니다!',
+            body: `${notifData.requesterNickname}님과의 매칭이 확정되었습니다.`,
+            data: { matchId, chatRoomId: notifData.chatRoomId, deepLink: `/matches/${matchId}` },
+          },
+        ]);
+      }
+
+      // 핀 활동 기록 (양측 유저)
+      try {
+        const matchForPin = await this.matchRepo.findOne({ where: { id: matchId } });
+        if (matchForPin?.pinId) {
+          const { PinsService } = await import('../pins/pins.service.js');
+          const pinsService = new PinsService();
+          const requesterUserId = (await this.matchAcceptanceRepo.findOne({ where: { matchId, userId } }))
+            ? userId : undefined;
+          const opponentUserId = opponentAcceptance.userId;
+          const userIds = [userId, opponentUserId].filter(Boolean) as string[];
+          await pinsService.recordActivities(matchForPin.pinId, userIds);
+        }
+      } catch { /* 활동 기록 실패해도 매칭에 영향 없음 */ }
 
       return { status: 'MATCHED', message: '매칭이 확정되었습니다!', chatRoomId: createdChatRoomId };
     }
@@ -803,11 +914,17 @@ export class MatchingService {
       await this.notificationService.send({
         userId,
         type: 'MATCH_WAITING_OPPONENT',
-        title: '수락 완료',
-        body: '수락 완료. 상대의 응답을 기다리고 있습니다.',
-        data: { matchId, deepLink: `/match/${matchId}/status` },
+        title: '매칭 수락 완료',
+        body: '상대방의 응답을 기다리고 있습니다.',
+        data: { matchId, deepLink: `/matches/${matchId}` },
       });
     }
+
+    // 한 명 수락 → 상태 변경 실시간 전달 (수락자가 기다리는 화면 갱신용)
+    await this.emitMatchEvent('MATCH_STATUS_CHANGED', {
+      matchId,
+      data: { matchId, status: 'PENDING_ACCEPT', subStatus: 'WAITING_OPPONENT' },
+    });
 
     return { status: 'WAITING_OPPONENT', message: '수락 완료. 상대의 응답을 기다리고 있습니다.' };
   }
@@ -861,8 +978,7 @@ export class MatchingService {
         cancelledBy: userId,
       });
 
-      // 4) 양측 매칭 요청 WAITING으로 복구
-      // 거절한 유저의 matchRequest
+      // 4) 거절자의 matchRequest → CANCELLED (큐에서 완전 제거)
       const rejecterMatchRequest = await manager
         .createQueryBuilder(MatchRequest, 'mr')
         .leftJoin('mr.sportsProfile', 'sp')
@@ -875,11 +991,11 @@ export class MatchingService {
 
       if (rejecterMatchRequest) {
         await manager.update(MatchRequest, rejecterMatchRequest.id, {
-          status: MatchRequestStatus.WAITING,
+          status: MatchRequestStatus.CANCELLED,
         });
       }
 
-      // 상대방의 matchRequest (수락했다면 재매칭 가능 상태 유지)
+      // 상대방의 matchRequest → WAITING (재매칭 가능)
       if (opponentAcceptance) {
         const opponentMatchRequest = await manager
           .createQueryBuilder(MatchRequest, 'mr')
@@ -1030,6 +1146,12 @@ export class MatchingService {
       });
     }
 
+    // 거절 → CANCELLED 상태 실시간 전달
+    await this.emitMatchEvent('MATCH_STATUS_CHANGED', {
+      matchId,
+      data: { matchId, status: 'CANCELLED', reason: 'REJECTED' },
+    });
+
     return { status: 'CANCELLED', message: '매칭을 거절했습니다.' };
   }
 
@@ -1145,7 +1267,9 @@ export class MatchingService {
       .leftJoin('pins', 'pin', 'pin.id = mr.pin_id')
       .addSelect('pin.name', 'pin_name')
       .leftJoin(Game, 'game', 'game.match_id = match.id')
-      .addSelect(['game.winnerProfileId', 'game.resultStatus'])
+      .addSelect('game.id', 'game_id')
+      .addSelect('game.winner_profile_id', 'game_winner_profile_id')
+      .addSelect('game.result_status', 'game_result_status')
       .where('(rp.userId = :userId OR op.userId = :userId)', { userId });
 
     if (status) qb.andWhere('match.status = :status', { status });
@@ -1177,6 +1301,22 @@ export class MatchingService {
       }
     }
 
+    // 완료된 매칭의 점수 변동을 일괄 조회
+    const completedGameIds = items
+      .map((m, idx) => ({ gameId: rawItems[idx]?.game_id as string | null, match: m }))
+      .filter((x) => x.match.status === 'COMPLETED' && x.gameId)
+      .map((x) => x.gameId!);
+    const scoreChangeMap = new Map<string, number>(); // gameId+profileId → scoreChange
+    if (completedGameIds.length > 0) {
+      const scoreRows = await this.dataSource.query<Array<{ game_id: string; sports_profile_id: string; score_change: number }>>(
+        `SELECT game_id, sports_profile_id, score_change FROM score_histories WHERE game_id = ANY($1)`,
+        [completedGameIds],
+      );
+      for (const row of scoreRows) {
+        scoreChangeMap.set(`${row.game_id}_${row.sports_profile_id}`, row.score_change);
+      }
+    }
+
     // 각 매칭에서 상대방 정보 추출
     const result = items.map((match, idx) => {
       const isRequester = (match.requesterProfile as any).userId === userId;
@@ -1189,11 +1329,15 @@ export class MatchingService {
       const myProfileId = isRequester
         ? (match.requesterProfile as any).id
         : (match.opponentProfile as any).id;
-      let gameResult: string | null = null; // WIN | LOSS | DRAW
+      let gameResult: string | null = null; // WIN | LOSS | DRAW | DISPUTED | NO_RESULT
       if (match.status === 'COMPLETED' && winnerProfileId) {
         gameResult = winnerProfileId === myProfileId ? 'WIN' : 'LOSS';
       } else if (match.status === 'COMPLETED' && gameResultStatus === 'VERIFIED' && !winnerProfileId) {
         gameResult = 'DRAW';
+      } else if (match.status === 'COMPLETED' && gameResultStatus === 'DISPUTED') {
+        gameResult = 'DISPUTED';
+      } else if (match.status === 'COMPLETED' && (!gameResultStatus || gameResultStatus === 'PENDING')) {
+        gameResult = 'NO_RESULT';
       }
 
       // PENDING_ACCEPT 상태일 때만 myAcceptance 포함
@@ -1208,6 +1352,11 @@ export class MatchingService {
           };
         }
       }
+
+      // 내 점수 변동 조회
+      const gameId = rawItems[idx]?.game_id as string | null;
+      const myScoreChange = gameId ? (scoreChangeMap.get(`${gameId}_${myProfileId}`) ?? null) : null;
+
 
       return {
         id: match.id,
@@ -1225,6 +1374,7 @@ export class MatchingService {
         chatRoomId: match.chatRoomId,
         createdAt: match.createdAt,
         gameResult,
+        myScoreChange,
         pinName: rawItems[idx]?.pin_name ?? null,
         desiredDate: match.desiredDate ?? rawItems[idx]?.mr_desired_date ?? null,
         desiredTimeSlot: (match as any).desiredTimeSlot ?? rawItems[idx]?.mr_desired_time_slot ?? null,
@@ -1413,10 +1563,10 @@ export class MatchingService {
       };
     }
 
-    // Game 조회 (결과 제출 여부 포함)
+    // Game 조회 (결과 제출 여부 + 승패 판정 포함)
     const game = await this.dataSource.getRepository(Game).findOne({
       where: { matchId },
-      select: { id: true, requesterClaimedResult: true, opponentClaimedResult: true } as any,
+      select: { id: true, requesterClaimedResult: true, opponentClaimedResult: true, winnerProfileId: true, resultStatus: true } as any,
     });
     const myResultSubmitted = game
       ? (isRequester ? game.requesterClaimedResult != null : game.opponentClaimedResult != null)
@@ -1425,11 +1575,30 @@ export class MatchingService {
       ? (isRequester ? game.opponentClaimedResult : game.requesterClaimedResult)
       : null;
 
+    // 승패 결과 계산
+    const myProfileId = (myProfile as any).id;
+    let gameResult: string | null = null;
+    if (match.status === 'COMPLETED' && game?.winnerProfileId) {
+      gameResult = game.winnerProfileId === myProfileId ? 'WIN' : 'LOSS';
+    } else if (match.status === 'COMPLETED' && game?.resultStatus === 'VERIFIED' && !game?.winnerProfileId) {
+      gameResult = 'DRAW';
+    } else if (match.status === 'COMPLETED' && game?.resultStatus === 'DISPUTED') {
+      gameResult = 'DISPUTED';
+    } else if (match.status === 'COMPLETED' && (!game?.resultStatus || game?.resultStatus === 'PENDING')) {
+      gameResult = 'NO_RESULT';
+    }
+
+    // 내 인증번호 (requester이면 requesterVerificationCode, 아니면 opponentVerificationCode)
+    const myVerificationCode = isRequester
+      ? match.requesterVerificationCode
+      : match.opponentVerificationCode;
+
     return {
       ...match,
       gameId: game?.id ?? null,
       myResultSubmitted,
       opponentClaimedResult,
+      gameResult,
       isCasual,
       pinName,
       encounterCount,
@@ -1438,27 +1607,49 @@ export class MatchingService {
       myAcceptance,
       opponentAcceptance,
       timeRemainingSeconds,
+      myVerificationCode,
       requesterProfile: isRequester
         ? myProfile
         : { ...opponentProfile, currentScore: undefined },
       opponentProfile: isRequester
         ? { ...opponentProfile, currentScore: undefined }
         : myProfile,
-      opponent: {
-        id: (opponentProfile as any).user?.id,
-        nickname: (opponentProfile as any).user?.nickname,
-        profileImageUrl: (opponentProfile as any).user?.profileImageUrl,
-        tier: (opponentProfile as any).tier,
-        wins: (opponentProfile as any).wins,
-        losses: (opponentProfile as any).losses,
-        draws: (opponentProfile as any).draws,
-        matchMessage: (opponentProfile as any).matchMessage ?? null,
-        gamesPlayed: (opponentProfile as any).gamesPlayed ?? 0,
-        sportType: (opponentProfile as any).sportType,
-        displayScore: (opponentProfile as any).displayScore ?? null,
-        isPlacement: (opponentProfile as any).isPlacement ?? false,
-        placementGamesRemaining: (opponentProfile as any).placementGamesRemaining ?? null,
-      },
+      opponent: await (async () => {
+        // 핀별 점수/티어 조회 (해당 핀에서의 ranking_entry)
+        let pinScore: number | null = null;
+        let pinTier: string | null = null;
+        let pinGamesPlayed: number | null = null;
+        if (match.pinId) {
+          const oppRankEntry = await this.dataSource.getRepository(RankingEntry).findOne({
+            where: {
+              pinId: match.pinId,
+              sportsProfileId: (opponentProfile as any).id,
+              sportType: (opponentProfile as any).sportType,
+            },
+          });
+          if (oppRankEntry) {
+            pinScore = oppRankEntry.score;
+            pinTier = oppRankEntry.tier;
+            pinGamesPlayed = oppRankEntry.gamesPlayed;
+          }
+        }
+        const hasPinRecord = pinScore !== null;
+        return {
+          id: (opponentProfile as any).user?.id,
+          nickname: (opponentProfile as any).user?.nickname,
+          profileImageUrl: (opponentProfile as any).user?.profileImageUrl,
+          tier: pinTier ?? (opponentProfile as any).tier,
+          wins: (opponentProfile as any).wins,
+          losses: (opponentProfile as any).losses,
+          draws: (opponentProfile as any).draws,
+          matchMessage: (opponentProfile as any).matchMessage ?? null,
+          gamesPlayed: pinGamesPlayed ?? (opponentProfile as any).gamesPlayed ?? 0,
+          sportType: (opponentProfile as any).sportType,
+          displayScore: hasPinRecord ? pinScore : null,
+          isPlacement: !hasPinRecord,
+          placementGamesRemaining: hasPinRecord ? null : 5,
+        };
+      })(),
     };
   }
 
@@ -1527,8 +1718,8 @@ export class MatchingService {
       }
     }
 
-    // CONFIRMED 상태 매칭 취소 시 노쇼 패널티 적용
-    const isConfirmed = match.status === 'CONFIRMED';
+    // 매칭 취소 시 항상 패널티 적용 (취소자 -30, 상대방 +15)
+    const shouldPenalize = true;
 
     await this.matchRepo.update(matchId, {
       status: 'CANCELLED' as any,
@@ -1543,7 +1734,7 @@ export class MatchingService {
       });
     }
 
-    if (isConfirmed) {
+    if (shouldPenalize) {
       await this.applyNoShowPenalty(userId, matchId, match);
     }
 
@@ -1561,6 +1752,12 @@ export class MatchingService {
         data: { matchId, deepLink: '/matches' },
       });
     }
+
+    // 취소 → CANCELLED 상태 실시간 전달
+    await this.emitMatchEvent('MATCH_STATUS_CHANGED', {
+      matchId,
+      data: { matchId, status: 'CANCELLED' },
+    });
 
     return this.matchRepo.findOne({ where: { id: matchId } });
   }

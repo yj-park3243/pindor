@@ -6,7 +6,7 @@ import '../../config/app_config.dart';
 /// Socket.io 연결 관리 서비스 (PRD 4.10.9 기반)
 /// - 앱 전역 싱글톤으로 관리
 /// - 자동 재연결 (최대 10회, 1초 간격)
-/// - 채팅 메시지 / 알림 스트림 제공
+/// - 채팅 메시지 / 알림 / 매칭 라이프사이클 스트림 제공
 class SocketService {
   SocketService._();
 
@@ -17,6 +17,11 @@ class SocketService {
   bool _isConnected = false;
   String? _currentAccessToken;
   String? _activeRoomId;
+
+  // 매칭 요청 룸 추적 (재연결 시 자동 재입장용)
+  final Set<String> _activeMatchRequestRooms = {};
+  // 매칭 룸 추적 (재연결 시 자동 재입장용)
+  final Set<String> _activeMatchRooms = {};
 
   // ─── 스트림 컨트롤러 ───
   final _notificationController =
@@ -29,6 +34,12 @@ class SocketService {
   final _messagesReadController =
       StreamController<Map<String, dynamic>>.broadcast();
 
+  // 매칭 라이프사이클 스트림 컨트롤러
+  final _matchFoundController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  final _matchStatusChangedController =
+      StreamController<Map<String, dynamic>>.broadcast();
+
   // ─── 스트림 공개 인터페이스 ───
   Stream<Map<String, dynamic>> get onNotification =>
       _notificationController.stream;
@@ -38,7 +49,15 @@ class SocketService {
   Stream<Map<String, dynamic>> get onMessagesRead =>
       _messagesReadController.stream;
 
+  /// 매칭 성사 이벤트 스트림 (matchrequest:{requestId} 룸 기반)
+  Stream<Map<String, dynamic>> get onMatchFound => _matchFoundController.stream;
+
+  /// 매칭 상태 변경 이벤트 스트림 (match:{matchId} 룸 기반)
+  Stream<Map<String, dynamic>> get onMatchStatusChanged =>
+      _matchStatusChangedController.stream;
+
   bool get isConnected => _isConnected;
+  String? get activeRoomId => _activeRoomId;
 
   /// 소켓 연결 (로그인 후 호출)
   void connect(String accessToken) {
@@ -74,6 +93,8 @@ class SocketService {
       ..off('NEW_MESSAGE')
       ..off('USER_TYPING')
       ..off('MESSAGES_READ')
+      ..off('MATCH_FOUND')
+      ..off('MATCH_STATUS_CHANGED')
       ..off('ERROR');
 
     _socket!
@@ -95,6 +116,16 @@ class SocketService {
         // 재연결 시 현재 채팅방 자동 재입장
         if (_activeRoomId != null) {
           joinRoom(_activeRoomId!);
+        }
+        // 재연결 시 매칭 요청 룸 자동 재입장
+        for (final requestId in _activeMatchRequestRooms) {
+          _socket?.emit('JOIN_MATCH_REQUEST', {'requestId': requestId});
+          debugPrint('[Socket] 재연결 후 매칭 요청 룸 재입장: $requestId');
+        }
+        // 재연결 시 매칭 룸 자동 재입장
+        for (final matchId in _activeMatchRooms) {
+          _socket?.emit('JOIN_MATCH', {'matchId': matchId});
+          debugPrint('[Socket] 재연결 후 매칭 룸 재입장: $matchId');
         }
       })
 
@@ -121,6 +152,20 @@ class SocketService {
       ..on('MESSAGES_READ', (data) {
         final parsed = Map<String, dynamic>.from(data as Map);
         _messagesReadController.add(parsed);
+      })
+
+      // 매칭 성사 이벤트 수신 (matchrequest:{requestId} 룸)
+      ..on('MATCH_FOUND', (data) {
+        final parsed = Map<String, dynamic>.from(data as Map);
+        _matchFoundController.add(parsed);
+        debugPrint('[Socket] 매칭 성사: ${parsed['matchId']}');
+      })
+
+      // 매칭 상태 변경 이벤트 수신 (match:{matchId} 룸)
+      ..on('MATCH_STATUS_CHANGED', (data) {
+        final parsed = Map<String, dynamic>.from(data as Map);
+        _matchStatusChangedController.add(parsed);
+        debugPrint('[Socket] 매칭 상태 변경: ${parsed['matchId']} → ${parsed['status']}');
       })
 
       // 소켓 에러
@@ -176,8 +221,42 @@ class SocketService {
     _socket!.emit('TYPING', {'roomId': roomId});
   }
 
+  /// 매칭 요청 룸 입장 (매칭 성사 알림 수신용)
+  void joinMatchRequest(String requestId) {
+    if (!_isConnected) return;
+    _activeMatchRequestRooms.add(requestId);
+    _socket!.emit('JOIN_MATCH_REQUEST', {'requestId': requestId});
+    debugPrint('[Socket] 매칭 요청 룸 입장: $requestId');
+  }
+
+  /// 매칭 요청 룸 퇴장
+  void leaveMatchRequest(String requestId) {
+    if (!_isConnected) return;
+    _activeMatchRequestRooms.remove(requestId);
+    _socket!.emit('LEAVE_MATCH_REQUEST', {'requestId': requestId});
+    debugPrint('[Socket] 매칭 요청 룸 퇴장: $requestId');
+  }
+
+  /// 매칭 룸 입장 (매칭 상태 변경 알림 수신용)
+  void joinMatch(String matchId) {
+    if (!_isConnected) return;
+    _activeMatchRooms.add(matchId);
+    _socket!.emit('JOIN_MATCH', {'matchId': matchId});
+    debugPrint('[Socket] 매칭 룸 입장: $matchId');
+  }
+
+  /// 매칭 룸 퇴장
+  void leaveMatch(String matchId) {
+    if (!_isConnected) return;
+    _activeMatchRooms.remove(matchId);
+    _socket!.emit('LEAVE_MATCH', {'matchId': matchId});
+    debugPrint('[Socket] 매칭 룸 퇴장: $matchId');
+  }
+
   /// 연결 해제 (로그아웃 시 호출)
   void disconnect() {
+    _activeMatchRequestRooms.clear();
+    _activeMatchRooms.clear();
     _disconnect();
     _currentAccessToken = null;
     _activeRoomId = null;
@@ -200,12 +279,16 @@ class SocketService {
 
   /// 리소스 정리
   void dispose() {
+    _activeMatchRequestRooms.clear();
+    _activeMatchRooms.clear();
     _disconnect();
     _notificationController.close();
     _messageController.close();
     _connectionStateController.close();
     _typingController.close();
     _messagesReadController.close();
+    _matchFoundController.close();
+    _matchStatusChangedController.close();
   }
 }
 

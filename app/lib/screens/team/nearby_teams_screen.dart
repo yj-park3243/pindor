@@ -4,6 +4,8 @@ import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:go_router/go_router.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../config/theme.dart';
+import '../../core/utils/location_utils.dart';
+import '../../core/utils/permission_helper.dart';
 import '../../models/team.dart';
 import '../../providers/team_provider.dart';
 import '../../widgets/common/loading_indicator.dart';
@@ -39,35 +41,28 @@ class _NearbyTeamsScreenState extends ConsumerState<NearbyTeamsScreen> {
   }
 
   Future<void> _initLocation() async {
-    try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        setState(() => _isLoadingLocation = false);
-        return;
-      }
+    final pos = await LocationUtils.getCurrentPosition();
+    if (!mounted) return;
 
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          setState(() => _isLoadingLocation = false);
-          return;
-        }
-      }
-
-      final position = await Geolocator.getCurrentPosition();
-      setState(() {
-        _currentPosition = position;
-        _isLoadingLocation = false;
-      });
-
-      ref.read(nearbyTeamsProvider.notifier).load(
-            latitude: position.latitude,
-            longitude: position.longitude,
-          );
-    } catch (e) {
+    if (pos == null) {
       setState(() => _isLoadingLocation = false);
+      // 영구 거부 상태면 설정 안내
+      final perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.deniedForever && mounted) {
+        await PermissionHelper.showLocationDeniedDialog(context);
+      }
+      return;
     }
+
+    setState(() {
+      _currentPosition = pos;
+      _isLoadingLocation = false;
+    });
+
+    ref.read(nearbyTeamsProvider.notifier).load(
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+        );
   }
 
   void _onSportFilter(String? sportKey) {

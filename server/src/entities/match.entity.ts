@@ -71,6 +71,12 @@ export class Match {
   @Column({ name: 'completed_at', type: 'timestamptz', nullable: true })
   completedAt!: Date | null;
 
+  @Column({ name: 'requester_verification_code', type: 'varchar', length: 4, nullable: true })
+  requesterVerificationCode!: string | null;
+
+  @Column({ name: 'opponent_verification_code', type: 'varchar', length: 4, nullable: true })
+  opponentVerificationCode!: string | null;
+
   @Column({ name: 'cancelled_by', type: 'uuid', nullable: true })
   cancelledBy!: string | null;
 

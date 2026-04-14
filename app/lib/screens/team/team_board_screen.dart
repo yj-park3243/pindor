@@ -43,7 +43,7 @@ class TeamBoardInlineScreen extends ConsumerWidget {
       children: [
         _BoardContent(teamId: teamId),
         Positioned(
-          bottom: 20,
+          bottom: MediaQuery.of(context).padding.bottom + 20,
           right: 16,
           child: FloatingActionButton(
             mini: true,

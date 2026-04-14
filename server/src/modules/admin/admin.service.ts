@@ -12,6 +12,7 @@ import {
 } from '../../entities/index.js';
 import { AppError, ErrorCode } from '../../shared/errors/app-error.js';
 import { calculateTier } from '../../shared/utils/elo.js';
+import { parsePageParams, paginatedResponse } from '../../shared/pagination.js';
 
 export class AdminService {
   // ─────────────────────────────────────
@@ -85,10 +86,11 @@ export class AdminService {
   async listUsers(opts: {
     status?: UserStatus;
     search?: string;
-    cursor?: string;
-    limit?: number;
+    page?: number;
+    pageSize?: number;
   }) {
-    const { status, search, cursor, limit = 20 } = opts;
+    const { status, search } = opts;
+    const { page, pageSize, skip } = parsePageParams(opts);
 
     const userRepo = AppDataSource.getRepository(User);
     const qb = userRepo
@@ -103,20 +105,14 @@ export class AdminService {
         search: `%${search}%`,
       });
     }
-    if (cursor) {
-      qb.andWhere('user.createdAt < :cursor', { cursor: new Date(cursor) });
-    }
 
-    const users = await qb
+    const [items, total] = await qb
       .orderBy('user.createdAt', 'DESC')
-      .take(limit + 1)
-      .getMany();
+      .skip(skip)
+      .take(pageSize)
+      .getManyAndCount();
 
-    const hasMore = users.length > limit;
-    const items = hasMore ? users.slice(0, limit) : users;
-    const nextCursor = hasMore ? items[items.length - 1].createdAt.toISOString() : null;
-
-    return { items, nextCursor, hasMore };
+    return paginatedResponse(items, total, page, pageSize);
   }
 
   async suspendUser(userId: string, reason: string): Promise<void> {
@@ -139,10 +135,11 @@ export class AdminService {
   async listReports(opts: {
     status?: string;
     targetType?: string;
-    cursor?: string;
-    limit?: number;
+    page?: number;
+    pageSize?: number;
   }) {
-    const { status, targetType, cursor, limit = 20 } = opts;
+    const { status, targetType } = opts;
+    const { page, pageSize, skip } = parsePageParams(opts);
 
     const reportRepo = AppDataSource.getRepository(Report);
     const qb = reportRepo
@@ -155,20 +152,14 @@ export class AdminService {
     if (targetType) {
       qb.andWhere('report.targetType = :targetType', { targetType });
     }
-    if (cursor) {
-      qb.andWhere('report.createdAt < :cursor', { cursor: new Date(cursor) });
-    }
 
-    const reports = await qb
+    const [items, total] = await qb
       .orderBy('report.createdAt', 'DESC')
-      .take(limit + 1)
-      .getMany();
+      .skip(skip)
+      .take(pageSize)
+      .getManyAndCount();
 
-    const hasMore = reports.length > limit;
-    const items = hasMore ? reports.slice(0, limit) : reports;
-    const nextCursor = hasMore ? items[items.length - 1].createdAt.toISOString() : null;
-
-    return { items, nextCursor, hasMore };
+    return paginatedResponse(items, total, page, pageSize);
   }
 
   async resolveReport(
@@ -191,8 +182,8 @@ export class AdminService {
   // 경기 결과 관리 (이의 신청 처리)
   // ─────────────────────────────────────
 
-  async listDisputedGames(opts: { cursor?: string; limit?: number } = {}) {
-    const { cursor, limit = 20 } = opts;
+  async listDisputedGames(opts: { page?: number; pageSize?: number } = {}) {
+    const { page, pageSize, skip } = parsePageParams(opts);
 
     const gameRepo = AppDataSource.getRepository(Game);
     const qb = gameRepo
@@ -204,20 +195,13 @@ export class AdminService {
       .leftJoinAndSelect('opponentProfile.user', 'opponentUser')
       .where('game.resultStatus = :status', { status: 'DISPUTED' });
 
-    if (cursor) {
-      qb.andWhere('game.createdAt < :cursor', { cursor: new Date(cursor) });
-    }
-
-    const games = await qb
+    const [items, total] = await qb
       .orderBy('game.createdAt', 'DESC')
-      .take(limit + 1)
-      .getMany();
+      .skip(skip)
+      .take(pageSize)
+      .getManyAndCount();
 
-    const hasMore = games.length > limit;
-    const items = hasMore ? games.slice(0, limit) : games;
-    const nextCursor = hasMore ? items[items.length - 1].createdAt.toISOString() : null;
-
-    return { items, nextCursor, hasMore };
+    return paginatedResponse(items, total, page, pageSize);
   }
 
   async resolveDispute(
@@ -266,34 +250,53 @@ export class AdminService {
   async listPins(opts: {
     level?: string;
     active?: boolean;
-    cursor?: string;
-    limit?: number;
+    page?: number;
+    pageSize?: number;
   } = {}) {
-    const { level, active, cursor, limit = 50 } = opts;
+    const { level, active } = opts;
+    const { page, pageSize, skip } = parsePageParams(opts);
 
-    const pinRepo = AppDataSource.getRepository(Pin);
-    const qb = pinRepo.createQueryBuilder('pin');
+    // geography(center) 직렬화 문제 회피: raw SQL + ST_Y/ST_X 사용
+    const conditions: string[] = [];
+    const params: any[] = [];
+    let paramIdx = 1;
 
     if (level) {
-      qb.andWhere('pin.level = :level', { level });
+      conditions.push(`p.level = $${paramIdx++}`);
+      params.push(level);
     }
     if (active !== undefined) {
-      qb.andWhere('pin.isActive = :active', { active });
-    }
-    if (cursor) {
-      qb.andWhere('pin.createdAt < :cursor', { cursor: new Date(cursor) });
+      conditions.push(`p.is_active = $${paramIdx++}`);
+      params.push(active);
     }
 
-    const pins = await qb
-      .orderBy('pin.createdAt', 'DESC')
-      .take(limit + 1)
-      .getMany();
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-    const hasMore = pins.length > limit;
-    const items = hasMore ? pins.slice(0, limit) : pins;
-    const nextCursor = hasMore ? items[items.length - 1].createdAt.toISOString() : null;
+    const [countResult, items] = await Promise.all([
+      AppDataSource.query<{ count: string }[]>(
+        `SELECT COUNT(*) AS count FROM pins p ${whereClause}`,
+        params,
+      ),
+      AppDataSource.query(
+        `SELECT
+           p.id, p.name, p.slug, p.level,
+           p.parent_pin_id AS "parentPinId",
+           p.region_code AS "regionCode",
+           p.is_active AS "isActive",
+           p.user_count AS "userCount",
+           p.metadata,
+           p.created_at AS "createdAt",
+           json_build_object('lat', ST_Y(p.center::geometry), 'lng', ST_X(p.center::geometry)) AS center
+         FROM pins p
+         ${whereClause}
+         ORDER BY p.created_at DESC
+         OFFSET $${paramIdx} LIMIT $${paramIdx + 1}`,
+        [...params, skip, pageSize],
+      ),
+    ]);
 
-    return { items, nextCursor, hasMore };
+    const total = parseInt(countResult[0]?.count ?? '0', 10);
+    return paginatedResponse(items, total, page, pageSize);
   }
 
   async activatePin(pinId: string, active: boolean): Promise<void> {

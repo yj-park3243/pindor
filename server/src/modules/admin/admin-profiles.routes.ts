@@ -11,6 +11,7 @@ import {
 import { requireAdmin } from './admin.middleware.js';
 import { AppError, ErrorCode } from '../../shared/errors/app-error.js';
 import { calculateTier } from '../../shared/utils/elo.js';
+import { parsePageParams, paginatedResponse } from '../../shared/pagination.js';
 
 export async function adminProfilesRoutes(fastify: FastifyInstance): Promise<void> {
   // ─── GET /admin/sports-profiles ── 스포츠 프로필 목록
@@ -30,13 +31,14 @@ export async function adminProfilesRoutes(fastify: FastifyInstance): Promise<voi
           search?: string;
           sportType?: string;
           tier?: string;
-          cursor?: string;
-          limit?: number;
+          page?: number;
+          pageSize?: number;
         };
       }>,
       reply: FastifyReply,
     ) => {
-      const { search, sportType, tier, cursor, limit = 20 } = request.query;
+      const { search, sportType, tier } = request.query;
+      const { page, pageSize, skip } = parsePageParams(request.query);
 
       const profileRepo = AppDataSource.getRepository(SportsProfile);
       const qb = profileRepo
@@ -52,20 +54,14 @@ export async function adminProfilesRoutes(fastify: FastifyInstance): Promise<voi
       if (search) {
         qb.andWhere('user.nickname ILIKE :search', { search: `%${search}%` });
       }
-      if (cursor) {
-        qb.andWhere('profile.createdAt < :cursor', { cursor: new Date(cursor) });
-      }
 
-      const profiles = await qb
+      const [items, total] = await qb
         .orderBy('profile.createdAt', 'DESC')
-        .take(Number(limit) + 1)
-        .getMany();
+        .skip(skip)
+        .take(pageSize)
+        .getManyAndCount();
 
-      const hasMore = profiles.length > Number(limit);
-      const items = hasMore ? profiles.slice(0, Number(limit)) : profiles;
-      const nextCursor = hasMore ? items[items.length - 1].createdAt.toISOString() : null;
-
-      return reply.send({ success: true, data: items, meta: { cursor: nextCursor, hasMore } });
+      return reply.send({ success: true, data: paginatedResponse(items, total, page, pageSize) });
     },
   );
 
@@ -174,11 +170,11 @@ export async function adminProfilesRoutes(fastify: FastifyInstance): Promise<voi
     async (
       request: FastifyRequest<{
         Params: { id: string };
-        Querystring: { cursor?: string; limit?: number };
+        Querystring: { page?: number; pageSize?: number };
       }>,
       reply: FastifyReply,
     ) => {
-      const { cursor, limit = 20 } = request.query;
+      const { page, pageSize, skip } = parsePageParams(request.query);
 
       // 프로필 존재 확인
       const profileRepo = AppDataSource.getRepository(SportsProfile);
@@ -192,20 +188,13 @@ export async function adminProfilesRoutes(fastify: FastifyInstance): Promise<voi
         .createQueryBuilder('history')
         .where('history.sportsProfileId = :profileId', { profileId: request.params.id });
 
-      if (cursor) {
-        qb.andWhere('history.createdAt < :cursor', { cursor: new Date(cursor) });
-      }
-
-      const histories = await qb
+      const [items, total] = await qb
         .orderBy('history.createdAt', 'DESC')
-        .take(Number(limit) + 1)
-        .getMany();
+        .skip(skip)
+        .take(pageSize)
+        .getManyAndCount();
 
-      const hasMore = histories.length > Number(limit);
-      const items = hasMore ? histories.slice(0, Number(limit)) : histories;
-      const nextCursor = hasMore ? items[items.length - 1].createdAt.toISOString() : null;
-
-      return reply.send({ success: true, data: items, meta: { cursor: nextCursor, hasMore } });
+      return reply.send({ success: true, data: paginatedResponse(items, total, page, pageSize) });
     },
   );
 

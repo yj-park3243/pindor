@@ -32,6 +32,7 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
   Duration _remaining = Duration.zero;
   bool _hasAccepted = false; // 내가 수락 버튼을 눌렀는지
   bool _timerStarted = false;
+  bool _isNavigating = false; // 중복 네비게이션 방지
 
   // 서버에서 직접 가져온 매칭 데이터 (SWR 우회)
   Match? _match;
@@ -129,9 +130,15 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
     if (remaining.isNegative) {
       _countdownTimer?.cancel();
       setState(() => _remaining = Duration.zero);
-      if (mounted) {
-        _showToast('매칭 시간이 초과되었습니다.');
-        context.go(AppRoutes.matchList);
+      if (mounted && !_isNavigating) {
+        _isNavigating = true;
+        _showToast('매칭 수락 시간이 만료되었습니다.');
+        Future.delayed(const Duration(milliseconds: 1500), () {
+          if (mounted) {
+            ref.invalidate(matchListProvider(null));
+            context.go(AppRoutes.matchList);
+          }
+        });
       }
     } else {
       setState(() => _remaining = remaining);
@@ -159,14 +166,15 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
     if (success) {
       final acceptState = ref.read(matchAcceptProvider(widget.matchId));
       if (acceptState.acceptStatus == 'MATCHED') {
-        // 양측 수락 완료 → chatRoomId가 있으면 채팅방으로, 없으면 매칭 목록으로 이동
+        // 양측 수락 완료 → 축하 토스트 후 매칭 상세 화면으로 이동
+        if (_isNavigating) return;
+        _isNavigating = true;
+        AppToast.success('매칭이 확정되었습니다! 🎉');
         ref.invalidate(matchListProvider(null));
-        final chatRoomId = acceptState.chatRoomId;
-        if (chatRoomId != null && mounted) {
-          context.go('${AppRoutes.chatList}/$chatRoomId');
-        } else if (mounted) {
-          context.go(AppRoutes.matchList);
-        }
+        Future.delayed(const Duration(milliseconds: 1500), () {
+          if (!mounted) return;
+          context.go('/matches/${widget.matchId}');
+        });
       } else {
         // 상대 응답 대기 → 매칭 진행중 목록으로 이동
         ref.invalidate(matchListProvider(null));
@@ -281,6 +289,7 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
     if (!mounted) return;
 
     if (success) {
+      _isNavigating = true;
       _showToast('매칭이 거절되었습니다. (-15점)');
       context.go(AppRoutes.matchList);
     } else {
@@ -325,19 +334,39 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
   Widget build(BuildContext context) {
     final acceptState = ref.watch(matchAcceptProvider(widget.matchId));
 
-    // 수락 후 상태 변경 감지 (CHAT으로 전환 시 채팅 이동)
+    // 소켓/폴링 상태 변경 감지
     ref.listen<MatchAcceptState>(
       matchAcceptProvider(widget.matchId),
       (prev, next) {
+        // 상대가 거절하거나 타임아웃된 경우 (CANCELLED)
+        if (prev?.acceptStatus != 'CANCELLED' &&
+            next.acceptStatus == 'CANCELLED' &&
+            mounted &&
+            !_isNavigating) {
+          _isNavigating = true;
+          // 내가 거절한 경우(_onReject)는 별도 처리하므로, 상대 거절/타임아웃만 여기서 처리
+          // _hasAccepted 여부와 무관하게 소켓/폴링으로 온 CANCELLED는 상대 측 이벤트
+          _showToast('상대방이 매칭을 거절했습니다.');
+          Future.delayed(const Duration(milliseconds: 1500), () {
+            if (mounted) {
+              ref.invalidate(matchListProvider(null));
+              context.go(AppRoutes.matchList);
+            }
+          });
+        }
+
+        // 양측 수락 완료 → CHAT 상태로 전환 (소켓/폴링 경로) → 매칭 상세 화면으로 이동
         if (prev?.updatedMatch?.status != 'CHAT' &&
             next.updatedMatch?.status == 'CHAT' &&
-            mounted) {
-          final chatRoomId = next.updatedMatch!.chatRoomId;
-          if (chatRoomId.isNotEmpty) {
-            context.go('${AppRoutes.chatList}/$chatRoomId');
-          } else {
-            context.go(AppRoutes.matchList);
-          }
+            mounted &&
+            !_isNavigating) {
+          _isNavigating = true;
+          AppToast.success('매칭이 확정되었습니다! 🎉');
+          ref.invalidate(matchListProvider(null));
+          Future.delayed(const Duration(milliseconds: 1500), () {
+            if (!mounted) return;
+            context.go('/matches/${widget.matchId}');
+          });
         }
       },
     );
@@ -458,12 +487,23 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
                             ],
                             const SizedBox(height: 8),
 
-                            // 점수 + 경기수
+                            // 등급 + 점수 + 경기수
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
+                                if (!match.opponent.isPlacement) ...[
+                                  Text(
+                                    match.opponent.tier,
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppTheme.tierColor(match.opponent.tier),
+                                    ),
+                                  ),
+                                  const Text(' · ', style: TextStyle(color: AppTheme.textDisabled)),
+                                ],
                                 Text(
-                                  match.opponent.isPlacement ? '배치' : '${match.opponent.displayScore ?? match.opponent.currentScore ?? 1000}점',
+                                  match.opponent.isPlacement ? '배치 중' : '${match.opponent.displayScore ?? match.opponent.currentScore ?? 1000}점',
                                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.primaryColor),
                                 ),
                                 if (match.opponent.gamesPlayed > 0) ...[

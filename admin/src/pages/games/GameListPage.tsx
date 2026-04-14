@@ -201,7 +201,7 @@ export function GameListPage() {
             current: page,
             pageSize: 20,
             total: data?.total || 0,
-            showTotal: (total) => `총 ${total.toLocaleString()}건`,
+            showTotal: (total) => `총 ${(total ?? 0).toLocaleString()}건`,
             onChange: setPage,
           }}
           scroll={{ x: 900 }}

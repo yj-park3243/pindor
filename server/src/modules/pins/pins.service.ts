@@ -1,6 +1,7 @@
 import { AppDataSource } from '../../config/database.js';
 import {
   Pin,
+  PinActivity,
   Post,
   PostImage,
   PostLike,
@@ -85,9 +86,9 @@ export class PinsService {
       `SELECT p.id, p.name, p.slug, p.level,
               ST_Y(p.center::geometry) AS "centerLat",
               ST_X(p.center::geometry) AS "centerLng",
-              COUNT(up.user_id)::int AS "userCount"
+              COUNT(pa.user_id)::int AS "userCount"
        FROM pins p
-       LEFT JOIN user_pins up ON up.pin_id = p.id
+       LEFT JOIN pin_activities pa ON pa.pin_id = p.id
        WHERE p.id IN (${placeholders}) AND p.is_active = TRUE
        GROUP BY p.id, p.name, p.slug, p.level, p.center`,
       ids,
@@ -115,9 +116,9 @@ export class PinsService {
       `SELECT p.id, p.name, p.slug, p.level,
               ST_Y(p.center::geometry) AS "centerLat",
               ST_X(p.center::geometry) AS "centerLng",
-              COUNT(up.user_id)::int AS "userCount"
+              COUNT(pa.user_id)::int AS "userCount"
        FROM pins p
-       LEFT JOIN user_pins up ON up.pin_id = p.id
+       LEFT JOIN pin_activities pa ON pa.pin_id = p.id
        WHERE p.is_active = TRUE AND p.level = 'DONG'
        GROUP BY p.id, p.name, p.slug, p.level, p.center
        ORDER BY p.name ASC`
@@ -224,6 +225,9 @@ export class PinsService {
       .where('post.pinId = :pinId', { pinId })
       .andWhere('post.isDeleted = false');
 
+    if (query.sportType) {
+      qb.andWhere('post.sportType = :sportType', { sportType: query.sportType });
+    }
     if (query.category) {
       qb.andWhere('post.category = :category', { category: query.category });
     }
@@ -258,14 +262,33 @@ export class PinsService {
       }
     }
 
+    // 작성자의 해당 종목 tier 조회
+    const authorIds = [...new Set(posts.map((p) => (p.author as any)?.id).filter(Boolean))];
+    const tierMap = new Map<string, string>();
+    if (authorIds.length > 0 && query.sportType) {
+      const tierRows = await AppDataSource.query<Array<{ userId: string; tier: string }>>(
+        `SELECT user_id AS "userId", tier FROM sports_profiles
+         WHERE user_id = ANY($1::uuid[]) AND sport_type = $2`,
+        [authorIds, query.sportType],
+      );
+      for (const row of tierRows) {
+        tierMap.set(row.userId, row.tier);
+      }
+    }
+
     const hasMore = posts.length > query.limit;
     const items = hasMore ? posts.slice(0, query.limit) : posts;
     const nextCursor = hasMore ? items[items.length - 1].createdAt.toISOString() : null;
 
-    const result = items.map((p) => ({
-      ...p,
-      commentCount: commentCounts[p.id] ?? 0,
-    }));
+    const result = items.map((p) => {
+      const authorId = (p.author as any)?.id;
+      const authorTier = authorId ? tierMap.get(authorId) ?? null : null;
+      return {
+        ...p,
+        commentCount: commentCounts[p.id] ?? 0,
+        author: { ...(p.author as any), tier: authorTier },
+      };
+    });
 
     return { items: result, nextCursor, hasMore };
   }
@@ -274,7 +297,7 @@ export class PinsService {
   // 게시글 상세
   // ─────────────────────────────────────
 
-  async getPost(pinId: string, postId: string, userId?: string) {
+  async getPost(pinId: string, postId: string, userId?: string, sportType?: string) {
     const postRepo = AppDataSource.getRepository(Post);
     const postLikeRepo = AppDataSource.getRepository(PostLike);
 
@@ -316,11 +339,23 @@ export class PinsService {
       isLiked = !!like;
     }
 
+    // 작성자의 해당 종목 tier 조회
+    let authorTier: string | null = null;
+    const authorId = (post.author as any)?.id;
+    if (authorId && sportType) {
+      const tierRows = await AppDataSource.query<Array<{ tier: string }>>(
+        `SELECT tier FROM sports_profiles WHERE user_id = $1::uuid AND sport_type = $2 LIMIT 1`,
+        [authorId, sportType],
+      );
+      authorTier = tierRows[0]?.tier ?? null;
+    }
+
     return {
       ...post,
       isLiked,
       commentCount: parseInt(commentCount, 10),
       likeCount,
+      author: { ...(post.author as any), tier: authorTier },
     };
   }
 
@@ -472,10 +507,11 @@ export class PinsService {
 
     // 게시글 작성자에게 알림 (자신의 글이 아닐 경우)
     if (post.authorId !== userId && this.notificationService) {
+      const commenterName = (result?.author as any)?.nickname ?? '누군가';
       await this.notificationService.send({
         userId: post.authorId,
         type: 'COMMUNITY_REPLY',
-        title: '댓글이 달렸습니다',
+        title: `${commenterName}님이 댓글을 남겼습니다`,
         body: dto.content.substring(0, 100),
         data: {
           pinId,
@@ -590,5 +626,71 @@ export class PinsService {
       });
       return { liked: true };
     }
+  }
+
+  // ─────────────────────────────────────
+  // 핀 활동 기록 & 활동 인원 갱신
+  // ─────────────────────────────────────
+
+  /** 핀 활동 UPSERT + userCount 갱신 */
+  async recordActivity(pinId: string, userId: string): Promise<void> {
+    const repo = AppDataSource.getRepository(PinActivity);
+
+    await repo
+      .createQueryBuilder()
+      .insert()
+      .into(PinActivity)
+      .values({ pinId, userId })
+      .orIgnore() // UNIQUE 충돌 시 무시
+      .execute();
+
+    await this.refreshUserCount(pinId);
+  }
+
+  /** 핀 활동 다건 UPSERT (매칭 성사 시 양측) */
+  async recordActivities(pinId: string, userIds: string[]): Promise<void> {
+    if (userIds.length === 0) return;
+
+    const repo = AppDataSource.getRepository(PinActivity);
+
+    await repo
+      .createQueryBuilder()
+      .insert()
+      .into(PinActivity)
+      .values(userIds.map((userId) => ({ pinId, userId })))
+      .orIgnore()
+      .execute();
+
+    await this.refreshUserCount(pinId);
+  }
+
+  /** pins.user_count를 pin_activities 기준으로 갱신 */
+  private async refreshUserCount(pinId: string): Promise<void> {
+    await AppDataSource.query(
+      `UPDATE pins SET user_count = (
+        SELECT COUNT(*) FROM pin_activities WHERE pin_id = $1
+      ) WHERE id = $1`,
+      [pinId],
+    );
+  }
+
+  // ─────────────────────────────────────
+  // 자주 가는 핀 저장/조회
+  // ─────────────────────────────────────
+
+  /** 자주 가는 핀 설정 (기존 해제 → 새 핀 설정 + 활동 기록) */
+  async setFavoritePin(userId: string, pinId: string): Promise<void> {
+    // 활동 기록 (UPSERT)
+    await this.recordActivity(pinId, userId);
+  }
+
+  /** 유저의 자주 가는 핀 조회 (pin_activities 기준) */
+  async getFavoritePins(userId: string): Promise<Pin[]> {
+    const activities = await AppDataSource.getRepository(PinActivity).find({
+      where: { userId },
+      relations: { pin: true },
+      order: { createdAt: 'DESC' },
+    });
+    return activities.map((a) => a.pin).filter(Boolean);
   }
 }

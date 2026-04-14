@@ -18,8 +18,9 @@ import '../../widgets/common/app_toast.dart';
 class PostDetailScreen extends ConsumerStatefulWidget {
   final String pinId;
   final String postId;
+  final String? sportType;
 
-  const PostDetailScreen({super.key, required this.pinId, required this.postId});
+  const PostDetailScreen({super.key, required this.pinId, required this.postId, this.sportType});
 
   @override
   ConsumerState<PostDetailScreen> createState() => _PostDetailScreenState();

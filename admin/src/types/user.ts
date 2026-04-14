@@ -1,5 +1,5 @@
 export type UserStatus = 'ACTIVE' | 'SUSPENDED' | 'WITHDRAWN';
-export type SportType = 'GOLF' | 'BILLIARDS' | 'TENNIS' | 'TABLE_TENNIS';
+export type SportType = 'GOLF' | 'BILLIARDS' | 'BILLIARDS_4BALL' | 'BILLIARDS_3CUSHION' | 'TENNIS' | 'TABLE_TENNIS' | 'BADMINTON' | 'BOWLING' | 'ROCK_PAPER_SCISSORS' | 'ARM_WRESTLING';
 export type Tier = 'GRANDMASTER' | 'MASTER' | 'PLATINUM' | 'GOLD' | 'SILVER' | 'BRONZE' | 'IRON';
 export type SocialProvider = 'KAKAO' | 'APPLE' | 'GOOGLE';
 

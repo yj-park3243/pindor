@@ -2,12 +2,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/ranking_entry.dart';
 import '../repositories/ranking_repository.dart';
 
-/// 핀 랭킹 프로바이더
+/// 핀 랭킹 프로바이더 (pinId 단독 — 기본 종목 GOLF)
 final pinRankingProvider =
     FutureProvider.autoDispose.family<PinRankingData, String>(
   (ref, pinId) async {
     final repo = ref.read(rankingRepositoryProvider);
     return repo.getPinRanking(pinId);
+  },
+);
+
+/// 핀 랭킹 프로바이더 (pinId + sportType)
+final pinRankingBySportProvider =
+    FutureProvider.autoDispose.family<PinRankingData, ({String pinId, String sportType})>(
+  (ref, params) async {
+    final repo = ref.read(rankingRepositoryProvider);
+    return repo.getPinRanking(params.pinId, sportType: params.sportType);
   },
 );
 
@@ -19,6 +28,28 @@ final nationalRankingProvider =
     return repo.getNationalRanking(sportType: sportType);
   },
 );
+
+/// 종목별 자주가는 핀 등수 프로바이더
+final myPinRankProvider =
+    FutureProvider.autoDispose.family<int?, String>((ref, sportType) async {
+  final repo = ref.read(rankingRepositoryProvider);
+  return repo.getMyPrimaryPinRank(sportType);
+});
+
+/// 종목별 최고 점수 핀 정보 프로바이더
+final myBestPinScoreProvider =
+    FutureProvider.autoDispose.family<BestPinScore?, String>((ref, sportType) async {
+  final repo = ref.read(rankingRepositoryProvider);
+  return repo.getMyBestPinScore(sportType);
+});
+
+/// 내가 경기한 핀 ID 집합 프로바이더
+final myParticipatedPinIdsProvider =
+    FutureProvider.autoDispose<Set<String>>((ref) async {
+  ref.keepAlive();
+  final repo = ref.read(rankingRepositoryProvider);
+  return repo.getMyParticipatedPinIds();
+});
 
 /// 내 랭킹 히스토리 프로바이더 (profileId 필요)
 final myRankingHistoryProvider =

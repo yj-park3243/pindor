@@ -1,19 +1,22 @@
 import { AppDataSource } from '../config/database.js';
 import { Game, Match } from '../entities/index.js';
 import { GamesService } from '../modules/games/games.service.js';
+import type { INotificationService } from '../shared/types/index.js';
 
 // ─────────────────────────────────────
 // 경기 결과 자동 확정 배치 Worker
 //
 // 규칙:
 //   a) 양측 모두 3일 이내 결과 미입력 → 무승부(DRAW) 처리
-//   b) 한쪽만 결과 입력 후 1일이 지나도 상대가 미입력 → 제출된 결과 채택
+//   b) 한쪽만 결과 입력 후 3분이 지나도 상대가 미입력 → 제출된 결과 채택
+// (BullMQ delayed job이 메인, 이 폴링은 백업)
 // ─────────────────────────────────────
 
 export async function processAutoResolveGames(): Promise<void> {
   const gameRepo = AppDataSource.getRepository(Game);
   const matchRepo = AppDataSource.getRepository(Match);
-  const gamesService = new GamesService(AppDataSource);
+  const notificationService = (global as any).__notificationService as INotificationService | undefined;
+  const gamesService = new GamesService(AppDataSource, notificationService);
 
   const now = new Date();
 
@@ -45,11 +48,12 @@ export async function processAutoResolveGames(): Promise<void> {
     }
   }
 
-  // ─── b) 한쪽만 입력 + 1일 경과 → 제출된 결과 채택 ───
+  // ─── b) 한쪽만 입력 + 3분 경과 → 제출된 결과 채택 ───
   // resultStatus = PROOF_UPLOADED이고
   // requester_claimed_result OR opponent_claimed_result 중 하나만 있으며
-  // 마지막 업데이트(updatedAt) 후 1일이 지난 경우
-  const oneDayAgo = new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000);
+  // 마지막 업데이트(updatedAt) 후 3분이 지난 경우
+  // (BullMQ delayed job이 메인이지만, 이 폴링은 백업으로 동작)
+  const threeMinutesAgo = new Date(now.getTime() - 3 * 60 * 1000);
 
   const singleSideCandidates = await gameRepo
     .createQueryBuilder('game')
@@ -60,12 +64,12 @@ export async function processAutoResolveGames(): Promise<void> {
       '(game.requesterClaimedResult IS NULL AND game.opponentClaimedResult IS NOT NULL)',
     )
     .andWhere('match.status = :matchStatus', { matchStatus: 'CONFIRMED' })
-    .andWhere('game.updatedAt <= :threshold', { threshold: oneDayAgo })
+    .andWhere('game.updatedAt <= :threshold', { threshold: threeMinutesAgo })
     .take(50)
     .getMany();
 
   if (singleSideCandidates.length > 0) {
-    console.info(`[AutoResolveWorker] Processing ${singleSideCandidates.length} games with single-side result (1-day timeout)`);
+    console.info(`[AutoResolveWorker] Processing ${singleSideCandidates.length} games with single-side result (3-min timeout)`);
     for (const game of singleSideCandidates) {
       try {
         await gamesService.resolveGameWithSingleResult(game.id);

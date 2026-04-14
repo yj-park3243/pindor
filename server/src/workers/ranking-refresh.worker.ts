@@ -7,6 +7,7 @@ import {
 } from '../entities/index.js';
 import { redis, bullmqRedis } from '../config/redis.js';
 import { RankingCache } from '../modules/rankings/ranking.cache.js';
+import { calculateTierByRank } from '../shared/utils/elo.js';
 import type { RankingRefreshJobData } from '../shared/types/index.js';
 
 // ─────────────────────────────────────
@@ -47,10 +48,29 @@ async function refreshPinRanking(pinId: string, sportType: string): Promise<void
   const rankingEntryRepo = AppDataSource.getRepository(RankingEntry);
   const pinRepo = AppDataSource.getRepository(Pin);
 
-  // DB에서 최신 랭킹 계산
+  // DB에서 최신 랭킹 계산 — 핀별 독립 점수(ranking_entries.score) 기준으로 정렬
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-  const profiles = await sportsProfileRepo
+  // ranking_entries가 있는 유저: 핀별 점수 기준 정렬
+  // ranking_entries가 없는 유저(첫 진입): 제외 (applyEloChanges에서 생성됨)
+  const entriesWithProfiles = await rankingEntryRepo
+    .createQueryBuilder('re')
+    .innerJoinAndSelect('re.sportsProfile', 'sp')
+    .innerJoin('sp.user', 'u')
+    .innerJoin('u.userPins', 'up', 'up.pinId = :pinId', { pinId })
+    .where('re.pinId = :pinId', { pinId })
+    .andWhere('re.sportType = :sportType', { sportType })
+    .andWhere('sp.isActive = true')
+    .andWhere('u.status = :status', { status: 'ACTIVE' })
+    .andWhere('u.lastLoginAt >= :since', { since: thirtyDaysAgo })
+    .orderBy('re.score', 'DESC')
+    .take(100)
+    .getMany();
+
+  // ranking_entries가 없는 유저 중 조건을 만족하는 유저도 포함 (신규 진입자)
+  const existingProfileIds = new Set(entriesWithProfiles.map((e) => e.sportsProfileId));
+
+  const newProfiles = await sportsProfileRepo
     .createQueryBuilder('sp')
     .innerJoin('sp.user', 'u')
     .innerJoin('u.userPins', 'up', 'up.pinId = :pinId', { pinId })
@@ -59,15 +79,24 @@ async function refreshPinRanking(pinId: string, sportType: string): Promise<void
     .andWhere('sp.gamesPlayed >= 3')
     .andWhere('u.status = :status', { status: 'ACTIVE' })
     .andWhere('u.lastLoginAt >= :since', { since: thirtyDaysAgo })
-    .orderBy('sp.currentScore', 'DESC')
-    .take(100)
+    .andWhere('sp.id NOT IN (:...existingIds)', {
+      existingIds: existingProfileIds.size > 0 ? [...existingProfileIds] : ['__none__'],
+    })
     .getMany();
+
+  // profiles: ranking_entries 기반 순서 유지 + 신규 진입자 추가
+  const profiles = [
+    ...entriesWithProfiles.map((e) => ({ ...e.sportsProfile, _pinScore: e.score } as any)),
+    ...newProfiles,
+  ].slice(0, 100);
 
   // Redis 초기화 후 재빌드
   await rankingCache.clearPinRanking(pinId, sportType);
 
   for (const profile of profiles) {
-    await rankingCache.updateScore(pinId, sportType, profile.id, profile.currentScore);
+    // 핀별 점수가 있으면 사용, 없으면 currentScore 사용
+    const scoreForRedis = (profile as any)._pinScore ?? profile.currentScore;
+    await rankingCache.updateScore(pinId, sportType, profile.id, scoreForRedis);
   }
 
   // DB ranking_entries 테이블 동기화
@@ -83,30 +112,31 @@ async function refreshPinRanking(pinId: string, sportType: string): Promise<void
     await rankingEntryRepo.delete(toDelete.map((e) => e.id));
   }
 
-  const existingIds = new Set(existingEntries.map((e) => e.sportsProfileId));
-
-  // 순위 upsert (save: insert on conflict update)
+  // 순위 upsert — 등수 기반 티어 계산
+  // 기존 엔트리: rank, tier만 재계산 (score/gamesPlayed는 핀별 독립 점수이므로 유지)
+  // 신규 엔트리: sports_profiles.currentScore로 초기화 (첫 진입)
+  const totalPlayers = profiles.length;
   for (let i = 0; i < profiles.length; i++) {
     const profile = profiles[i];
+    const rank = i + 1;
+    const tier = calculateTierByRank(rank, totalPlayers);
     const existing = existingEntries.find((e) => e.sportsProfileId === profile.id);
 
     if (existing) {
-      // 업데이트
+      // 기존 엔트리: rank, tier만 업데이트 (score/gamesPlayed는 applyEloChanges에서 핀별로 관리)
       await rankingEntryRepo.update(existing.id, {
-        rank: i + 1,
-        score: profile.currentScore,
-        tier: profile.tier,
-        gamesPlayed: profile.gamesPlayed,
+        rank,
+        tier,
       });
     } else {
-      // 신규 삽입
+      // 신규 엔트리: 첫 진입이므로 sports_profiles.currentScore로 초기화
       const entry = rankingEntryRepo.create({
         pinId,
         sportsProfileId: profile.id,
         sportType: sportType as any,
-        rank: i + 1,
+        rank,
         score: profile.currentScore,
-        tier: profile.tier,
+        tier,
         gamesPlayed: profile.gamesPlayed,
       });
       await rankingEntryRepo.save(entry);

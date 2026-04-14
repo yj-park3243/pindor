@@ -607,7 +607,7 @@ export function TeamDetailPage() {
               { required: true, message: '점수를 입력해주세요.' },
               { type: 'number', min: 0, message: '0 이상의 점수를 입력해주세요.' },
             ]}
-            extra={`현재 점수: ${team.teamScore.toLocaleString()}`}
+            extra={`현재 점수: ${(team?.teamScore ?? 0).toLocaleString()}`}
           >
             <InputNumber
               style={{ width: '100%' }}

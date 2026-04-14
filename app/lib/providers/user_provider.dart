@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user.dart';
 import '../repositories/user_repository.dart';
 import '../providers/auth_provider.dart';
+import '../providers/sport_preference_provider.dart';
 
 /// 현재 로그인한 사용자의 전체 User 객체 (SWR 패턴)
 ///
@@ -17,11 +18,20 @@ class UserNotifier extends AutoDisposeAsyncNotifier<User?> {
 
     // authState.user가 있으면 바로 사용 (로그인 직후)
     if (authState.user != null) {
+      // 서버에서 받은 preferredSportType으로 초기화
+      unawaited(ref
+          .read(sportPreferenceProvider.notifier)
+          .initFromServer(authState.user!.preferredSportType));
+
       // 백그라운드로 최신 데이터 갱신
       final repo = ref.read(userRepositoryProvider);
       unawaited(repo.getMe().then((updated) {
         if (updated != null && state.hasValue) {
           state = AsyncData(updated);
+          // 갱신된 데이터로 종목 선호도 재동기화
+          unawaited(ref
+              .read(sportPreferenceProvider.notifier)
+              .initFromServer(updated.preferredSportType));
         }
       }).catchError((e) {
         debugPrint('[UserProvider] background refresh failed: $e');
@@ -32,7 +42,13 @@ class UserNotifier extends AutoDisposeAsyncNotifier<User?> {
     // user가 null인 경우 (네트워크 에러로 토큰만 유지된 상태)
     final repo = ref.read(userRepositoryProvider);
     try {
-      return await repo.getMe();
+      final user = await repo.getMe();
+      if (user != null) {
+        unawaited(ref
+            .read(sportPreferenceProvider.notifier)
+            .initFromServer(user.preferredSportType));
+      }
+      return user;
     } catch (e) {
       debugPrint('[UserProvider] getMe failed: $e');
       return null;

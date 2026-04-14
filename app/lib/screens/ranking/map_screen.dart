@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../config/theme.dart';
+import '../../core/utils/location_utils.dart';
+import '../../core/utils/permission_helper.dart';
 import '../../models/pin.dart';
 import '../../providers/pin_provider.dart';
 import '../../widgets/map/sport_marker.dart';
@@ -26,6 +28,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   bool _hasLocation = false;
   bool _locationDenied = false;
   bool _mapReady = false;
+  bool _isAddingMarkers = false; // 마커 생성 진행 중 플래그
   Pin? _selectedPin;
   List<Pin>? _lastPins;
   bool _didAutoNavigateToFavoritePin = false;
@@ -56,7 +59,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     if (permission == LocationPermission.deniedForever) {
       if (mounted) {
         setState(() => _locationDenied = true);
-        _showLocationSettingsDialog();
+        await PermissionHelper.showLocationDeniedDialog(context);
       }
       return;
     }
@@ -66,83 +69,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       return;
     }
 
-    try {
-      final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.medium,
-        timeLimit: const Duration(seconds: 10),
+    final pos = await LocationUtils.getCurrentPosition();
+    if (pos == null || !mounted) return;
+    setState(() {
+      _currentLocation = NLatLng(pos.latitude, pos.longitude);
+      _hasLocation = true;
+      _locationDenied = false;
+    });
+    // 자주가는 핀으로 이미 이동했으면 GPS 위치로 덮어쓰지 않음
+    if (!_didAutoNavigateToFavoritePin) {
+      _mapController?.updateCamera(
+        NCameraUpdate.scrollAndZoomTo(target: _currentLocation, zoom: 13),
       );
-      if (!mounted) return;
-      setState(() {
-        _currentLocation = NLatLng(pos.latitude, pos.longitude);
-        _hasLocation = true;
-        _locationDenied = false;
-      });
-      // 자주가는 핀으로 이미 이동했으면 GPS 위치로 덮어쓰지 않음
-      if (!_didAutoNavigateToFavoritePin) {
-        _mapController?.updateCamera(
-          NCameraUpdate.scrollAndZoomTo(target: _currentLocation, zoom: 13),
-        );
-      }
-    } catch (e) {
-      debugPrint('[Map] Location error: $e');
     }
-  }
-
-  void _showLocationSettingsDialog() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: EdgeInsets.fromLTRB(24, 20, 24, MediaQuery.of(ctx).padding.bottom + 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 36, height: 4,
-              decoration: BoxDecoration(color: const Color(0xFF2A2A2A), borderRadius: BorderRadius.circular(2)),
-            ),
-            const SizedBox(height: 20),
-            Container(
-              width: 56, height: 56,
-              decoration: BoxDecoration(color: const Color(0xFF4F46E5).withOpacity(0.1), shape: BoxShape.circle),
-              child: const Icon(Icons.location_on_outlined, color: Color(0xFF4F46E5), size: 28),
-            ),
-            const SizedBox(height: 16),
-            const Text('위치 권한 필요', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Colors.white)),
-            const SizedBox(height: 8),
-            const Text('주변 핀을 표시하려면 위치 권한이 필요합니다.\n설정에서 위치 권한을 허용해주세요.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: Color(0xFF6B7280), height: 1.6)),
-            const SizedBox(height: 28),
-            Row(children: [
-              Expanded(child: OutlinedButton(
-                onPressed: () => Navigator.pop(ctx),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  side: const BorderSide(color: Color(0xFF2A2A2A)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                child: const Text('취소', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF9CA3AF))),
-              )),
-              const SizedBox(width: 12),
-              Expanded(child: ElevatedButton(
-                onPressed: () { Navigator.pop(ctx); Geolocator.openAppSettings(); },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF4F46E5), foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 0,
-                ),
-                child: const Text('설정으로 이동', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-              )),
-            ]),
-          ],
-        ),
-      ),
-    );
   }
 
   // ─── 클러스터링 ───────────────────────────────────────────────────
@@ -263,53 +202,74 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   void _addPinMarkers(List<Pin> pins) async {
     if (!_mapReady || _mapController == null || !mounted) return;
+    if (_isAddingMarkers) return; // 이전 작업 진행 중이면 스킵
+    _isAddingMarkers = true;
 
-    _mapController!.clearOverlays();
-    final clusters = _computeClusters(pins);
+    try {
+      _mapController!.clearOverlays();
+      final clusters = _computeClusters(pins);
 
-    for (final item in clusters) {
-      if (!mounted) return;
-      if (item.isCluster) {
-        final icon = await _createClusterIcon(item.clusterCount!);
-        if (!mounted) return;
-        final marker = NMarker(
-          id: 'cluster_${item.clusterLat}_${item.clusterLng}',
-          position: NLatLng(item.clusterLat!, item.clusterLng!),
-          icon: icon,
-          anchor: const NPoint(0.5, 0.5),
-        );
-        marker.setOnTapListener((_) {
-          _mapController?.updateCamera(
-            NCameraUpdate.scrollAndZoomTo(
-              target: NLatLng(item.clusterLat!, item.clusterLng!),
-              zoom: _currentZoom + 2,
-            ),
+      for (final item in clusters) {
+        // 매 반복마다 취소 조건 체크
+        if (!mounted || !_isAddingMarkers) return;
+
+        if (item.isCluster) {
+          final icon = await _createClusterIcon(item.clusterCount!);
+          if (!mounted || !_isAddingMarkers) return;
+          final marker = NMarker(
+            id: 'cluster_${item.clusterLat}_${item.clusterLng}',
+            position: NLatLng(item.clusterLat!, item.clusterLng!),
+            icon: icon,
+            anchor: const NPoint(0.5, 0.5),
           );
-        });
-        _mapController!.addOverlay(marker);
-      } else {
-        final pin = item.pin!;
-        final isSelected = pin.id == _selectedPin?.id;
-        final width = (pin.name.length * 14.0 + 32).clamp(70.0, 220.0);
-        const height = 46.0;
-        final icon = await NOverlayImage.fromWidget(
-          widget: SizedBox(
-            width: width, height: height,
-            child: SportPinMarker(label: pin.name, isSelected: isSelected),
-          ),
-          size: Size(width, height),
-          context: context,
-        );
-        if (!mounted) return;
-        final marker = NMarker(
-          id: pin.id,
-          position: NLatLng(pin.centerLatitude, pin.centerLongitude),
-          icon: icon,
-          anchor: const NPoint(0.5, 1.0),
-        );
-        marker.setOnTapListener((_) => _onPinTap(pin));
-        _mapController!.addOverlay(marker);
+          marker.setOnTapListener((_) {
+            _mapController?.updateCamera(
+              NCameraUpdate.scrollAndZoomTo(
+                target: NLatLng(item.clusterLat!, item.clusterLng!),
+                zoom: _currentZoom + 2,
+              ),
+            );
+          });
+          if (!mounted || !_isAddingMarkers) return;
+          _mapController!.addOverlay(marker);
+        } else {
+          final pin = item.pin!;
+          final isSelected = pin.id == _selectedPin?.id;
+          final width = (pin.name.length * 14.0 + 32).clamp(70.0, 220.0);
+          const height = 46.0;
+
+          if (!mounted || !_isAddingMarkers) return;
+
+          // fromWidget 전 context 유효성 재확인
+          final NOverlayImage icon;
+          try {
+            if (!mounted) return;
+            icon = await NOverlayImage.fromWidget(
+              widget: SizedBox(
+                width: width, height: height,
+                child: SportPinMarker(label: pin.name, isSelected: isSelected),
+              ),
+              size: Size(width, height),
+              context: context,
+            );
+          } catch (e) {
+            debugPrint('[MapScreen] NOverlayImage 생성 실패: $e');
+            continue;
+          }
+
+          if (!mounted || !_isAddingMarkers) return;
+          final marker = NMarker(
+            id: pin.id,
+            position: NLatLng(pin.centerLatitude, pin.centerLongitude),
+            icon: icon,
+            anchor: const NPoint(0.5, 1.0),
+          );
+          marker.setOnTapListener((_) => _onPinTap(pin));
+          _mapController!.addOverlay(marker);
+        }
       }
+    } finally {
+      _isAddingMarkers = false;
     }
 
     _lastPins = pins;
@@ -362,6 +322,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   @override
+  void dispose() {
+    _isAddingMarkers = false; // 마커 생성 중이면 취소
+    _mapController = null;
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final pinsAsync = ref.watch(allPinsProvider);
 
@@ -384,7 +351,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             onMapReady: (controller) {
               _mapController = controller;
               _mapReady = true;
-              controller.setLocationTrackingMode(NLocationTrackingMode.noFollow);
+              // 위치 권한 있을 때만 트래킹 모드 설정 (권한 없으면 PlatformException 발생)
+              LocationUtils.hasPermission().then((granted) {
+                if (granted && mounted) {
+                  try {
+                    controller.setLocationTrackingMode(NLocationTrackingMode.noFollow);
+                  } catch (e) {
+                    debugPrint('[MapScreen] 위치 트래킹 설정 실패: $e');
+                  }
+                }
+              });
               final pins = pinsAsync.valueOrNull;
               if (pins != null && pins.isNotEmpty) _addPinMarkers(pins);
               // 자주가는 핀이 이미 로드됐으면 그쪽으로, 아니면 내 위치로
@@ -540,7 +516,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
           // 현재 위치 버튼
           Positioned(
-            right: 16, bottom: 28,
+            right: 16, top: MediaQuery.of(context).padding.top + 68,
             child: FloatingActionButton.small(
               heroTag: 'location',
               onPressed: _goToMyLocation,
@@ -554,7 +530,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           // 핀 개수 표시
           if (pinsAsync.valueOrNull != null)
             Positioned(
-              left: 16, bottom: 36,
+              left: 16, top: MediaQuery.of(context).padding.top + 72,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
@@ -652,7 +628,7 @@ class _PinSearchSheetState extends State<_PinSearchSheet> {
       child: Container(
         height: MediaQuery.of(context).size.height * 0.75,
         decoration: const BoxDecoration(
-          color: Colors.white,
+          color: Color(0xFF1A1A1A),
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: Column(
@@ -660,16 +636,16 @@ class _PinSearchSheetState extends State<_PinSearchSheet> {
             Container(
               margin: const EdgeInsets.only(top: 12),
               width: 40, height: 4,
-              decoration: BoxDecoration(color: const Color(0xFF2A2A2A), borderRadius: BorderRadius.circular(2)),
+              decoration: BoxDecoration(color: const Color(0xFF555555), borderRadius: BorderRadius.circular(2)),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 8, 12),
               child: Row(children: [
                 const Icon(Icons.search_rounded, color: AppTheme.primaryColor),
                 const SizedBox(width: 8),
-                const Text('핀 검색', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppTheme.textPrimary)),
+                const Text('핀 검색', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Colors.white)),
                 const Spacer(),
-                IconButton(icon: const Icon(Icons.close, color: AppTheme.textSecondary), onPressed: () => Navigator.of(context).pop()),
+                IconButton(icon: const Icon(Icons.close, color: Colors.white70), onPressed: () => Navigator.of(context).pop()),
               ]),
             ),
             Padding(
@@ -677,14 +653,16 @@ class _PinSearchSheetState extends State<_PinSearchSheet> {
               child: TextField(
                 controller: _searchController,
                 autofocus: true,
+                style: const TextStyle(color: Colors.white),
                 decoration: InputDecoration(
                   hintText: '핀 이름으로 검색',
-                  prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.textSecondary),
+                  hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.4)),
+                  prefixIcon: Icon(Icons.search_rounded, color: Colors.white.withValues(alpha: 0.5)),
                   suffixIcon: _searchController.text.isNotEmpty
-                      ? IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () => _searchController.clear())
+                      ? IconButton(icon: const Icon(Icons.clear, size: 18, color: Colors.white70), onPressed: () => _searchController.clear())
                       : null,
                   filled: true,
-                  fillColor: const Color(0xFF1E1E1E),
+                  fillColor: const Color(0xFF2A2A2A),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                   contentPadding: const EdgeInsets.symmetric(vertical: 12),
                 ),
@@ -697,14 +675,14 @@ class _PinSearchSheetState extends State<_PinSearchSheet> {
                 Text('${_filtered.length}개', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textSecondary)),
               ]),
             ),
-            const Divider(height: 1),
+            Divider(height: 1, color: Colors.white.withValues(alpha: 0.1)),
             Expanded(
               child: _filtered.isEmpty
                   ? const Center(child: Text('검색 결과가 없습니다.', style: TextStyle(color: AppTheme.textSecondary)))
                   : ListView.separated(
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       itemCount: _filtered.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1, indent: 16, endIndent: 16),
+                      separatorBuilder: (_, __) => Divider(height: 1, indent: 16, endIndent: 16, color: Colors.white.withValues(alpha: 0.08)),
                       itemBuilder: (context, index) {
                         final pin = _filtered[index];
                         return ListTile(
@@ -713,10 +691,10 @@ class _PinSearchSheetState extends State<_PinSearchSheet> {
                             decoration: BoxDecoration(color: AppTheme.primaryColor.withOpacity(0.08), shape: BoxShape.circle),
                             child: const Icon(Icons.push_pin_outlined, size: 20, color: AppTheme.primaryColor),
                           ),
-                          title: Text(pin.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                          title: Text(pin.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.white)),
                           subtitle: Text('${pin.levelDisplayName} · 유저 ${pin.userCount}명',
                               style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
-                          trailing: const Icon(Icons.chevron_right, color: AppTheme.textDisabled),
+                          trailing: Icon(Icons.chevron_right, color: Colors.white.withValues(alpha: 0.3)),
                           onTap: () => widget.onPinSelected(pin),
                         );
                       },

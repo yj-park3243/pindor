@@ -43,12 +43,36 @@ async function startWebSocketServer(): Promise<void> {
 
   // Redis pub/sub 구독
   const subClient = redis.duplicate();
-  await subClient.subscribe('system_notification', 'push_notification');
+  await subClient.subscribe('system_notification', 'push_notification', 'match_lifecycle', 'chat_room_message');
 
   subClient.on('message', async (channel, message) => {
     try {
       const payload = JSON.parse(message);
-      await notificationService.send(payload);
+
+      if (channel === 'system_notification' || channel === 'push_notification') {
+        await notificationService.send(payload);
+      }
+
+      // 매칭 라이프사이클 이벤트 → Socket.io 룸으로 직접 전달
+      if (channel === 'match_lifecycle') {
+        const { event, requestId, matchId, data } = payload;
+
+        if (event === 'MATCH_FOUND' && requestId) {
+          // 매칭 요청 룸에 매칭 성사 이벤트 전송
+          io.to(`matchrequest:${requestId}`).emit('MATCH_FOUND', data);
+        } else if (event === 'MATCH_STATUS_CHANGED' && matchId) {
+          // 매칭 룸에 상태 변경 이벤트 전송
+          io.to(`match:${matchId}`).emit('MATCH_STATUS_CHANGED', data);
+        }
+      }
+
+      // 채팅방 시스템 메시지 → 해당 채팅 룸으로 브로드캐스트
+      if (channel === 'chat_room_message') {
+        const { roomId, message: msgData } = payload;
+        if (roomId && msgData) {
+          io.to(`room:${roomId}`).emit('NEW_MESSAGE', msgData);
+        }
+      }
     } catch (err) {
       console.error('[WS Server] Message error:', err);
     }

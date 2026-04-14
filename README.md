@@ -45,3 +45,6 @@ cd app && bash deploy.sh
 # 랜딩
 rsync -az -e "ssh -i spots-key.pem" landing/ ec2-user@43.203.165.114:spots-landing/
 ```
+
+
+# 핸드폰 인증키: eaa433b5da2ae426aa0d637e46c5644436c104870fa1eabd4af6e7f26e9536df

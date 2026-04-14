@@ -1,0 +1,2 @@
+json_key_file("/Users/yongju/WebProject2/match/etc/PINS fastlane.json")
+package_name("kr.pins.spots")

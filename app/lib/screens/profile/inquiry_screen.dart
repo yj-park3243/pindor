@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../../config/theme.dart';
+import '../../core/utils/permission_helper.dart';
 import '../../repositories/support_repository.dart';
 import '../../repositories/upload_repository.dart';
 import '../../widgets/common/app_toast.dart';
@@ -55,6 +56,8 @@ class _InquiryScreenState extends ConsumerState<InquiryScreen> {
   }
 
   Future<void> _pickImage() async {
+    if (!mounted) return;
+
     final picker = ImagePicker();
     final xFile = await picker.pickImage(
       source: ImageSource.gallery,

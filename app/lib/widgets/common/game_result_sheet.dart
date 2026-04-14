@@ -1,8 +1,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../config/theme.dart';
+import '../../core/utils/permission_helper.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/matching_provider.dart';
 import '../../repositories/game_repository.dart';
@@ -20,12 +22,16 @@ void showGameResultSheet(
   required WidgetRef ref,
   required String matchId,
   String? opponentNickname,
+  String? initialVerificationCode,
   VoidCallback? onSubmitted,
 }) {
   String? selectedResult;
   int mannerScore = 3;
   bool isSubmitting = false;
   final List<File> photos = [];
+  final verificationCodeController = TextEditingController(
+    text: initialVerificationCode ?? '',
+  );
 
   showModalBottomSheet(
     context: context,
@@ -33,19 +39,16 @@ void showGameResultSheet(
     isScrollControlled: true,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setSheetState) {
-        final canSubmit =
-            selectedResult != null && photos.isNotEmpty && !isSubmitting;
+        final canSubmit = !isSubmitting;
 
         return Padding(
-          padding:
-              EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
           child: Container(
             decoration: const BoxDecoration(
               color: Color(0xFF1E1E1E),
               borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
             ),
-            padding: EdgeInsets.fromLTRB(
-                24, 20, 24, MediaQuery.of(ctx).padding.bottom + 20),
+            padding: EdgeInsets.fromLTRB(24, 20, 24, MediaQuery.of(ctx).padding.bottom + 20),
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -81,13 +84,13 @@ void showGameResultSheet(
                   Row(
                     children: [
                       _resultOptionButton('승리', 'WIN',
-                          Icons.emoji_events_rounded, Colors.blue,
+                          Symbols.emoji_events_rounded, Colors.blue,
                           selected: selectedResult,
                           onTap: (v) =>
                               setSheetState(() => selectedResult = v)),
                       const SizedBox(width: 10),
                       _resultOptionButton('무승부', 'DRAW',
-                          Icons.handshake_rounded, const Color(0xFF6B7280),
+                          Symbols.handshake_rounded, const Color(0xFF6B7280),
                           selected: selectedResult,
                           onTap: (v) =>
                               setSheetState(() => selectedResult = v)),
@@ -95,7 +98,7 @@ void showGameResultSheet(
                       _resultOptionButton(
                           '패배',
                           'LOSS',
-                          Icons.sentiment_dissatisfied_rounded,
+                          Symbols.sentiment_dissatisfied_rounded,
                           Colors.red,
                           selected: selectedResult,
                           onTap: (v) =>
@@ -105,10 +108,64 @@ void showGameResultSheet(
 
                   const SizedBox(height: 20),
 
-                  // 사진 첨부 (필수)
+                  // 인증번호 입력
                   const Align(
                     alignment: Alignment.centerLeft,
-                    child: Text('사진 첨부 (필수)',
+                    child: Text('상대방 인증번호 입력',
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textSecondary)),
+                  ),
+                  const SizedBox(height: 4),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      '상대방에게 인증번호를 확인하고 입력해주세요',
+                      style: TextStyle(fontSize: 11, color: AppTheme.textDisabled),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: verificationCodeController,
+                    keyboardType: TextInputType.number,
+                    maxLength: 4,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                      letterSpacing: 12,
+                    ),
+                    decoration: InputDecoration(
+                      counterText: '',
+                      hintText: '● ● ● ●',
+                      hintStyle: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white.withOpacity(0.15),
+                        letterSpacing: 12,
+                      ),
+                      filled: true,
+                      fillColor: const Color(0xFF2A2A2A),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: AppTheme.primaryColor, width: 2),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // 사진 첨부 (선택)
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('사진 첨부 (선택)',
                         style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
@@ -159,35 +216,40 @@ void showGameResultSheet(
                               shape: const RoundedRectangleBorder(
                                   borderRadius: BorderRadius.vertical(
                                       top: Radius.circular(16))),
-                              builder: (innerCtx) => SafeArea(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    ListTile(
-                                      leading: const Icon(
-                                          Icons.camera_alt_rounded,
-                                          color: Colors.white),
-                                      title: const Text('카메라',
-                                          style:
-                                              TextStyle(color: Colors.white)),
-                                      onTap: () => Navigator.pop(
-                                          innerCtx, ImageSource.camera),
-                                    ),
-                                    ListTile(
-                                      leading: const Icon(
-                                          Icons.photo_library_rounded,
-                                          color: Colors.white),
-                                      title: const Text('갤러리',
-                                          style:
-                                              TextStyle(color: Colors.white)),
-                                      onTap: () => Navigator.pop(
-                                          innerCtx, ImageSource.gallery),
-                                    ),
-                                  ],
-                                ),
+                              builder: (innerCtx) => Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  ListTile(
+                                    leading: const Icon(
+                                        Symbols.photo_camera_rounded,
+                                        color: Colors.white),
+                                    title: const Text('카메라',
+                                        style:
+                                            TextStyle(color: Colors.white)),
+                                    onTap: () => Navigator.pop(
+                                        innerCtx, ImageSource.camera),
+                                  ),
+                                  ListTile(
+                                    leading: const Icon(
+                                        Symbols.photo_library_rounded,
+                                        color: Colors.white),
+                                    title: const Text('갤러리',
+                                        style:
+                                            TextStyle(color: Colors.white)),
+                                    onTap: () => Navigator.pop(
+                                        innerCtx, ImageSource.gallery),
+                                  ),
+                                ],
                               ),
                             );
                             if (source == null) return;
+
+                            // 카메라만 권한 체크 (갤러리는 PHPicker로 권한 불필요)
+                            if (source == ImageSource.camera) {
+                              final granted = await PermissionHelper.requestCamera(ctx);
+                              if (!granted) return;
+                            }
+
                             final picker = ImagePicker();
                             final xFile = await picker.pickImage(
                                 source: source,
@@ -210,7 +272,7 @@ void showGameResultSheet(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                const Icon(Icons.add_a_photo_rounded,
+                                const Icon(Symbols.add_a_photo_rounded,
                                     size: 24, color: AppTheme.textSecondary),
                                 const SizedBox(height: 2),
                                 Text('${photos.length}/2',
@@ -258,8 +320,8 @@ void showGameResultSheet(
                               const EdgeInsets.symmetric(horizontal: 4),
                           child: Icon(
                             score <= mannerScore
-                                ? Icons.star_rounded
-                                : Icons.star_outline_rounded,
+                                ? Symbols.star_rounded
+                                : Symbols.star_outline_rounded,
                             size: 32,
                             color: score <= mannerScore
                                 ? Colors.amber
@@ -280,14 +342,26 @@ void showGameResultSheet(
                       onPressed: !canSubmit
                           ? null
                           : () async {
+                              if (selectedResult == null) {
+                                AppToast.warning('승부 결과를 선택해주세요.');
+                                return;
+                              }
+                              final code = verificationCodeController.text.trim();
+                              if (code.length != 4) {
+                                AppToast.warning('상대방의 4자리 인증번호를 입력해주세요.');
+                                return;
+                              }
                               setSheetState(() => isSubmitting = true);
                               try {
-                                final uploadRepo =
-                                    ref.read(uploadRepositoryProvider);
-                                final imageUrls =
-                                    await uploadRepo.uploadGameProofs(
-                                  photos.map((p) => p.path).toList(),
-                                );
+                                List<String> imageUrls = [];
+                                if (photos.isNotEmpty) {
+                                  final uploadRepo =
+                                      ref.read(uploadRepositoryProvider);
+                                  imageUrls =
+                                      await uploadRepo.uploadGameProofs(
+                                    photos.map((p) => p.path).toList(),
+                                  );
+                                }
 
                                 final matchDetail = await ref
                                     .read(matchingRepositoryProvider)
@@ -327,6 +401,7 @@ void showGameResultSheet(
                                   myResult: selectedResult!,
                                   winnerId: winnerId,
                                   mannerScore: mannerScore,
+                                  verificationCode: code,
                                 );
 
                                 if (imageUrls.isNotEmpty) {

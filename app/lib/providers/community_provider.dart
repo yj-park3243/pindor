@@ -30,8 +30,10 @@ class CommunityRepository {
         .toList();
   }
 
-  Future<PinPost> getPost(String pinId, String postId) async {
-    final response = await _api.get('/pins/$pinId/posts/$postId');
+  Future<PinPost> getPost(String pinId, String postId, {String? sportType}) async {
+    final params = <String, dynamic>{};
+    if (sportType != null) params['sportType'] = sportType;
+    final response = await _api.get('/pins/$pinId/posts/$postId', queryParameters: params.isNotEmpty ? params : null);
     return PinPost.fromJson(response['data'] as Map<String, dynamic>);
   }
 
@@ -71,7 +73,7 @@ class CommunityRepository {
   }
 
   Future<void> toggleLike(String pinId, String postId) async {
-    await _api.post('/pins/$pinId/posts/$postId/like');
+    await _api.post('/pins/$pinId/posts/$postId/like', body: {});
   }
 
   Future<List<Comment>> getComments(String pinId, String postId) async {
@@ -268,24 +270,26 @@ final postListProvider = NotifierProvider.autoDispose
 class PostDetailKey {
   final String pinId;
   final String postId;
+  final String? sportType;
 
-  const PostDetailKey({required this.pinId, required this.postId});
+  const PostDetailKey({required this.pinId, required this.postId, this.sportType});
 
   @override
   bool operator ==(Object other) =>
       other is PostDetailKey &&
       other.pinId == pinId &&
-      other.postId == postId;
+      other.postId == postId &&
+      other.sportType == sportType;
 
   @override
-  int get hashCode => Object.hash(pinId, postId);
+  int get hashCode => Object.hash(pinId, postId, sportType);
 }
 
 // ─── Provider: PostDetail ─────────────────────────────────────────────────────
 
 final postDetailProvider =
     FutureProvider.autoDispose.family<PinPost, PostDetailKey>((ref, key) {
-  return ref.read(communityRepositoryProvider).getPost(key.pinId, key.postId);
+  return ref.read(communityRepositoryProvider).getPost(key.pinId, key.postId, sportType: key.sportType);
 });
 
 // ─── Notifier: Comments ───────────────────────────────────────────────────────

@@ -85,7 +85,11 @@ export type NotificationType =
   | 'MATCH_NO_SHOW_PENALTY'
   | 'MATCH_NO_SHOW_COMPENSATION'
   | 'MATCH_FORFEIT'
-  | 'MATCH_FORFEIT_WIN';
+  | 'MATCH_FORFEIT_WIN'
+  | 'MATCH_COMPLETED'
+  | 'MATCH_CANCELLED'
+  | 'CHAT_LOCATION'
+  | 'ADMIN';
 
 export interface NotificationPayload {
   userId: string;

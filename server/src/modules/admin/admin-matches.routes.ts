@@ -3,6 +3,7 @@ import { AdminRole, Match, MatchStatus } from '../../entities/index.js';
 import { requireAdmin } from './admin.middleware.js';
 import { AppDataSource } from '../../config/database.js';
 import { AppError, ErrorCode } from '../../shared/errors/app-error.js';
+import { parsePageParams, paginatedResponse } from '../../shared/pagination.js';
 
 export async function adminMatchesRoutes(fastify: FastifyInstance): Promise<void> {
   // ─── GET /admin/matches ───
@@ -18,14 +19,14 @@ export async function adminMatchesRoutes(fastify: FastifyInstance): Promise<void
           status?: string;
           sportType?: string;
           search?: string;
-          cursor?: string;
-          limit?: number;
+          page?: number;
+          pageSize?: number;
         };
       }>,
       reply: FastifyReply,
     ) => {
-      const { status, sportType, search, cursor, limit: rawLimit } = request.query;
-      const limit = rawLimit ? Number(rawLimit) : 20;
+      const { status, sportType, search } = request.query;
+      const { page, pageSize, skip } = parsePageParams(request.query);
 
       const matchRepo = AppDataSource.getRepository(Match);
       const qb = matchRepo
@@ -47,20 +48,14 @@ export async function adminMatchesRoutes(fastify: FastifyInstance): Promise<void
           { search: `%${search}%` },
         );
       }
-      if (cursor) {
-        qb.andWhere('match.createdAt < :cursor', { cursor: new Date(cursor) });
-      }
 
-      const matches = await qb
+      const [items, total] = await qb
         .orderBy('match.createdAt', 'DESC')
-        .take(limit + 1)
-        .getMany();
+        .skip(skip)
+        .take(pageSize)
+        .getManyAndCount();
 
-      const hasMore = matches.length > limit;
-      const items = hasMore ? matches.slice(0, limit) : matches;
-      const nextCursor = hasMore ? items[items.length - 1].createdAt.toISOString() : null;
-
-      return reply.send({ success: true, data: items, meta: { cursor: nextCursor, hasMore } });
+      return reply.send({ success: true, data: paginatedResponse(items, total, page, pageSize) });
     },
   );
 

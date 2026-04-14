@@ -50,8 +50,14 @@ export const TIER_CONFIG: Record<Tier, { label: string; color: string; icon: str
 export const SPORT_TYPE_CONFIG: Record<SportType, { label: string; icon: string }> = {
   GOLF: { label: '골프', icon: '⛳' },
   BILLIARDS: { label: '당구', icon: '🎱' },
+  BILLIARDS_4BALL: { label: '당구 4구', icon: '🎱' },
+  BILLIARDS_3CUSHION: { label: '당구 3쿠션', icon: '🎱' },
   TENNIS: { label: '테니스', icon: '🎾' },
   TABLE_TENNIS: { label: '탁구', icon: '🏓' },
+  BADMINTON: { label: '배드민턴', icon: '🏸' },
+  BOWLING: { label: '볼링', icon: '🎳' },
+  ROCK_PAPER_SCISSORS: { label: '가위바위보', icon: '✊' },
+  ARM_WRESTLING: { label: '팔씨름', icon: '💪' },
 };
 
 // 사용자 상태

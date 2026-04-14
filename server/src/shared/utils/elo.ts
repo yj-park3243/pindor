@@ -142,16 +142,16 @@ export function calculateElo(params: EloCalculationInput): EloCalculationResult 
  *
  * | 조건 | K 계수 |
  * |------|--------|
- * | 첫 10게임 | 40 |
- * | 11~30게임 | 30 |
- * | 31게임 이상 | 20 |
- * | 플래티넘 이상 티어 | 16 |
+ * | 첫 10게임 | 24 |
+ * | 11~30게임 | 18 |
+ * | 31게임 이상 | 12 |
+ * | 플래티넘 이상 티어 | 10 |
  */
 export function getKFactor(gamesPlayed: number, tier: Tier): number {
-  if (tier === Tier.PLATINUM || tier === Tier.DIAMOND) return 16;
-  if (gamesPlayed <= 10) return 40;
-  if (gamesPlayed <= 30) return 30;
-  return 20;
+  if (tier === Tier.PLATINUM || tier === Tier.GRANDMASTER) return 10;
+  if (gamesPlayed <= 10) return 24;
+  if (gamesPlayed <= 30) return 18;
+  return 12;
 }
 
 /**
@@ -182,7 +182,7 @@ export function calculateTier(score: number): Tier {
  * 절대 점수 기준 티어 계산 (폴백용, 유저 수 < 30명)
  */
 export function calculateTierFallback(score: number): Tier {
-  if (score >= 1800) return Tier.DIAMOND;
+  if (score >= 1800) return Tier.GRANDMASTER;
   if (score >= 1500) return Tier.PLATINUM;
   if (score >= 1300) return Tier.GOLD;
   if (score >= 1100) return Tier.SILVER;
@@ -191,28 +191,40 @@ export function calculateTierFallback(score: number): Tier {
 }
 
 /**
- * 퍼센타일 기반 티어 계산
- * 전체 유저의 점수 분포에서 상위 몇 %인지 계산하여 티어 결정
+ * 등수(퍼센타일) 기반 티어 계산
+ * 핀+스포츠 내에서의 등수 비율로 티어 결정
  *
- * @param userScore - 해당 유저의 점수
- * @param allScoresSorted - 내림차순 정렬된 전체 유저 점수 배열
+ * @param rank - 해당 유저의 등수 (1부터 시작)
+ * @param totalPlayers - 해당 핀+스포츠의 전체 플레이어 수
+ */
+export function calculateTierByRank(
+  rank: number,
+  totalPlayers: number,
+): Tier {
+  if (totalPlayers === 0 || rank <= 0) return Tier.IRON;
+
+  const percentile = (rank / totalPlayers) * 100;
+
+  if (percentile <= 3) return Tier.GRANDMASTER;   // 상위 3%
+  if (percentile <= 7) return Tier.MASTER;         // 상위 7%
+  if (percentile <= 15) return Tier.PLATINUM;      // 상위 15%
+  if (percentile <= 30) return Tier.GOLD;          // 상위 30%
+  if (percentile <= 55) return Tier.SILVER;        // 상위 55%
+  if (percentile <= 80) return Tier.BRONZE;        // 상위 80%
+  return Tier.IRON;                                // 나머지
+}
+
+/**
+ * @deprecated calculateTierByRank 사용 권장
  */
 export function calculateTierByPercentile(
   userScore: number,
-  allScoresSorted: number[], // 내림차순 정렬된 전체 점수 배열
+  allScoresSorted: number[],
 ): Tier {
   if (allScoresSorted.length === 0) return Tier.BRONZE;
-
-  // 유저 점수보다 높은 점수가 몇 개인지 찾기 (내림차순이므로 처음으로 같거나 작은 인덱스)
   const rank = allScoresSorted.findIndex(s => userScore >= s);
   const effectiveRank = rank === -1 ? allScoresSorted.length : rank;
-  const percentile = (effectiveRank / allScoresSorted.length) * 100;
-
-  if (percentile <= 5) return Tier.DIAMOND;
-  if (percentile <= 15) return Tier.PLATINUM;
-  if (percentile <= 35) return Tier.GOLD;
-  if (percentile <= 60) return Tier.SILVER;
-  return Tier.BRONZE;
+  return calculateTierByRank(effectiveRank + 1, allScoresSorted.length);
 }
 
 /**
@@ -230,7 +242,7 @@ export function calculateTierWithBuffer(
     Tier.SILVER,
     Tier.GOLD,
     Tier.PLATINUM,
-    Tier.DIAMOND,
+    Tier.GRANDMASTER,
   ];
 
   // 강등 가능 상황

@@ -164,9 +164,9 @@ export function ReportListPage() {
       </Card>
 
       <Card style={{ borderRadius: 8 }}>
-        {data && data.items.filter((r) => r.status === 'PENDING').length > 0 && (
+        {(data?.items?.filter((r) => r.status === 'PENDING')?.length ?? 0) > 0 && (
           <Alert
-            message={`처리 대기 신고 ${data.items.filter((r) => r.status === 'PENDING').length}건이 있습니다.`}
+            message={`처리 대기 신고 ${data?.items?.filter((r) => r.status === 'PENDING')?.length ?? 0}건이 있습니다.`}
             type="warning"
             showIcon
             style={{ marginBottom: 12 }}
@@ -181,7 +181,7 @@ export function ReportListPage() {
             current: page,
             pageSize: 20,
             total: data?.total || 0,
-            showTotal: (total) => `총 ${total.toLocaleString()}건`,
+            showTotal: (total) => `총 ${(total ?? 0).toLocaleString()}건`,
             onChange: setPage,
           }}
           scroll={{ x: 800 }}

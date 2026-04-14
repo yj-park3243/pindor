@@ -1,7 +1,7 @@
 name: spots
 description: 위치 기반 스포츠 매칭 플랫폼
 publish_to: 'none'
-version: 1.0.0+40
+version: 1.0.0+49
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -69,6 +69,11 @@ dependencies:
   flutter_pickers: ^2.2.0
   adaptive_platform_ui: ^0.1.104
   geocoding: ^4.0.0
+  material_dialogs: ^1.1.4
+  pull_down_button: ^0.10.2
+  material_symbols_icons: ^4.2928.1
+  like_button: ^2.1.0
+  bottom_picker: ^4.1.1
 
 dev_dependencies:
   flutter_test:

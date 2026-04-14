@@ -10,6 +10,7 @@ import {
 } from '../../entities/index.js';
 import { requireAdmin } from './admin.middleware.js';
 import { AppError, ErrorCode } from '../../shared/errors/app-error.js';
+import { parsePageParams, paginatedResponse } from '../../shared/pagination.js';
 
 export async function adminUsersExtRoutes(fastify: FastifyInstance): Promise<void> {
   // ─── GET /admin/users/:id ── 사용자 상세 조회
@@ -148,12 +149,12 @@ export async function adminUsersExtRoutes(fastify: FastifyInstance): Promise<voi
     async (
       request: FastifyRequest<{
         Params: { id: string };
-        Querystring: { cursor?: string; limit?: number };
+        Querystring: { page?: number; pageSize?: number };
       }>,
       reply: FastifyReply,
     ) => {
       const { id } = request.params;
-      const { cursor, limit = 20 } = request.query;
+      const { page, pageSize, skip } = parsePageParams(request.query);
 
       // 유저 존재 확인
       const userRepo = AppDataSource.getRepository(User);
@@ -168,7 +169,7 @@ export async function adminUsersExtRoutes(fastify: FastifyInstance): Promise<voi
       const profileIds = profiles.map((p) => p.id);
 
       if (profileIds.length === 0) {
-        return reply.send({ success: true, data: [], meta: { cursor: null, hasMore: false } });
+        return reply.send({ success: true, data: paginatedResponse([], 0, page, pageSize) });
       }
 
       const gameRepo = AppDataSource.getRepository(Game);
@@ -182,20 +183,13 @@ export async function adminUsersExtRoutes(fastify: FastifyInstance): Promise<voi
           { profileIds },
         );
 
-      if (cursor) {
-        qb.andWhere('game.createdAt < :cursor', { cursor: new Date(cursor) });
-      }
-
-      const games = await qb
+      const [items, total] = await qb
         .orderBy('game.createdAt', 'DESC')
-        .take(Number(limit) + 1)
-        .getMany();
+        .skip(skip)
+        .take(pageSize)
+        .getManyAndCount();
 
-      const hasMore = games.length > Number(limit);
-      const items = hasMore ? games.slice(0, Number(limit)) : games;
-      const nextCursor = hasMore ? items[items.length - 1].createdAt.toISOString() : null;
-
-      return reply.send({ success: true, data: items, meta: { cursor: nextCursor, hasMore } });
+      return reply.send({ success: true, data: paginatedResponse(items, total, page, pageSize) });
     },
   );
 
@@ -214,12 +208,12 @@ export async function adminUsersExtRoutes(fastify: FastifyInstance): Promise<voi
     async (
       request: FastifyRequest<{
         Params: { id: string };
-        Querystring: { cursor?: string; limit?: number };
+        Querystring: { page?: number; pageSize?: number };
       }>,
       reply: FastifyReply,
     ) => {
       const { id } = request.params;
-      const { cursor, limit = 20 } = request.query;
+      const { page, pageSize, skip } = parsePageParams(request.query);
 
       // 유저 존재 확인
       const userRepo = AppDataSource.getRepository(User);
@@ -234,7 +228,7 @@ export async function adminUsersExtRoutes(fastify: FastifyInstance): Promise<voi
       const profileIds = profiles.map((p) => p.id);
 
       if (profileIds.length === 0) {
-        return reply.send({ success: true, data: [], meta: { cursor: null, hasMore: false } });
+        return reply.send({ success: true, data: paginatedResponse([], 0, page, pageSize) });
       }
 
       const matchRepo = AppDataSource.getRepository(Match);
@@ -249,20 +243,13 @@ export async function adminUsersExtRoutes(fastify: FastifyInstance): Promise<voi
           { profileIds },
         );
 
-      if (cursor) {
-        qb.andWhere('match.createdAt < :cursor', { cursor: new Date(cursor) });
-      }
-
-      const matches = await qb
+      const [items, total] = await qb
         .orderBy('match.createdAt', 'DESC')
-        .take(Number(limit) + 1)
-        .getMany();
+        .skip(skip)
+        .take(pageSize)
+        .getManyAndCount();
 
-      const hasMore = matches.length > Number(limit);
-      const items = hasMore ? matches.slice(0, Number(limit)) : matches;
-      const nextCursor = hasMore ? items[items.length - 1].createdAt.toISOString() : null;
-
-      return reply.send({ success: true, data: items, meta: { cursor: nextCursor, hasMore } });
+      return reply.send({ success: true, data: paginatedResponse(items, total, page, pageSize) });
     },
   );
 }

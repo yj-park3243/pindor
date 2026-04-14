@@ -3,6 +3,8 @@ import { AdminRole, Notification, User, UserPin } from '../../entities/index.js'
 import { requireAdmin } from './admin.middleware.js';
 import { AppDataSource } from '../../config/database.js';
 import { AppError, ErrorCode } from '../../shared/errors/app-error.js';
+import { parsePageParams, paginatedResponse } from '../../shared/pagination.js';
+import type { NotificationService } from '../notifications/notification.service.js';
 
 export async function adminNotificationsRoutes(fastify: FastifyInstance): Promise<void> {
   // ─── POST /admin/notifications/send ── 알림 발송
@@ -81,20 +83,42 @@ export async function adminNotificationsRoutes(fastify: FastifyInstance): Promis
         return reply.send({ success: true, data: { sentCount: 0 } });
       }
 
-      // 알림 레코드 일괄 생성
-      const notifications = targetUserIds.map((userId) =>
-        notificationRepo.create({
-          userId,
-          type: 'ADMIN',
-          title,
-          body,
-          data: { adminSent: true },
-        }),
-      );
+      // NotificationService를 통해 실제 푸시 알림 발송 (DB 저장 + Socket.io + FCM)
+      const notificationSvc = (global as any).__notificationService as NotificationService | undefined;
 
-      await notificationRepo.save(notifications, { chunk: 200 });
+      if (notificationSvc) {
+        // NotificationService.send()는 DB 저장 + Socket + FCM 푸시를 모두 처리
+        // 대량 발송 시 병렬 처리 (10건씩 배치)
+        const batchSize = 10;
+        for (let i = 0; i < targetUserIds.length; i += batchSize) {
+          const batch = targetUserIds.slice(i, i + batchSize);
+          await Promise.allSettled(
+            batch.map((userId) =>
+              notificationSvc.send({
+                userId,
+                type: 'ADMIN' as any,
+                title,
+                body,
+                data: { adminSent: 'true' },
+              }),
+            ),
+          );
+        }
+      } else {
+        // fallback: NotificationService 미초기화 시 DB에만 저장
+        const notifications = targetUserIds.map((userId) =>
+          notificationRepo.create({
+            userId,
+            type: 'ADMIN',
+            title,
+            body,
+            data: { adminSent: true },
+          }),
+        );
+        await notificationRepo.save(notifications, { chunk: 200 });
+      }
 
-      return reply.send({ success: true, data: { sentCount: notifications.length } });
+      return reply.send({ success: true, data: { sentCount: targetUserIds.length } });
     },
   );
 
@@ -107,11 +131,11 @@ export async function adminNotificationsRoutes(fastify: FastifyInstance): Promis
     },
     async (
       request: FastifyRequest<{
-        Querystring: { cursor?: string; limit?: number };
+        Querystring: { page?: number; pageSize?: number };
       }>,
       reply: FastifyReply,
     ) => {
-      const { cursor, limit = 20 } = request.query;
+      const { page, pageSize, skip } = parsePageParams(request.query);
 
       const notificationRepo = AppDataSource.getRepository(Notification);
       const qb = notificationRepo
@@ -119,20 +143,13 @@ export async function adminNotificationsRoutes(fastify: FastifyInstance): Promis
         .leftJoinAndSelect('notification.user', 'user')
         .where('notification.type = :type', { type: 'ADMIN' });
 
-      if (cursor) {
-        qb.andWhere('notification.createdAt < :cursor', { cursor: new Date(cursor) });
-      }
-
-      const notifications = await qb
+      const [items, total] = await qb
         .orderBy('notification.createdAt', 'DESC')
-        .take(Number(limit) + 1)
-        .getMany();
+        .skip(skip)
+        .take(pageSize)
+        .getManyAndCount();
 
-      const hasMore = notifications.length > Number(limit);
-      const items = hasMore ? notifications.slice(0, Number(limit)) : notifications;
-      const nextCursor = hasMore ? items[items.length - 1].createdAt.toISOString() : null;
-
-      return reply.send({ success: true, data: items, meta: { cursor: nextCursor, hasMore } });
+      return reply.send({ success: true, data: paginatedResponse(items, total, page, pageSize) });
     },
   );
 }

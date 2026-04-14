@@ -8,6 +8,7 @@ import '../screens/auth/splash_screen.dart';
 import '../screens/auth/onboarding_screen.dart';
 import '../screens/auth/login_screen.dart';
 import '../screens/auth/profile_setup_screen.dart';
+import '../screens/auth/font_size_setup_screen.dart';
 import '../screens/auth/sport_profile_setup_screen.dart';
 import '../screens/auth/location_setup_screen.dart';
 import '../screens/main_tab_screen.dart';
@@ -18,7 +19,6 @@ import '../screens/matching/create_match_screen.dart';
 import '../screens/matching/match_request_list_screen.dart';
 import '../screens/matching/match_detail_screen.dart';
 import '../screens/matching/match_accept_screen.dart';
-import '../screens/chat/chat_list_screen.dart';
 import '../screens/chat/chat_room_screen.dart';
 import '../screens/game/game_result_input_screen.dart';
 import '../screens/game/game_confirm_screen.dart';
@@ -36,6 +36,7 @@ import '../screens/profile/notification_list_screen.dart';
 import '../screens/profile/settings_screen.dart';
 import '../screens/profile/notification_settings_screen.dart';
 import '../screens/profile/inquiry_screen.dart';
+import '../screens/profile/secret_screen.dart';
 import '../screens/team/team_home_screen.dart';
 import '../screens/team/create_team_screen.dart';
 import '../screens/team/team_detail_screen.dart';
@@ -69,6 +70,7 @@ class AppRoutes {
   static const String onboarding = '/onboarding';
   static const String login = '/login';
   static const String profileSetup = '/setup/profile';
+  static const String fontSizeSetup = '/setup/font-size';
   static const String sportProfileSetup = '/setup/sport-profile';
   static const String locationSetup = '/setup/location';
   static const String pinSportSetup = '/setup/pin-sport';
@@ -96,6 +98,7 @@ class AppRoutes {
   static const String settings = '/profile/settings';
   static const String notificationSettings = '/profile/settings/notifications';
   static const String inquiry = '/profile/inquiry';
+  static const String secret = '/profile/secret';
 
   // 경기 결과
   static const String gameResultInput = '/games/:gameId/result';
@@ -151,6 +154,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         AppRoutes.onboarding,
         AppRoutes.login,
         AppRoutes.profileSetup,
+        AppRoutes.fontSizeSetup,
         AppRoutes.sportProfileSetup,
         AppRoutes.locationSetup,
       ];
@@ -186,6 +190,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.profileSetup,
         builder: (context, state) => const ProfileSetupScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.fontSizeSetup,
+        builder: (context, state) => const FontSizeSetupScreen(),
       ),
       GoRoute(
         path: AppRoutes.sportProfileSetup,
@@ -346,23 +354,21 @@ final routerProvider = Provider<GoRouter>((ref) {
                 path: 'notifications',
                 builder: (context, state) => const NotificationListScreen(),
               ),
+              GoRoute(
+                path: 'secret',
+                builder: (context, state) => const SecretScreen(),
+              ),
             ],
           ),
         ],
       ),
 
-      // ─── 채팅 (탭 외부 — 바텀 네비 없음) ───
+      // ─── 채팅방 (탭 외부 — 바텀 네비 없음) ───
       GoRoute(
-        path: AppRoutes.chatList,
-        builder: (context, state) => const ChatListScreen(),
-        routes: [
-          GoRoute(
-            path: ':roomId',
-            builder: (context, state) => ChatRoomScreen(
-              roomId: state.pathParameters['roomId']!,
-            ),
-          ),
-        ],
+        path: '/chats/:roomId',
+        builder: (context, state) => ChatRoomScreen(
+          roomId: state.pathParameters['roomId']!,
+        ),
       ),
 
       // ─── 설정 (탭 외부 — 바텀 네비 없음) ───
@@ -413,9 +419,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
 
-      // ─── 커뮤니티 (탭 외부) ───
+      // ─── 커뮤니티 (탭 외부 — 바텀 네비 없음) ───
       GoRoute(
         path: '/pins/:pinId/board',
+        parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => PinBoardScreen(
           pinId: state.pathParameters['pinId']!,
         ),
@@ -432,6 +439,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => PostDetailScreen(
               pinId: state.pathParameters['pinId']!,
               postId: state.pathParameters['postId']!,
+              sportType: state.uri.queryParameters['sportType'],
             ),
           ),
         ],
@@ -443,6 +451,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => PostDetailScreen(
           pinId: state.pathParameters['pinId']!,
           postId: state.pathParameters['postId']!,
+          sportType: state.uri.queryParameters['sportType'],
         ),
       ),
 

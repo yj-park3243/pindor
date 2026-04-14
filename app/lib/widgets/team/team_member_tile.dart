@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:pull_down_button/pull_down_button.dart';
 import '../../config/theme.dart';
 import '../../models/team.dart';
 
@@ -188,60 +189,35 @@ class _ActionsMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PopupMenuButton<String>(
-      icon: const Icon(Icons.more_vert, color: AppTheme.textSecondary),
-      onSelected: (value) {
-        switch (value) {
-          case 'transfer':
-            onTransferCaptain?.call();
-            break;
-          case 'vice':
-            onToggleViceCaptain?.call();
-            break;
-          case 'kick':
-            onKick?.call();
-            break;
-        }
-      },
+    return PullDownButton(
       itemBuilder: (context) => [
         if (onTransferCaptain != null)
-          const PopupMenuItem(
-            value: 'transfer',
-            child: Row(
-              children: [
-                Icon(Icons.swap_horiz, size: 18, color: Color(0xFFFFD700)),
-                SizedBox(width: 8),
-                Text('방장 넘기기'),
-              ],
-            ),
+          PullDownMenuItem(
+            title: '방장 넘기기',
+            icon: Icons.swap_horiz,
+            iconColor: const Color(0xFFFFD700),
+            onTap: () => onTransferCaptain?.call(),
           ),
-        PopupMenuItem(
-          value: 'vice',
-          child: Row(
-            children: [
-              Icon(
-                member.isViceCaptain ? Icons.remove_circle_outline : Icons.star_half,
-                size: 18,
-                color: AppTheme.primaryColor,
-              ),
-              const SizedBox(width: 8),
-              Text(member.isViceCaptain ? '부방장 해임' : '부방장 임명'),
-            ],
-          ),
+        PullDownMenuItem(
+          title: member.isViceCaptain ? '부방장 해임' : '부방장 임명',
+          icon: member.isViceCaptain ? Icons.remove_circle_outline : Icons.star_half,
+          iconColor: AppTheme.primaryColor,
+          onTap: () => onToggleViceCaptain?.call(),
         ),
-        if (onKick != null)
-          const PopupMenuItem(
-            value: 'kick',
-            child: Row(
-              children: [
-                Icon(Icons.person_remove_outlined,
-                    size: 18, color: AppTheme.errorColor),
-                SizedBox(width: 8),
-                Text('추방', style: TextStyle(color: AppTheme.errorColor)),
-              ],
-            ),
+        if (onKick != null) ...[
+          const PullDownMenuDivider(),
+          PullDownMenuItem(
+            title: '추방',
+            icon: Icons.person_remove_outlined,
+            isDestructive: true,
+            onTap: () => onKick?.call(),
           ),
+        ],
       ],
+      buttonBuilder: (context, showMenu) => IconButton(
+        icon: const Icon(Icons.more_vert, color: AppTheme.textSecondary),
+        onPressed: showMenu,
+      ),
     );
   }
 }

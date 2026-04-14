@@ -9,6 +9,7 @@ export const submitGameResultSchema = z.object({
   venueName: z.string().max(255).optional(),
   scoreData: z.record(z.unknown()).optional(),
   mannerScore: z.number().int().min(1).max(5).optional(),
+  verificationCode: z.string().length(4, '인증번호는 4자리여야 합니다.'),
 });
 
 export const confirmGameResultSchema = z.object({

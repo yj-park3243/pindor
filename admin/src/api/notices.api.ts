@@ -1,4 +1,5 @@
 import apiClient from '@/config/api';
+import type { PaginatedResponse } from '@/types/common';
 
 export interface Notice {
   id: string;
@@ -19,9 +20,9 @@ export interface CreateNoticeRequest {
 }
 
 export const noticesApi = {
-  list: async (page = 1, limit = 20): Promise<{ data: Notice[]; meta: any }> => {
-    const res = await apiClient.get('/admin/notices', { params: { page, limit } });
-    return res.data;
+  list: async (page = 1, pageSize = 20): Promise<PaginatedResponse<Notice>> => {
+    const res = await apiClient.get('/admin/notices', { params: { page, pageSize } });
+    return res.data.data;
   },
   create: async (data: CreateNoticeRequest): Promise<Notice> => {
     const res = await apiClient.post('/admin/notices', data);

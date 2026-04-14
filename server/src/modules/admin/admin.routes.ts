@@ -113,17 +113,17 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (
       request: FastifyRequest<{
-        Querystring: { status?: string; search?: string; cursor?: string; limit?: number };
+        Querystring: { status?: string; search?: string; page?: number; pageSize?: number };
       }>,
       reply: FastifyReply,
     ) => {
-      const { items, nextCursor, hasMore } = await adminService.listUsers({
+      const result = await adminService.listUsers({
         status: request.query.status as UserStatus | undefined,
         search: request.query.search,
-        cursor: request.query.cursor,
-        limit: request.query.limit,
+        page: request.query.page,
+        pageSize: request.query.pageSize,
       });
-      return reply.send({ success: true, data: items, meta: { cursor: nextCursor, hasMore } });
+      return reply.send({ success: true, data: result });
     },
   );
 
@@ -175,12 +175,12 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (
       request: FastifyRequest<{
-        Querystring: { status?: string; targetType?: string; cursor?: string; limit?: number };
+        Querystring: { status?: string; targetType?: string; page?: number; pageSize?: number };
       }>,
       reply: FastifyReply,
     ) => {
-      const { items, nextCursor, hasMore } = await adminService.listReports(request.query);
-      return reply.send({ success: true, data: items, meta: { cursor: nextCursor, hasMore } });
+      const result = await adminService.listReports(request.query);
+      return reply.send({ success: true, data: result });
     },
   );
 
@@ -217,13 +217,11 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
       schema: { tags: ['Admin'], summary: '이의 신청 경기 목록', security: [{ bearerAuth: [] }] },
     },
     async (
-      request: FastifyRequest<{ Querystring: { cursor?: string; limit?: number } }>,
+      request: FastifyRequest<{ Querystring: { page?: number; pageSize?: number } }>,
       reply: FastifyReply,
     ) => {
-      const { items, nextCursor, hasMore } = await adminService.listDisputedGames(
-        request.query,
-      );
-      return reply.send({ success: true, data: items, meta: { cursor: nextCursor, hasMore } });
+      const result = await adminService.listDisputedGames(request.query);
+      return reply.send({ success: true, data: result });
     },
   );
 
@@ -269,17 +267,17 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (
       request: FastifyRequest<{
-        Querystring: { level?: string; active?: string; cursor?: string; limit?: number };
+        Querystring: { level?: string; active?: string; page?: number; pageSize?: number };
       }>,
       reply: FastifyReply,
     ) => {
-      const { items, nextCursor, hasMore } = await adminService.listPins({
+      const result = await adminService.listPins({
         level: request.query.level,
-        active: request.query.active === 'true',
-        cursor: request.query.cursor,
-        limit: request.query.limit,
+        active: request.query.active != null ? request.query.active === 'true' : undefined,
+        page: request.query.page,
+        pageSize: request.query.pageSize,
       });
-      return reply.send({ success: true, data: items, meta: { cursor: nextCursor, hasMore } });
+      return reply.send({ success: true, data: result });
     },
   );
 

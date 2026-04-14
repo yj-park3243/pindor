@@ -67,7 +67,8 @@ class OfflineQueueService {
     _isProcessing = true;
 
     try {
-      while (true) {
+      const maxIterations = 50; // 한 사이클 최대 처리 수
+      for (var i = 0; i < maxIterations; i++) {
         final pending = await (_db.select(_db.offlineQueue)
               ..where((t) => t.status.equals('PENDING'))
               ..orderBy([(t) => OrderingTerm.asc(t.id)])

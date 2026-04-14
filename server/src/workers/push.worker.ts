@@ -14,6 +14,13 @@ import type { PushJobData, NotificationType } from '../shared/types/index.js';
 
 initFirebase();
 
+// TypeORM 데이터베이스 초기화
+if (!AppDataSource.isInitialized) {
+  AppDataSource.initialize()
+    .then(() => console.info('[PushWorker] Database connected'))
+    .catch((err) => console.error('[PushWorker] Database connection failed:', err));
+}
+
 // ─────────────────────────────────────
 // Push Worker (PRD 섹션 4.10.5)
 // ─────────────────────────────────────

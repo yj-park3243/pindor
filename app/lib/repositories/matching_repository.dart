@@ -32,10 +32,13 @@ class MatchingRepository {
   }
 
   /// 내 매칭 요청 목록
-  Future<List<MatchRequest>> getMyMatchRequests({String? type}) async {
+  Future<List<MatchRequest>> getMyMatchRequests({String? type, String? status}) async {
+    final params = <String, dynamic>{};
+    if (type != null) params['type'] = type;
+    if (status != null) params['status'] = status;
     final response = await _api.get(
       '/matches/requests',
-      queryParameters: type != null ? {'type': type} : null,
+      queryParameters: params.isNotEmpty ? params : null,
     );
     final data = response['data'] as List<dynamic>;
     return data
