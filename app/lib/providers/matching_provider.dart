@@ -347,6 +347,11 @@ class MatchAcceptNotifier
   /// 다음 폴링을 스케줄 (exponential backoff)
   void _scheduleNextPoll() {
     if (_pollingTimer?.isActive ?? false) return; // 중복 방지
+    // 최대 실패 횟수 도달 시 폴링 중단
+    if (_failureCount >= _maxFailureCount) {
+      debugPrint('[MatchAccept] Max poll failures reached, stopping');
+      return;
+    }
     _pollingTimer?.cancel();
     _pollingTimer = Timer(Duration(seconds: _pollIntervalSeconds), () async {
       await _checkMatchStatus();

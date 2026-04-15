@@ -29,6 +29,7 @@ import {
 } from '../../entities/index.js';
 import { MatchRequestStatus, RequestType, ScoreChangeType } from '../../entities/index.js';
 import { calculateAge } from '../../shared/utils/age.js';
+import { getKSTDateString } from '../../shared/utils/timezone.js';
 
 export class MatchingService {
   private matchAcceptTimeoutQueue: Queue<MatchAcceptTimeoutJobData>;
@@ -160,12 +161,11 @@ export class MatchingService {
     // ─── 날짜 제한 체크: 오늘 또는 내일만 가능 ───
     const desiredDate = dto.desiredDate;
     if (desiredDate) {
-      const now = new Date();
-      const kstNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+      const kstNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
       const kstHour = kstNow.getHours();
-      const today = `${kstNow.getFullYear()}-${String(kstNow.getMonth() + 1).padStart(2, '0')}-${String(kstNow.getDate()).padStart(2, '0')}`;
+      const today = getKSTDateString();
       const tomorrowDate = new Date(kstNow.getFullYear(), kstNow.getMonth(), kstNow.getDate() + 1);
-      const tomorrow = `${tomorrowDate.getFullYear()}-${String(tomorrowDate.getMonth() + 1).padStart(2, '0')}-${String(tomorrowDate.getDate()).padStart(2, '0')}`;
+      const tomorrow = getKSTDateString(tomorrowDate);
 
       // 밤 11시 이후 당일 매칭 차단
       if (desiredDate === today && kstHour >= 23) {
@@ -732,7 +732,8 @@ export class MatchingService {
 
       // 실시간 매칭 성사 이벤트 발행 (소켓 룸 기반)
       // matchrequest:{requestId} 룸에서 대기 중인 클라이언트에게 직접 전달
-      await Promise.all([
+      // allSettled: 한쪽 이벤트 발행 실패가 다른 쪽을 막지 않도록 처리
+      await Promise.allSettled([
         this.emitMatchEvent('MATCH_FOUND', {
           requestId,
           data: { matchId: savedMatch.id, status: 'PENDING_ACCEPT' },
@@ -1199,7 +1200,8 @@ export class MatchingService {
 
   async listMatchRequests(userId: string, query: ListMatchRequestsQuery) {
     const { status, sportType, cursor } = query;
-    const limit = Math.min(Math.max(Number(query.limit) || 20, 1), 100);
+    const rawLimit = parseInt(String(query.limit ?? '20'), 10);
+    const limit = Math.min(Math.max(isNaN(rawLimit) ? 20 : rawLimit, 1), 100);
 
     const qb = this.matchRequestRepo
       .createQueryBuilder('mr')
@@ -1237,7 +1239,8 @@ export class MatchingService {
 
   async listMatches(userId: string, query: ListMatchesQuery) {
     const { status, cursor } = query;
-    const limit = Math.min(Math.max(Number(query.limit) || 20, 1), 100);
+    const rawLimit = parseInt(String(query.limit ?? '20'), 10);
+    const limit = Math.min(Math.max(isNaN(rawLimit) ? 20 : rawLimit, 1), 100);
 
     const qb = this.matchRepo
       .createQueryBuilder('match')

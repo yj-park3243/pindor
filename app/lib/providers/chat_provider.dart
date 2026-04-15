@@ -295,14 +295,17 @@ class ChatMessagesNotifier
       if (currentMessages == null) return;
 
       final idSet = messageIds.toSet();
+      bool hasChanges = false;
       final updated = currentMessages.map((m) {
         if (idSet.contains(m.id) && m.readAt == null) {
+          hasChanges = true;
           return m.copyWithReadAt(readAt);
         }
         return m;
       }).toList();
-
-      state = AsyncData(updated);
+      if (hasChanges) {
+        state = AsyncData(updated);
+      }
     });
   }
 

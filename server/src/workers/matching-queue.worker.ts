@@ -24,6 +24,7 @@ interface WaitingRequest {
   sportsProfileId: string;
   pinId: string;
   sportType: string;
+  desiredDate: Date | null;
   desiredTimeSlot: string | null;
   createdAt: Date;
   expiresAt: Date;
@@ -226,6 +227,7 @@ export async function processMatchingQueue(): Promise<void> {
       mr.sports_profile_id AS "sportsProfileId",
       mr.pin_id AS "pinId",
       mr.sport_type AS "sportType",
+      mr.desired_date AS "desiredDate",
       mr.desired_time_slot AS "desiredTimeSlot",
       mr.created_at AS "createdAt",
       mr.expires_at AS "expiresAt",
@@ -365,7 +367,7 @@ export async function processMatchingQueue(): Promise<void> {
             sportType: pairA.sportType as any,
             status: 'PENDING_ACCEPT' as any,
             chatRoomId: savedChatRoom.id,
-            desiredDate: pairA.createdAt,
+            desiredDate: pairA.desiredDate ?? pairB.desiredDate,
             desiredTimeSlot: resolvedSlot as any,
           });
           const savedMatch = await manager.save(Match, match);

@@ -160,50 +160,7 @@ class _MatchListScreenState extends ConsumerState<MatchListScreen> {
           },
         ),
         data: (matchList) {
-          // 진행중(CHAT/CONFIRMED/PENDING_ACCEPT) 매칭 + 완료/취소된 매칭 포함한 정렬
-          // - CHAT, CONFIRMED, 내가 수락한 PENDING_ACCEPT만 화면에 표시 (진행중 그룹)
-          // - COMPLETED / CANCELLED도 날짜 최신순으로 그 뒤에 표시
-          final filteredList = matchList.where((m) {
-            if (m.isChat || m.isConfirmed) return true;
-            // 내가 수락 완료한 PENDING_ACCEPT (상대 응답 대기 중)도 표시
-            if (m.isPendingAccept &&
-                m.acceptances?.any((a) => a.accepted == true) == true) return true;
-            // 취소된 매칭은 숨김
-            if (m.isCancelled) return false;
-            // 완료된 매칭만 표시
-            if (m.isCompleted || m.isCancelled) return true;
-            return false;
-          }).toList();
-
-          // 검색 필터 적용
-          var filtered2 = [...filteredList];
-          if (_filterSport != null) {
-            filtered2 = filtered2.where((m) => m.sportType == _filterSport).toList();
-          }
-          if (_filterPin != null) {
-            filtered2 = filtered2.where((m) => m.pinName == _filterPin).toList();
-          }
-          if (_filterPeriod != 'ALL') {
-            final now = DateTime.now();
-            final cutoff = _filterPeriod == 'TODAY'
-                ? DateTime(now.year, now.month, now.day)
-                : _filterPeriod == 'WEEK'
-                    ? now.subtract(const Duration(days: 7))
-                    : now.subtract(const Duration(days: 30));
-            filtered2 = filtered2.where((m) => m.createdAt.isAfter(cutoff)).toList();
-          }
-
-          // 정렬: 진행중 매칭(CHAT/CONFIRMED/PENDING_ACCEPT) → 완료/취소
-          final sorted = [...filtered2];
-          sorted.sort((a, b) {
-            final aActive = a.isChat || a.isConfirmed || a.isPendingAccept;
-            final bActive = b.isChat || b.isConfirmed || b.isPendingAccept;
-            if (aActive && !bActive) return -1;
-            if (!aActive && bActive) return 1;
-            return _filterSort == 'NEWEST'
-                ? b.createdAt.compareTo(a.createdAt)
-                : a.createdAt.compareTo(b.createdAt);
-          });
+          final sorted = _filterAndSortMatches(matchList);
 
           // 3단 분리: 진행중 매칭 → 대기 요청 → 완료된 매칭
           final activeMatches = sorted.where((m) => m.isChat || m.isConfirmed || m.isPendingAccept).toList();
@@ -327,6 +284,54 @@ class _MatchListScreenState extends ConsumerState<MatchListScreen> {
         ],
       ),
     );
+  }
+
+  /// 매칭 목록 필터링 + 정렬 로직을 build에서 분리한 메서드
+  List<Match> _filterAndSortMatches(List<Match> matchList) {
+    // 진행중(CHAT/CONFIRMED/내가 수락한 PENDING_ACCEPT) + 완료된 매칭만 포함
+    final filteredList = matchList.where((m) {
+      if (m.isChat || m.isConfirmed) return true;
+      // 내가 수락 완료한 PENDING_ACCEPT (상대 응답 대기 중)도 표시
+      if (m.isPendingAccept &&
+          m.acceptances?.any((a) => a.accepted == true) == true) return true;
+      // 취소된 매칭은 숨김
+      if (m.isCancelled) return false;
+      // 완료된 매칭만 표시
+      if (m.isCompleted || m.isCancelled) return true;
+      return false;
+    }).toList();
+
+    // 검색 필터 적용
+    var filtered2 = [...filteredList];
+    if (_filterSport != null) {
+      filtered2 = filtered2.where((m) => m.sportType == _filterSport).toList();
+    }
+    if (_filterPin != null) {
+      filtered2 = filtered2.where((m) => m.pinName == _filterPin).toList();
+    }
+    if (_filterPeriod != 'ALL') {
+      final now = DateTime.now();
+      final cutoff = _filterPeriod == 'TODAY'
+          ? DateTime(now.year, now.month, now.day)
+          : _filterPeriod == 'WEEK'
+              ? now.subtract(const Duration(days: 7))
+              : now.subtract(const Duration(days: 30));
+      filtered2 = filtered2.where((m) => m.createdAt.isAfter(cutoff)).toList();
+    }
+
+    // 정렬: 진행중 매칭(CHAT/CONFIRMED/PENDING_ACCEPT) → 완료/취소
+    final sorted = [...filtered2];
+    sorted.sort((a, b) {
+      final aActive = a.isChat || a.isConfirmed || a.isPendingAccept;
+      final bActive = b.isChat || b.isConfirmed || b.isPendingAccept;
+      if (aActive && !bActive) return -1;
+      if (!aActive && bActive) return 1;
+      return _filterSort == 'NEWEST'
+          ? b.createdAt.compareTo(a.createdAt)
+          : a.createdAt.compareTo(b.createdAt);
+    });
+
+    return sorted;
   }
 
   Widget _buildFilterPanel(BuildContext context) {

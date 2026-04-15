@@ -479,7 +479,7 @@ async function handleAcceptTimeout(
         await manager.save(ScoreHistory, manager.create(ScoreHistory, {
           sportsProfileId: acceptorProfile.id,
           gameId: null,
-          changeType: ScoreChangeType.NO_SHOW_PENALTY,
+          changeType: ScoreChangeType.NO_SHOW_COMPENSATION, // 상대 노쇼에 대한 보상 점수
           scoreBefore: acceptorScoreBefore,
           scoreChange: 5,
           scoreAfter: acceptorNewScore,

@@ -276,9 +276,13 @@ export class KcpService {
         body: params.toString(),
         signal: AbortSignal.timeout(10000),
       });
-    } catch (e) {
+    } catch (e: any) {
+      if (e?.name === 'AbortError' || e?.name === 'TimeoutError') {
+        console.error('[KCP] fetchKcpResult timeout:', e);
+        throw new AppError(ErrorCode.KCP_SERVER_ERROR, 504, 'KCP 인증 서버 응답 시간이 초과되었습니다.');
+      }
       console.error('[KCP] fetchKcpResult network error:', e);
-      throw new AppError(ErrorCode.KCP_SERVER_ERROR, 502);
+      throw new AppError(ErrorCode.KCP_SERVER_ERROR, 502, 'KCP 인증 서버에 연결할 수 없습니다.');
     }
 
     if (!response.ok) {

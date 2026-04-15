@@ -131,17 +131,17 @@
 
 ### MEDIUM
 
-- [ ] **#23 KCP 에러 타입 미구분**
+- [x] **#23 KCP 에러 타입 미구분**
   - 파일: `server/src/modules/auth/kcp.service.ts` (L273-288)
   - 현재: 네트워크 에러/타임아웃 동일 처리
   - 수정: `AbortError` → 504, 기타 → 502 분리
 
-- [ ] **#24 수동 날짜 포맷팅**
+- [x] **#24 수동 날짜 포맷팅**
   - 파일: `server/src/modules/matching/matching.service.ts` (L177-181)
   - 현재: 수동 `padStart` 날짜 포맷
   - 수정: `getKSTDateString()` 유틸 사용
 
-- [ ] **#25 limit 파라미터 NaN 검증 부족**
+- [x] **#25 limit 파라미터 NaN 검증 부족**
   - 파일: `server/src/modules/matching/matching.service.ts` (L1215, 1253)
   - 현재: `Number(query.limit)` NaN 시 기본값 20 사용되지만 타입 불명확
   - 수정: `parseInt` + `isNaN` 명시적 검증
@@ -155,12 +155,12 @@
   - 현재: 불변 위젯에 `const` 미적용 → 불필요한 재생성
   - 수정: const 생성자 + const 인스턴스 사용
 
-- [ ] **#28 메시지 읽음 처리 전체 리스트 복사**
+- [x] **#28 메시지 읽음 처리 전체 리스트 복사**
   - 파일: `app/lib/providers/chat_provider.dart` (L288-300)
   - 현재: 1개 읽음 처리에 전체 메시지 리스트 O(n) 복사
   - 수정: indexed Map 또는 배치 업데이트
 
-- [ ] **#29 폴링 60초 cap 무한 반복**
+- [x] **#29 폴링 60초 cap 무한 반복**
   - 파일: `app/lib/providers/matching_provider.dart` (L370-376)
   - 현재: 서버 다운 시 60초마다 무한 요청
   - 수정: max attempt 후 중단, 유저 액션에서만 재시작
@@ -169,29 +169,29 @@
   - 파일: `matching_repository.dart`, `chat_repository.dart`, `user_repository.dart`
   - 수정: `BaseRepository._handleError()` 추출
 
-- [ ] **#31 build()에 복잡한 필터 로직**
+- [x] **#31 build()에 복잡한 필터 로직**
   - 파일: `app/lib/screens/matching/match_list_screen.dart` (L163-173)
   - 수정: Notifier 메서드 또는 별도 함수로 추출
 
-- [ ] **#32 소켓 재연결 시 room 중복 join**
+- [x] **#32 소켓 재연결 시 room 중복 join**
   - 파일: `app/lib/core/network/socket_service.dart` (L114-129)
   - 수정: `isAlreadyJoined` 체크 추가
 
-- [ ] **#33 desiredDate 대신 createdAt 할당**
+- [x] **#33 desiredDate 대신 createdAt 할당**
   - 파일: `server/src/workers/matching-queue.worker.ts` (L362)
   - 현재: `desiredDate: pairA.createdAt` → 잘못된 필드 할당
   - 수정: 매칭 요청의 `desiredDate` 사용
 
-- [ ] **#34 ScoreChangeType 잘못된 enum**
+- [x] **#34 ScoreChangeType 잘못된 enum**
   - 파일: `server/src/workers/match-accept-timeout.worker.ts` (L495)
   - 현재: 보상에 `NO_SHOW_PENALTY` 타입 사용
   - 수정: `NO_SHOW_COMPENSATION` 사용
 
-- [ ] **#35 admin.service todayStart UTC 기준**
+- [x] **#35 admin.service todayStart UTC 기준**
   - 파일: `server/src/modules/admin/admin.service.ts` (L23-24)
   - 수정: `getKSTMidnight()` 사용
 
-- [ ] **#36 Promise.all 에러 미처리**
+- [x] **#36 Promise.all 에러 미처리**
   - 파일: `server/src/modules/matching/matching.service.ts` (L748-756)
   - 현재: 이벤트 발행 실패 시 전체 매칭 수락 실패 가능
   - 수정: `Promise.allSettled()` 사용
@@ -243,6 +243,6 @@
 |-------|------|------|------|
 | Phase 1 (보안+크래시) | **완료** | **9** | 9 |
 | Phase 2 (성능+안정성) | 진행중 | 10 | 13 |
-| Phase 3 (리팩토링) | 미시작 | 0 | 14 |
+| Phase 3 (리팩토링) | 진행중 | 11 | 14 |
 | Phase 4 (코드 품질) | 미시작 | 0 | 8 |
-| **합계** | | **19** | **44** |
+| **합계** | | **30** | **44** |
