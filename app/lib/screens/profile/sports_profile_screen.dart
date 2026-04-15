@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../config/sports.dart';
 import '../../config/theme.dart';
+import '../../core/network/api_client.dart';
 import '../../models/sports_profile.dart';
 import '../../providers/profile_provider.dart';
 import '../../widgets/common/loading_indicator.dart';
@@ -164,7 +165,7 @@ class SportsProfileScreen extends ConsumerWidget {
                     }
                   } catch (e) {
                     if (ctx.mounted) {
-                      AppToast.error('저장 실패: $e');
+                      AppToast.error(extractErrorMessage(e, '매칭 문구 저장에 실패했습니다.'));
                     }
                   }
                 },
@@ -318,7 +319,7 @@ class SportsProfileScreen extends ConsumerWidget {
                         }
                       } catch (e) {
                         if (ctx.mounted) {
-                          AppToast.error('추가 실패: $e');
+                          AppToast.error(extractErrorMessage(e, '종목 추가에 실패했습니다.'));
                         }
                       }
                     },

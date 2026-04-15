@@ -5,58 +5,51 @@ import { AdminRole, UserStatus, SocialProvider } from '../../entities/index.js';
 import { AdminService } from './admin.service.js';
 import { requireAdmin } from './admin.middleware.js';
 import { AppDataSource } from '../../config/database.js';
-import { User, SocialAccount, AdminProfile } from '../../entities/index.js';
+import { User, SocialAccount, AdminProfile, AdminAccount } from '../../entities/index.js';
 import { issueTokenPair } from '../../shared/utils/jwt.js';
 
 export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
   const adminService = new AdminService();
 
-  // ─── POST /admin/auth/login ── 어드민 이메일 로그인
+  // ─── POST /admin/auth/login ── 어드민 로그인 (독립 admin_accounts 테이블)
   fastify.post(
     '/admin/auth/login',
     { schema: { tags: ['Admin'], summary: '어드민 로그인' } },
-    async (request: FastifyRequest<{ Body: { email: string; password: string } }>, reply: FastifyReply) => {
-      const { email, password } = request.body as { email: string; password: string };
+    async (request: FastifyRequest<{ Body: { username: string; password: string } }>, reply: FastifyReply) => {
+      const { username, password } = request.body as { username: string; password: string };
       const passwordHash = createHash('sha256').update(password).digest('hex');
 
-      const socialAccountRepo = AppDataSource.getRepository(SocialAccount);
-      const adminProfileRepo = AppDataSource.getRepository(AdminProfile);
+      const adminAccountRepo = AppDataSource.getRepository(AdminAccount);
+      const account = await adminAccountRepo.findOne({ where: { username } });
 
-      // 이메일 계정 확인
-      const social = await socialAccountRepo.findOne({
-        where: { provider: SocialProvider.EMAIL, providerId: email },
-        relations: { user: true },
-      });
-
-      if (!social || social.accessToken !== passwordHash) {
+      if (!account || account.passwordHash !== passwordHash) {
         return reply.status(401).send({
           success: false,
-          error: { code: 'AUTH_INVALID', message: '이메일 또는 비밀번호가 올바르지 않습니다.' },
+          error: { code: 'AUTH_INVALID', message: '아이디 또는 비밀번호가 올바르지 않습니다.' },
         });
       }
 
-      // 어드민 권한 확인
-      const adminProfile = await adminProfileRepo.findOne({
-        where: { userId: social.user.id },
-      });
-
-      if (!adminProfile) {
+      if (!account.isActive) {
         return reply.status(403).send({
           success: false,
-          error: { code: 'AUTH_FORBIDDEN', message: '어드민 권한이 없습니다.' },
+          error: { code: 'AUTH_FORBIDDEN', message: '비활성화된 계정입니다.' },
         });
       }
 
-      const tokens = await issueTokenPair({ userId: social.user.id, email });
+      // 마지막 로그인 시각 갱신
+      await adminAccountRepo.update(account.id, { lastLoginAt: new Date() });
+
+      const tokens = await issueTokenPair({ userId: account.id, email: account.username });
 
       return reply.send({
         success: true,
         data: {
           admin: {
-            id: social.user.id,
-            email,
-            nickname: social.user.nickname,
-            role: adminProfile.role,
+            id: account.id,
+            email: account.username,
+            name: account.name,
+            role: account.role,
+            createdAt: account.createdAt.toISOString(),
           },
           accessToken: tokens.accessToken,
           refreshToken: tokens.refreshToken,
@@ -73,19 +66,17 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
       schema: { tags: ['Admin'], summary: '내 어드민 정보', security: [{ bearerAuth: [] }] },
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
-      const userRepo = AppDataSource.getRepository(User);
-      const adminProfileRepo = AppDataSource.getRepository(AdminProfile);
-
-      const user = await userRepo.findOne({ where: { id: request.user.userId } });
-      const adminProfile = await adminProfileRepo.findOne({ where: { userId: request.user.userId } });
+      const adminAccountRepo = AppDataSource.getRepository(AdminAccount);
+      const account = await adminAccountRepo.findOne({ where: { id: request.user.userId } });
 
       return reply.send({
         success: true,
         data: {
-          id: user?.id,
-          email: user?.email,
-          nickname: user?.nickname,
-          role: adminProfile?.role,
+          id: account?.id,
+          email: account?.username,
+          name: account?.name,
+          role: account?.role,
+          createdAt: account?.createdAt?.toISOString(),
         },
       });
     },

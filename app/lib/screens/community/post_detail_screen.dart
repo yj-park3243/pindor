@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../../config/theme.dart';
+import '../../core/network/api_client.dart';
 import '../../models/post.dart';
 import '../../providers/community_provider.dart';
 import '../../providers/auth_provider.dart';
@@ -97,7 +98,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
       });
     } catch (e) {
       if (mounted) {
-        AppToast.error('댓글 작성에 실패했습니다: $e');
+        AppToast.error(extractErrorMessage(e, '댓글 작성에 실패했습니다.'));
       }
     } finally {
       if (mounted) setState(() => _isSending = false);

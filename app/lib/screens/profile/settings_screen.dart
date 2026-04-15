@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../config/router.dart';
 import '../../config/theme.dart';
+import '../../core/network/api_client.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/common/app_toast.dart';
 
@@ -87,6 +88,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               iconColor: Colors.orange,
               title: '캐시 삭제',
               onTap: _clearCache,
+            ),
+            const Divider(height: 1, indent: 56, endIndent: 16),
+            _buildListTile(
+              context,
+              icon: Icons.block,
+              iconColor: Colors.red,
+              title: '차단 목록',
+              onTap: () => context.push('/profile/settings/blocked-users'),
             ),
           ]),
 
@@ -479,7 +488,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         }
       } catch (e) {
         if (context.mounted) {
-          AppToast.error('탈퇴 처리 중 오류가 발생했습니다: $e');
+          AppToast.error(extractErrorMessage(e, '탈퇴 처리에 실패했습니다.'));
         }
       }
     }

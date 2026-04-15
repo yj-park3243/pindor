@@ -10,6 +10,7 @@ import '../../providers/auth_provider.dart';
 import '../../repositories/matching_repository.dart';
 import '../../widgets/common/app_toast.dart';
 import '../../widgets/common/loading_indicator.dart';
+import '../../core/network/socket_service.dart';
 
 /// 매칭 수락 화면 (PENDING_ACCEPT 상태)
 /// - 서버에서 직접 매칭 데이터를 가져옴 (SWR 로컬 캐시 우회)
@@ -33,6 +34,7 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
   bool _hasAccepted = false; // 내가 수락 버튼을 눌렀는지
   bool _timerStarted = false;
   bool _isNavigating = false; // 중복 네비게이션 방지
+  StreamSubscription<Map<String, dynamic>>? _statusSub;
 
   // 서버에서 직접 가져온 매칭 데이터 (SWR 우회)
   Match? _match;
@@ -46,12 +48,31 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
   void initState() {
     super.initState();
     _fetchMatchFromServer();
+    _listenMatchStatus();
   }
 
   @override
   void dispose() {
+    _statusSub?.cancel();
     _countdownTimer?.cancel();
     super.dispose();
+  }
+
+  /// 소켓으로 매칭 상태 변경 직접 감지 (CANCELLED → 목록으로 이동)
+  void _listenMatchStatus() {
+    _statusSub = SocketService.instance.onMatchStatusChanged.listen((data) {
+      final matchId = data['matchId'] as String?;
+      final status = data['status'] as String?;
+      if (matchId != widget.matchId) return;
+
+      if (status == 'CANCELLED' && mounted && !_isNavigating) {
+        _isNavigating = true;
+        _countdownTimer?.cancel();
+        AppToast.info('상대방이 매칭을 취소했습니다.');
+        ref.invalidate(matchListProvider(null));
+        context.go(AppRoutes.matchList);
+      }
+    });
   }
 
   /// 서버에서 직접 매칭 데이터 가져오기 (SWR 로컬 캐시 우회)

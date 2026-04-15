@@ -15,6 +15,7 @@ class User {
   final String? gender; // MALE | FEMALE | OTHER
   final DateTime? birthDate;
   final String? preferredSportType;
+  final bool isVerified;
 
   const User({
     required this.id,
@@ -30,6 +31,7 @@ class User {
     this.gender,
     this.birthDate,
     this.preferredSportType,
+    this.isVerified = false,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
@@ -56,6 +58,7 @@ class User {
           ? DateTime.parse(json['birthDate'] as String)
           : null,
       preferredSportType: json['preferredSportType'] as String?,
+      isVerified: json['isVerified'] as bool? ?? false,
     );
   }
 
@@ -73,6 +76,7 @@ class User {
         'gender': gender,
         'birthDate': birthDate?.toIso8601String(),
         'preferredSportType': preferredSportType,
+        'isVerified': isVerified,
       };
 
   User copyWith({
@@ -85,6 +89,7 @@ class User {
     String? gender,
     DateTime? birthDate,
     String? preferredSportType,
+    bool? isVerified,
   }) {
     return User(
       id: id,
@@ -100,6 +105,7 @@ class User {
       gender: gender ?? this.gender,
       birthDate: birthDate ?? this.birthDate,
       preferredSportType: preferredSportType ?? this.preferredSportType,
+      isVerified: isVerified ?? this.isVerified,
     );
   }
 

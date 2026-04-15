@@ -5,6 +5,7 @@ import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import '../../config/theme.dart';
 import '../../providers/team_provider.dart';
 import '../../widgets/common/app_toast.dart';
+import '../../core/network/api_client.dart';
 
 /// 팀 게시글 작성 화면
 class TeamCreatePostScreen extends ConsumerStatefulWidget {
@@ -58,7 +59,7 @@ class _TeamCreatePostScreenState
       }
     } catch (e) {
       if (mounted) {
-        AppToast.error('작성 실패: ${e.toString()}');
+        AppToast.error(extractErrorMessage(e, '게시글 작성에 실패했습니다.'));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

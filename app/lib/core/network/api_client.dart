@@ -342,3 +342,17 @@ class ApiException implements Exception {
   @override
   String toString() => 'ApiException($code): $message';
 }
+
+/// API 에러에서 사용자에게 보여줄 메시지 추출
+/// ApiException → message, DioException → 서버 에러 메시지, 기타 → fallback
+String extractErrorMessage(dynamic e, [String fallback = '오류가 발생했습니다.']) {
+  if (e is ApiException) return e.message;
+  if (e is DioException) {
+    final data = e.response?.data;
+    if (data is Map<String, dynamic> && data['error'] is Map) {
+      final msg = (data['error'] as Map)['message'];
+      if (msg != null) return msg.toString();
+    }
+  }
+  return fallback;
+}

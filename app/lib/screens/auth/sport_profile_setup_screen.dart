@@ -7,6 +7,7 @@ import '../../config/sports.dart';
 import '../../config/theme.dart';
 import '../../repositories/profile_repository.dart';
 import '../../widgets/common/app_toast.dart';
+import '../../core/network/api_client.dart';
 
 /// 스포츠 프로필 설정 화면
 /// 종목 선택 (그리드), G핸디 입력, 초기 점수 표시
@@ -58,7 +59,7 @@ class _SportProfileSetupScreenState
       if (mounted) context.go(AppRoutes.locationSetup);
     } catch (e) {
       if (mounted) {
-        AppToast.error('오류: ${e.toString()}');
+        AppToast.error(extractErrorMessage(e, '프로필 설정에 실패했습니다.'));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

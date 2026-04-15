@@ -6,6 +6,7 @@ platform :android do
     upload_to_play_store(
       track: 'internal',
       aab: '../build/app/outputs/bundle/release/app-release.aab',
+      mapping: '../build/app/outputs/mapping/release/mapping.txt',
       json_key: '/Users/yongju/WebProject2/match/etc/PINS fastlane.json',
       package_name: 'kr.pins.spots',
       release_status: 'draft',

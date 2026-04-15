@@ -19,7 +19,7 @@ import { ROUTES } from '@/config/routes';
 const { Title, Text } = Typography;
 
 interface LoginFormValues {
-  email: string;
+  username: string;
   password: string;
   mfaCode?: string;
 }
@@ -38,7 +38,7 @@ export function LoginPage() {
       setError(null);
 
       const result = await authApi.login({
-        email: values.email,
+        username: values.username,
         password: values.password,
         mfaCode: values.mfaCode,
       });
@@ -55,7 +55,7 @@ export function LoginPage() {
       } else if (code === 'INVALID_MFA') {
         setError('MFA 코드가 올바르지 않습니다.');
       } else {
-        setError('이메일 또는 비밀번호가 올바르지 않습니다.');
+        setError('아이디 또는 비밀번호가 올바르지 않습니다.');
       }
     } finally {
       setLoading(false);
@@ -100,16 +100,15 @@ export function LoginPage() {
           requiredMark={false}
         >
           <Form.Item
-            name="email"
-            label="이메일"
+            name="username"
+            label="아이디"
             rules={[
-              { required: true, message: '이메일을 입력해주세요.' },
-              { type: 'email', message: '올바른 이메일 형식이 아닙니다.' },
+              { required: true, message: '아이디를 입력해주세요.' },
             ]}
           >
             <Input
               prefix={<UserOutlined style={{ color: '#bbb' }} />}
-              placeholder="admin@sportsmatch.kr"
+              placeholder="아이디"
               size="large"
             />
           </Form.Item>

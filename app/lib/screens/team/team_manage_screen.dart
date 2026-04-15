@@ -11,6 +11,7 @@ import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/error_view.dart';
 import '../../widgets/team/team_member_tile.dart';
 import '../../widgets/common/app_toast.dart';
+import '../../core/network/api_client.dart';
 
 /// 팀 관리 화면 (CAPTAIN 전용)
 class TeamManageScreen extends ConsumerStatefulWidget {
@@ -66,7 +67,7 @@ class _TeamManageScreenState extends ConsumerState<TeamManageScreen> {
       }
     } catch (e) {
       if (mounted) {
-        AppToast.error('저장 실패: ${e.toString()}');
+        AppToast.error(extractErrorMessage(e, '팀 정보 저장에 실패했습니다.'));
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -82,7 +83,7 @@ class _TeamManageScreenState extends ConsumerState<TeamManageScreen> {
       ref.invalidate(teamDetailProvider(widget.teamId));
     } catch (e) {
       if (mounted) {
-        AppToast.error('변경 실패: ${e.toString()}');
+        AppToast.error(extractErrorMessage(e, '변경에 실패했습니다.'));
       }
     }
   }
@@ -193,7 +194,7 @@ class _TeamManageScreenState extends ConsumerState<TeamManageScreen> {
       }
     } catch (e) {
       if (mounted) {
-        AppToast.error('추방 실패: ${e.toString()}');
+        AppToast.error(extractErrorMessage(e, '멤버 추방에 실패했습니다.'));
       }
     }
   }
@@ -210,7 +211,7 @@ class _TeamManageScreenState extends ConsumerState<TeamManageScreen> {
       }
     } catch (e) {
       if (mounted) {
-        AppToast.error('변경 실패: ${e.toString()}');
+        AppToast.error(extractErrorMessage(e, '변경에 실패했습니다.'));
       }
     }
   }
@@ -318,7 +319,7 @@ class _TeamManageScreenState extends ConsumerState<TeamManageScreen> {
       if (mounted) context.go('/teams');
     } catch (e) {
       if (mounted) {
-        AppToast.error('해산 실패: ${e.toString()}');
+        AppToast.error(extractErrorMessage(e, '팀 해산에 실패했습니다.'));
       }
     }
   }

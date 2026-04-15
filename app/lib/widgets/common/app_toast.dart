@@ -75,10 +75,10 @@ class _ToastCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: const Color(0xFF1E1E1E),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.4), width: 1.5),
         boxShadow: [
           BoxShadow(
             color: color.withValues(alpha: 0.15),
@@ -97,14 +97,8 @@ class _ToastCard extends StatelessWidget {
         children: [
           // 상단 컬러 바
           Container(
-            height: 2,
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(16),
-                topRight: Radius.circular(16),
-              ),
-            ),
+            height: 3,
+            color: color,
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),

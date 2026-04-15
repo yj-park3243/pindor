@@ -17,6 +17,10 @@ import type { RankingRefreshJobData } from '../shared/types/index.js';
 
 export const rankingRefreshQueue = new Queue<RankingRefreshJobData>('ranking-refresh', {
   connection: bullmqRedis,
+  defaultJobOptions: {
+    removeOnComplete: { count: 10 },
+    removeOnFail: { count: 50 },
+  },
 });
 
 const rankingCache = new RankingCache(redis);

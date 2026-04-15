@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import '../config/router.dart';
+import '../config/theme.dart';
 import '../providers/notification_provider.dart';
 import '../providers/socket_provider.dart';
 import '../providers/matching_provider.dart';
@@ -233,37 +234,38 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> {
     final currentIndex = _getCurrentIndex(context);
     final unreadCount = ref.watch(totalUnreadCountProvider);
 
-    // AdaptiveScaffold는 body 위에 바텀 네비를 overlay하므로
-    // 하단 패딩을 추가하여 콘텐츠가 가려지지 않도록 함
-    final bottomPadding = MediaQuery.of(context).padding.bottom + kBottomNavigationBarHeight + 16;
-
-    return AdaptiveScaffold(
-      minimizeBehavior: TabBarMinimizeBehavior.never,
-      body: MediaQuery(
-        data: MediaQuery.of(context).copyWith(
-          padding: MediaQuery.of(context).padding.copyWith(bottom: bottomPadding),
-        ),
-        child: widget.child,
-      ),
-      bottomNavigationBar: AdaptiveBottomNavigationBar(
+    return Scaffold(
+      body: widget.child,
+      bottomNavigationBar: NavigationBar(
         selectedIndex: currentIndex,
-        onTap: _onTabTap,
-        items: [
-          AdaptiveNavigationDestination(
-            icon: Platform.isIOS ? 'house.fill' : Symbols.home_rounded,
+        onDestinationSelected: _onTabTap,
+        backgroundColor: const Color(0xFF0A0A0A),
+        indicatorColor: AppTheme.primaryColor.withValues(alpha: 0.15),
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        height: 64,
+        destinations: [
+          NavigationDestination(
+            icon: const Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home_rounded, color: AppTheme.primaryColor),
             label: '홈',
           ),
-          AdaptiveNavigationDestination(
-            icon: Platform.isIOS ? 'mappin.and.ellipse' : Symbols.location_on_rounded,
+          NavigationDestination(
+            icon: const Icon(Icons.location_on_outlined),
+            selectedIcon: Icon(Icons.location_on_rounded, color: AppTheme.primaryColor),
             label: '핀',
           ),
-          AdaptiveNavigationDestination(
-            icon: Platform.isIOS ? 'sportscourt.fill' : Symbols.stadium_rounded,
+          NavigationDestination(
+            icon: unreadCount > 0
+                ? Badge(label: Text('$unreadCount'), child: const Icon(Icons.sports_esports_outlined))
+                : const Icon(Icons.sports_esports_outlined),
+            selectedIcon: unreadCount > 0
+                ? Badge(label: Text('$unreadCount'), child: Icon(Icons.sports_esports_rounded, color: AppTheme.primaryColor))
+                : Icon(Icons.sports_esports_rounded, color: AppTheme.primaryColor),
             label: '매칭',
-            badgeCount: unreadCount > 0 ? unreadCount : null,
           ),
-          AdaptiveNavigationDestination(
-            icon: Platform.isIOS ? 'person.fill' : Symbols.person_rounded,
+          NavigationDestination(
+            icon: const Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person_rounded, color: AppTheme.primaryColor),
             label: '마이',
           ),
         ],

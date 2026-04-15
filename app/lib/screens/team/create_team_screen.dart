@@ -5,6 +5,7 @@ import '../../config/theme.dart';
 import '../../providers/team_provider.dart';
 import '../../repositories/team_repository.dart';
 import '../../widgets/common/app_toast.dart';
+import '../../core/network/api_client.dart';
 
 /// 팀 생성 화면
 class CreateTeamScreen extends ConsumerStatefulWidget {
@@ -64,7 +65,7 @@ class _CreateTeamScreenState extends ConsumerState<CreateTeamScreen> {
       }
     } catch (e) {
       if (mounted) {
-        AppToast.error('팀 생성 실패: ${e.toString()}');
+        AppToast.error(extractErrorMessage(e, '팀 생성에 실패했습니다.'));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

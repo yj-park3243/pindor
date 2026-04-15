@@ -7,6 +7,7 @@ import '../../core/utils/permission_helper.dart';
 import '../../providers/auth_provider.dart';
 import '../../repositories/game_repository.dart';
 import '../../repositories/upload_repository.dart';
+import '../../core/network/api_client.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/app_toast.dart';
 
@@ -70,7 +71,7 @@ class _GameResultInputScreenState extends ConsumerState<GameResultInputScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoadingGame = false);
-        AppToast.error('게임 정보 로드 실패: ${e.toString()}');
+        AppToast.error(extractErrorMessage(e, '게임 정보를 불러올 수 없습니다.'));
       }
     }
   }
@@ -162,7 +163,7 @@ class _GameResultInputScreenState extends ConsumerState<GameResultInputScreen> {
       }
     } catch (e) {
       if (mounted) {
-        AppToast.error('오류: ${e.toString()}');
+        AppToast.error(extractErrorMessage(e, '결과 제출에 실패했습니다.'));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

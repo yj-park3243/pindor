@@ -29,6 +29,9 @@ export class Report {
   @Column({ type: 'text', nullable: true })
   description!: string | null;
 
+  @Column({ name: 'image_urls', type: 'jsonb', default: [] })
+  imageUrls!: string[];
+
   @Column({ type: 'enum', enum: ReportStatus, enumName: 'ReportStatus', default: ReportStatus.PENDING })
   status!: ReportStatus;
 

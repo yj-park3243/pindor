@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import '../core/network/api_client.dart';
@@ -14,20 +15,28 @@ class AuthState {
   final bool isAuthenticated;
   final User? user;
   final bool isNewUser;
+  final bool isVerified;
 
   const AuthState({
     required this.isAuthenticated,
     this.user,
     this.isNewUser = false,
+    this.isVerified = true, // 기존 유저는 기본값 true
   });
 
   static const unauthenticated = AuthState(isAuthenticated: false);
 
-  AuthState copyWith({bool? isAuthenticated, User? user, bool? isNewUser}) {
+  AuthState copyWith({
+    bool? isAuthenticated,
+    User? user,
+    bool? isNewUser,
+    bool? isVerified,
+  }) {
     return AuthState(
       isAuthenticated: isAuthenticated ?? this.isAuthenticated,
       user: user ?? this.user,
       isNewUser: isNewUser ?? this.isNewUser,
+      isVerified: isVerified ?? this.isVerified,
     );
   }
 }
@@ -59,7 +68,17 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
       final repo = ref.read(userRepositoryProvider);
       final user = await repo.getMe();
 
-      return AuthState(isAuthenticated: true, user: user);
+      // 가입 단계 판단: 본인인증 미완료 or 프로필 미설정 → isNewUser 유지
+      final isVerified = user?.isVerified ?? false;
+      final hasNickname = user?.nickname != null && user!.nickname!.isNotEmpty;
+      final isSetupIncomplete = !isVerified || !hasNickname;
+
+      return AuthState(
+        isAuthenticated: true,
+        user: user,
+        isNewUser: isSetupIncomplete,
+        isVerified: isVerified,
+      );
     } on ApiException catch (e) {
       // 401/403 = 토큰 만료 → 로그아웃
       if (e.statusCode == 401 || e.statusCode == 403) {
@@ -92,6 +111,7 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
       final refreshToken = data['refreshToken'] as String;
       final userData = data['user'] as Map<String, dynamic>;
       final isNewUser = userData['isNewUser'] as bool? ?? false;
+      final isVerified = userData['isVerified'] as bool? ?? false;
 
       // 토큰 저장
       await _storage.saveTokens(
@@ -114,6 +134,7 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
           nickname: userData['nickname'] as String? ?? '',
           status: 'ACTIVE',
           createdAt: DateTime.now(),
+          isVerified: isVerified,
         );
       }
 
@@ -121,6 +142,7 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
         isAuthenticated: true,
         user: user,
         isNewUser: isNewUser,
+        isVerified: isVerified,
       );
     });
   }
@@ -148,6 +170,7 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
       final refreshToken = data['refreshToken'] as String;
       final userData = data['user'] as Map<String, dynamic>;
       final isNewUser = userData['isNewUser'] as bool? ?? false;
+      final isVerified = userData['isVerified'] as bool? ?? false;
 
       // 토큰 저장
       await _storage.saveTokens(
@@ -170,6 +193,7 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
           nickname: userData['nickname'] as String? ?? '',
           status: 'ACTIVE',
           createdAt: DateTime.now(),
+          isVerified: isVerified,
         );
       }
 
@@ -177,6 +201,7 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
         isAuthenticated: true,
         user: user,
         isNewUser: isNewUser,
+        isVerified: isVerified,
       ));
     } catch (e, st) {
       state = previousState;
@@ -220,6 +245,7 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
       final refreshToken = data['refreshToken'] as String;
       final userData = data['user'] as Map<String, dynamic>;
       final isNewUser = userData['isNewUser'] as bool? ?? false;
+      final isVerified = userData['isVerified'] as bool? ?? false;
 
       // 토큰 저장
       await _storage.saveTokens(
@@ -242,6 +268,7 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
           nickname: userData['nickname'] as String? ?? '',
           status: 'ACTIVE',
           createdAt: DateTime.now(),
+          isVerified: isVerified,
         );
       }
 
@@ -249,6 +276,7 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
         isAuthenticated: true,
         user: user,
         isNewUser: isNewUser,
+        isVerified: isVerified,
       ));
     } on SignInWithAppleAuthorizationException {
       // 유저가 취소 — 이전 상태로 복원
@@ -292,6 +320,10 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
     // 로컬 DB 전체 정리
     await ref.read(appDatabaseProvider).clearAll();
 
+    // SharedPreferences 정리 (종목/핀 설정 등)
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+
     state = const AsyncData(AuthState.unauthenticated);
   }
 
@@ -309,6 +341,9 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
     PushNotificationService.instance.onDeepLink = null;
     _socket.disconnect();
     await _storage.clearTokens();
+    await ref.read(appDatabaseProvider).clearAll();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
 
     state = const AsyncData(AuthState.unauthenticated);
   }
@@ -319,6 +354,39 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
     if (currentState != null) {
       state = AsyncData(currentState.copyWith(user: user));
     }
+  }
+
+  /// KCP 본인인증 완료 후 상태 업데이트
+  void completeVerification({
+    required String accessToken,
+    required String refreshToken,
+    required Map<String, dynamic> userData,
+    required bool isNewUser,
+  }) {
+    final currentState = state.valueOrNull;
+    if (currentState == null) return;
+
+    _storage.saveTokens(
+      accessToken: accessToken,
+      refreshToken: refreshToken,
+      userId: userData['id'] as String,
+    );
+
+    final updatedUser = currentState.user?.copyWith(isVerified: true) ??
+        User(
+          id: userData['id'] as String,
+          nickname: userData['nickname'] as String? ?? '',
+          status: 'ACTIVE',
+          createdAt: DateTime.now(),
+          isVerified: true,
+        );
+
+    state = AsyncData(AuthState(
+      isAuthenticated: true,
+      user: updatedUser,
+      isNewUser: isNewUser,
+      isVerified: true,
+    ));
   }
 }
 

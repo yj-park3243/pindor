@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../../config/theme.dart';
+import '../../core/network/api_client.dart';
 import '../../core/utils/permission_helper.dart';
 import '../../repositories/support_repository.dart';
 import '../../repositories/upload_repository.dart';
@@ -112,7 +113,7 @@ class _InquiryScreenState extends ConsumerState<InquiryScreen> {
       }
     } catch (e) {
       if (mounted) {
-        AppToast.error('문의 접수에 실패했습니다: $e');
+        AppToast.error(extractErrorMessage(e, '문의 접수에 실패했습니다.'));
       }
     } finally {
       if (mounted) setState(() => _isSubmitting = false);

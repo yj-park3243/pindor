@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import '../../config/theme.dart';
+import '../../core/network/api_client.dart';
 import '../../core/utils/permission_helper.dart';
 import '../../providers/user_provider.dart';
 import '../../repositories/upload_repository.dart';
@@ -86,7 +87,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
       }
     } catch (e) {
       if (mounted) {
-        AppToast.error('프로필 수정에 실패했습니다: $e');
+        AppToast.error(extractErrorMessage(e, '프로필 수정에 실패했습니다.'));
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);

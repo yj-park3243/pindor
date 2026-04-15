@@ -51,6 +51,28 @@ async function start(): Promise<void> {
     `ALTER TABLE match_requests ADD COLUMN IF NOT EXISTS is_casual BOOLEAN NOT NULL DEFAULT false;`
   ).catch((e: any) => console.warn('[Server] ALTER TABLE match_requests (is_casual):', e.message));
 
+  // users 테이블에 KCP 본인인증 컬럼 추가 (없으면)
+  await AppDataSource.query(
+    `ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS phone_number VARCHAR(30) NULL,
+      ADD COLUMN IF NOT EXISTS ci           VARCHAR(100) NULL,
+      ADD COLUMN IF NOT EXISTS di           VARCHAR(100) NULL,
+      ADD COLUMN IF NOT EXISTS real_name    VARCHAR(50) NULL,
+      ADD COLUMN IF NOT EXISTS carrier      VARCHAR(20) NULL,
+      ADD COLUMN IF NOT EXISTS is_verified  BOOLEAN NOT NULL DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS verified_at  TIMESTAMPTZ NULL;`
+  ).catch((e: any) => console.warn('[Server] ALTER TABLE users (kcp):', e.message));
+
+  // CI partial unique index (NULL 제외)
+  await AppDataSource.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS uidx_users_ci ON users (ci) WHERE ci IS NOT NULL;`
+  ).catch((e: any) => console.warn('[Server] CREATE INDEX uidx_users_ci:', e.message));
+
+  // phone_number 인덱스 (NULL 제외)
+  await AppDataSource.query(
+    `CREATE INDEX IF NOT EXISTS idx_users_phone_number ON users (phone_number) WHERE phone_number IS NOT NULL;`
+  ).catch((e: any) => console.warn('[Server] CREATE INDEX idx_users_phone_number:', e.message));
+
   // RequestType enum에 CASUAL 추가 (없으면)
   await AppDataSource.query(
     `DO $$ BEGIN ALTER TYPE "RequestType" ADD VALUE IF NOT EXISTS 'CASUAL'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`

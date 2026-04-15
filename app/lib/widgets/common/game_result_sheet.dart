@@ -11,6 +11,7 @@ import '../../repositories/game_repository.dart';
 import '../../repositories/matching_repository.dart';
 import '../../repositories/upload_repository.dart';
 import 'app_toast.dart';
+import '../../core/network/api_client.dart';
 
 /// 승부 결과 입력 바텀시트
 ///
@@ -419,7 +420,7 @@ void showGameResultSheet(
                                 if (ctx.mounted) {
                                   setSheetState(
                                       () => isSubmitting = false);
-                                  AppToast.error('결과 제출 실패: $e');
+                                  AppToast.error(extractErrorMessage(e, '결과 제출에 실패했습니다.'));
                                 }
                               }
                             },

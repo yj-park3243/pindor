@@ -7,6 +7,7 @@ import '../widgets/common/app_toast.dart';
 import '../screens/auth/splash_screen.dart';
 import '../screens/auth/onboarding_screen.dart';
 import '../screens/auth/login_screen.dart';
+import '../screens/auth/phone_verification_screen.dart';
 import '../screens/auth/profile_setup_screen.dart';
 import '../screens/auth/font_size_setup_screen.dart';
 import '../screens/auth/sport_profile_setup_screen.dart';
@@ -53,6 +54,7 @@ import '../screens/notices/notice_list_screen.dart';
 import '../screens/notices/notice_detail_screen.dart';
 import '../screens/disputes/create_dispute_screen.dart';
 import '../screens/disputes/dispute_list_screen.dart';
+import '../screens/profile/blocked_users_screen.dart';
 
 /// GoRouter의 refreshListenable로 사용할 ChangeNotifier
 /// authStateProvider 변경 시 GoRouter의 redirect만 재실행 (GoRouter 재생성 안 함)
@@ -69,6 +71,7 @@ class AppRoutes {
   static const String splash = '/';
   static const String onboarding = '/onboarding';
   static const String login = '/login';
+  static const String phoneVerification = '/phone-verification';
   static const String profileSetup = '/setup/profile';
   static const String fontSizeSetup = '/setup/font-size';
   static const String sportProfileSetup = '/setup/sport-profile';
@@ -97,6 +100,7 @@ class AppRoutes {
   static const String notifications = '/profile/notifications';
   static const String settings = '/profile/settings';
   static const String notificationSettings = '/profile/settings/notifications';
+  static const String blockedUsers = '/profile/settings/blocked-users';
   static const String inquiry = '/profile/inquiry';
   static const String secret = '/profile/secret';
 
@@ -142,6 +146,8 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final authState = ref.read(authStateProvider);
       final isAuthenticated = authState.valueOrNull?.isAuthenticated ?? false;
+      final isNewUser = authState.valueOrNull?.isNewUser ?? false;
+      final isVerified = authState.valueOrNull?.isVerified ?? true;
       final isLoading = authState.isLoading;
       final location = state.matchedLocation;
 
@@ -153,6 +159,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         AppRoutes.splash,
         AppRoutes.onboarding,
         AppRoutes.login,
+        AppRoutes.phoneVerification,
         AppRoutes.profileSetup,
         AppRoutes.fontSizeSetup,
         AppRoutes.sportProfileSetup,
@@ -166,8 +173,33 @@ final routerProvider = Provider<GoRouter>((ref) {
         return AppRoutes.login;
       }
 
-      // 인증된 사용자가 로그인 화면 접근 시
-      if (isAuthenticated && location == AppRoutes.login) {
+      // 신규 유저 가입 단계 처리
+      if (isAuthenticated && isNewUser) {
+        final setupRoutes = [
+          AppRoutes.phoneVerification,
+          AppRoutes.profileSetup,
+          AppRoutes.fontSizeSetup,
+          AppRoutes.sportProfileSetup,
+          AppRoutes.locationSetup,
+        ];
+        final isOnSetupRoute = setupRoutes.any((r) => location.startsWith(r));
+
+        // 본인인증 미완료 → 본인인증 화면으로
+        if (!isVerified && location != AppRoutes.phoneVerification) {
+          return AppRoutes.phoneVerification;
+        }
+
+        // 본인인증 완료 + 가입 단계가 아닌 곳에 있으면 → 프로필 설정으로
+        if (isVerified && !isOnSetupRoute && location != AppRoutes.login) {
+          return AppRoutes.profileSetup;
+        }
+
+        return null; // 가입 단계 중이면 그대로 유지
+      }
+
+      // 인증된 사용자가 로그인/스플래시 화면 접근 시
+      if (isAuthenticated &&
+          (location == AppRoutes.login || location == AppRoutes.splash)) {
         return AppRoutes.home;
       }
 
@@ -186,6 +218,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.login,
         builder: (context, state) => const LoginScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.phoneVerification,
+        builder: (context, state) => const PhoneVerificationScreen(),
       ),
       GoRoute(
         path: AppRoutes.profileSetup,
@@ -379,6 +415,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: 'notifications',
             builder: (context, state) => const NotificationSettingsScreen(),
+          ),
+          GoRoute(
+            path: 'blocked-users',
+            builder: (context, state) => const BlockedUsersScreen(),
           ),
         ],
       ),

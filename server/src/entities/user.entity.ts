@@ -68,6 +68,28 @@ export class User {
   @Column({ name: 'preferred_sport_type', type: 'varchar', length: 50, nullable: true, default: null })
   preferredSportType!: string | null;
 
+  // KCP 본인인증 컬럼
+  @Column({ name: 'phone_number', type: 'varchar', length: 30, nullable: true })
+  phoneNumber!: string | null;
+
+  @Column({ name: 'ci', type: 'varchar', length: 100, nullable: true })
+  ci!: string | null;
+
+  @Column({ name: 'di', type: 'varchar', length: 100, nullable: true })
+  di!: string | null;
+
+  @Column({ name: 'real_name', type: 'varchar', length: 50, nullable: true })
+  realName!: string | null;
+
+  @Column({ name: 'carrier', type: 'varchar', length: 20, nullable: true })
+  carrier!: string | null;
+
+  @Column({ name: 'is_verified', type: 'boolean', default: false })
+  isVerified!: boolean;
+
+  @Column({ name: 'verified_at', type: 'timestamptz', nullable: true })
+  verifiedAt!: Date | null;
+
   // Relations
   @OneToMany('SocialAccount', 'user')
   socialAccounts!: SocialAccount[];

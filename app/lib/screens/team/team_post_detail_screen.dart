@@ -9,6 +9,7 @@ import '../../repositories/team_repository.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/error_view.dart';
 import '../../widgets/common/app_toast.dart';
+import '../../core/network/api_client.dart';
 
 /// 팀 게시글 상세 + 댓글 화면
 class TeamPostDetailScreen extends ConsumerWidget {
@@ -103,7 +104,7 @@ class _PostDetailContentState extends ConsumerState<_PostDetailContent> {
       );
     } catch (e) {
       if (mounted) {
-        AppToast.error('댓글 전송 실패: ${e.toString()}');
+        AppToast.error(extractErrorMessage(e, '댓글 전송에 실패했습니다.'));
       }
     } finally {
       if (mounted) setState(() => _isSendingComment = false);

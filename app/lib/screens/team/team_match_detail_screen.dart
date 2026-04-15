@@ -10,6 +10,7 @@ import '../../repositories/team_repository.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/error_view.dart';
 import '../../widgets/common/app_toast.dart';
+import '../../core/network/api_client.dart';
 
 /// 팀 매칭 상세 화면
 class TeamMatchDetailScreen extends ConsumerWidget {
@@ -281,7 +282,7 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
       }
     } catch (e) {
       if (mounted) {
-        AppToast.error('제출 실패: ${e.toString()}');
+        AppToast.error(extractErrorMessage(e, '결과 제출에 실패했습니다.'));
       }
     } finally {
       if (mounted) setState(() => _isSubmitting = false);

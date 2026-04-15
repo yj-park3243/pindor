@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/match_request.dart';
@@ -194,6 +195,7 @@ class MatchAcceptNotifier
     extends AutoDisposeFamilyNotifier<MatchAcceptState, String> {
   Timer? _pollingTimer;
   StreamSubscription<Map<String, dynamic>>? _socketSub;
+  StreamSubscription<Map<String, dynamic>>? _matchStatusSub;
   StreamSubscription<bool>? _connectionSub;
   int _failureCount = 0;
   int _pollIntervalSeconds = 10; // exponential backoff 시작 인터벌
@@ -206,6 +208,7 @@ class MatchAcceptNotifier
     ref.onDispose(() {
       _pollingTimer?.cancel();
       _socketSub?.cancel();
+      _matchStatusSub?.cancel();
       _connectionSub?.cancel();
     });
     return const MatchAcceptState();
@@ -240,7 +243,14 @@ class MatchAcceptNotifier
       state = state.copyWith(isLoading: false, acceptStatus: 'CANCELLED');
       return true;
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
+      String errorMsg = e.toString();
+      if (e is DioException && e.response?.data is Map) {
+        final serverError = e.response!.data['error'];
+        if (serverError is Map && serverError['message'] != null) {
+          errorMsg = serverError['message'] as String;
+        }
+      }
+      state = state.copyWith(isLoading: false, error: errorMsg);
       return false;
     }
   }
@@ -283,6 +293,26 @@ class MatchAcceptNotifier
         _socketSub?.cancel();
         _pollingTimer?.cancel();
         state = state.copyWith(acceptStatus: 'CANCELLED');
+      }
+    });
+
+    // MATCH_STATUS_CHANGED 소켓 이벤트도 감지 (match:{matchId} 룸 기반)
+    _matchStatusSub?.cancel();
+    _matchStatusSub = SocketService.instance.onMatchStatusChanged.listen((data) {
+      final matchId = data['matchId'] as String?;
+      final status = data['status'] as String?;
+      if (matchId != arg) return;
+
+      if (status == 'CANCELLED') {
+        _socketSub?.cancel();
+        _matchStatusSub?.cancel();
+        _pollingTimer?.cancel();
+        state = state.copyWith(acceptStatus: 'CANCELLED');
+      } else if (status == 'CHAT') {
+        _socketSub?.cancel();
+        _matchStatusSub?.cancel();
+        _pollingTimer?.cancel();
+        _fetchMatchDetailAndUpdate();
       }
     });
 

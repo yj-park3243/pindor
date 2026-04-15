@@ -1,10 +1,10 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { AppError, ErrorCode } from '../../shared/errors/app-error.js';
 import { AppDataSource } from '../../config/database.js';
-import { AdminProfile, AdminRole } from '../../entities/index.js';
+import { AdminAccount, AdminRole } from '../../entities/index.js';
 
 /**
- * 어드민 역할 검증 미들웨어
+ * 어드민 역할 검증 미들웨어 (독립 admin_accounts 테이블 기반)
  * 사용법: onRequest: [fastify.authenticate, requireAdmin()]
  */
 export function requireAdmin(minRole: AdminRole = AdminRole.MODERATOR) {
@@ -15,10 +15,10 @@ export function requireAdmin(minRole: AdminRole = AdminRole.MODERATOR) {
       throw AppError.unauthorized();
     }
 
-    const adminProfileRepo = AppDataSource.getRepository(AdminProfile);
-    const adminProfile = await adminProfileRepo.findOne({ where: { userId } });
+    const adminAccountRepo = AppDataSource.getRepository(AdminAccount);
+    const account = await adminAccountRepo.findOne({ where: { id: userId } });
 
-    if (!adminProfile) {
+    if (!account || !account.isActive) {
       throw AppError.forbidden(ErrorCode.ADMIN_ACCESS_DENIED);
     }
 
@@ -28,7 +28,7 @@ export function requireAdmin(minRole: AdminRole = AdminRole.MODERATOR) {
       AdminRole.SUPER_ADMIN,
     ];
 
-    const adminRoleIndex = roleOrder.indexOf(adminProfile.role);
+    const adminRoleIndex = roleOrder.indexOf(account.role);
     const requiredRoleIndex = roleOrder.indexOf(minRole);
 
     if (adminRoleIndex < requiredRoleIndex) {
@@ -38,7 +38,6 @@ export function requireAdmin(minRole: AdminRole = AdminRole.MODERATOR) {
       );
     }
 
-    // 요청 객체에 어드민 역할 저장
-    (request as any).adminRole = adminProfile.role;
+    (request as any).adminRole = account.role;
   };
 }

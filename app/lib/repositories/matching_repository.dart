@@ -185,9 +185,11 @@ class MatchingRepository {
     await _api.post('/matches/$matchId/forfeit', body: {});
   }
 
-  /// 노쇼 신고 — 상대방이 약속 장소에 나타나지 않은 경우
-  Future<void> reportNoshow(String matchId) async {
-    await _api.post('/matches/$matchId/report-noshow', body: {});
+  /// 노쇼 신고 — 상대방이 약속 장소에 나타나지 않은 경우 (증거 사진 필수)
+  Future<void> reportNoshow(String matchId, {List<String>? imageUrls}) async {
+    await _api.post('/matches/$matchId/report-noshow', body: {
+      if (imageUrls != null) 'imageUrls': imageUrls,
+    });
   }
 }
 

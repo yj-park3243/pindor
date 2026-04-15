@@ -351,7 +351,7 @@ export async function matchingRoutes(fastify: FastifyInstance): Promise<void> {
       onRequest: [fastify.authenticate],
       schema: {
         tags: ['Matching'],
-        summary: '노쇼 신고',
+        summary: '노쇼 신고 (증거 사진 필수)',
         security: [{ bearerAuth: [] }],
         params: {
           type: 'object',
@@ -360,15 +360,23 @@ export async function matchingRoutes(fastify: FastifyInstance): Promise<void> {
           },
           required: ['id'],
         },
+        body: {
+          type: 'object',
+          properties: {
+            imageUrls: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 3 },
+          },
+          required: ['imageUrls'],
+        },
       },
     },
     async (
-      request: FastifyRequest<{ Params: { id: string } }>,
+      request: FastifyRequest<{ Params: { id: string }; Body: { imageUrls: string[] } }>,
       reply: FastifyReply,
     ) => {
       const data = await matchingService.reportNoshow(
         request.user.userId,
         request.params.id,
+        request.body.imageUrls,
       );
       return reply.send({ success: true, data });
     },

@@ -3,7 +3,7 @@ import { createHash } from 'crypto';
 import { AdminRole, SocialProvider } from '../../entities/index.js';
 import { requireAdmin } from './admin.middleware.js';
 import { AppDataSource } from '../../config/database.js';
-import { User, SocialAccount, AdminProfile } from '../../entities/index.js';
+import { User, SocialAccount, AdminProfile, AdminAccount } from '../../entities/index.js';
 import { verifyRefreshToken, issueTokenPair } from '../../shared/utils/jwt.js';
 import { AppError, ErrorCode } from '../../shared/errors/app-error.js';
 
@@ -119,24 +119,21 @@ export async function adminSettingsRoutes(fastify: FastifyInstance): Promise<voi
       schema: { tags: ['Admin'], summary: '어드민 계정 목록 (SUPER_ADMIN 전용)', security: [{ bearerAuth: [] }] },
     },
     async (_request: FastifyRequest, reply: FastifyReply) => {
-      const adminProfileRepo = AppDataSource.getRepository(AdminProfile);
+      const adminAccountRepo = AppDataSource.getRepository(AdminAccount);
+      const accounts = await adminAccountRepo.find({ order: { createdAt: 'ASC' } });
 
-      const profiles = await adminProfileRepo
-        .createQueryBuilder('adminProfile')
-        .leftJoinAndSelect('adminProfile.user', 'user')
-        .orderBy('adminProfile.createdAt', 'ASC')
-        .getMany();
-
-      const accounts = profiles.map((profile) => ({
-        id: profile.id,
-        userId: profile.userId,
-        email: profile.user?.email ?? null,
-        nickname: profile.user?.nickname ?? null,
-        role: profile.role,
-        createdAt: profile.createdAt,
-      }));
-
-      return reply.send({ success: true, data: accounts });
+      return reply.send({
+        success: true,
+        data: accounts.map((a) => ({
+          id: a.id,
+          username: a.username,
+          name: a.name,
+          role: a.role,
+          isActive: a.isActive,
+          lastLoginAt: a.lastLoginAt,
+          createdAt: a.createdAt,
+        })),
+      });
     },
   );
 
@@ -153,78 +150,45 @@ export async function adminSettingsRoutes(fastify: FastifyInstance): Promise<voi
     },
     async (
       request: FastifyRequest<{
-        Body: { email: string; password: string; name: string; role: AdminRole };
+        Body: { username: string; password: string; name: string; role: AdminRole };
       }>,
       reply: FastifyReply,
     ) => {
-      const { email, password, name, role } = request.body as {
-        email: string;
+      const { username, password, name, role } = request.body as {
+        username: string;
         password: string;
         name: string;
         role: AdminRole;
       };
 
-      if (!email || !password || !name || !role) {
+      if (!username || !password || !name || !role) {
         return reply.status(400).send({
           success: false,
-          error: { code: 'VALIDATION_ERROR', message: 'email, password, name, role은 필수입니다.' },
+          error: { code: 'VALIDATION_ERROR', message: 'username, password, name, role은 필수입니다.' },
         });
       }
 
-      // 이미 존재하는 이메일인지 확인
-      const socialAccountRepo = AppDataSource.getRepository(SocialAccount);
-      const existingSocial = await socialAccountRepo.findOne({
-        where: { provider: SocialProvider.EMAIL, providerId: email },
-      });
-
-      if (existingSocial) {
+      const adminAccountRepo = AppDataSource.getRepository(AdminAccount);
+      const existing = await adminAccountRepo.findOne({ where: { username } });
+      if (existing) {
         return reply.status(409).send({
           success: false,
-          error: { code: 'CONFLICT', message: '이미 사용 중인 이메일입니다.' },
+          error: { code: 'CONFLICT', message: '이미 사용 중인 아이디입니다.' },
         });
       }
 
       const passwordHash = createHash('sha256').update(password).digest('hex');
-
-      const result = await AppDataSource.transaction(async (manager) => {
-        // 1. User 생성
-        const userRepo = manager.getRepository(User);
-        const user = userRepo.create({
-          email,
-          nickname: name,
-        });
-        await userRepo.save(user);
-
-        // 2. SocialAccount 생성 (EMAIL provider, 비밀번호는 accessToken에 hash로 저장)
-        const socialRepo = manager.getRepository(SocialAccount);
-        const social = socialRepo.create({
-          userId: user.id,
-          provider: SocialProvider.EMAIL,
-          providerId: email,
-          accessToken: passwordHash,
-        });
-        await socialRepo.save(social);
-
-        // 3. AdminProfile 생성
-        const adminRepo = manager.getRepository(AdminProfile);
-        const adminProfile = adminRepo.create({
-          userId: user.id,
-          role,
-        });
-        await adminRepo.save(adminProfile);
-
-        return { user, adminProfile };
-      });
+      const account = adminAccountRepo.create({ username, passwordHash, name, role });
+      await adminAccountRepo.save(account);
 
       return reply.status(201).send({
         success: true,
         data: {
-          id: result.adminProfile.id,
-          userId: result.user.id,
-          email: result.user.email,
-          nickname: result.user.nickname,
-          role: result.adminProfile.role,
-          createdAt: result.adminProfile.createdAt,
+          id: account.id,
+          username: account.username,
+          name: account.name,
+          role: account.role,
+          createdAt: account.createdAt,
         },
       });
     },
@@ -245,46 +209,31 @@ export async function adminSettingsRoutes(fastify: FastifyInstance): Promise<voi
     async (
       request: FastifyRequest<{
         Params: { id: string };
-        Body: { name?: string; role?: AdminRole; isActive?: boolean };
+        Body: { name?: string; role?: AdminRole; isActive?: boolean; password?: string };
       }>,
       reply: FastifyReply,
     ) => {
       const { id } = request.params;
-      const body = request.body as { name?: string; role?: AdminRole; isActive?: boolean };
+      const body = request.body as { name?: string; role?: AdminRole; isActive?: boolean; password?: string };
 
-      const adminProfileRepo = AppDataSource.getRepository(AdminProfile);
-      const adminProfile = await adminProfileRepo.findOne({
-        where: { id },
-        relations: { user: true },
-      });
+      const adminAccountRepo = AppDataSource.getRepository(AdminAccount);
+      const account = await adminAccountRepo.findOne({ where: { id } });
 
-      if (!adminProfile) {
+      if (!account) {
         throw AppError.notFound(ErrorCode.NOT_FOUND, '어드민 계정을 찾을 수 없습니다.');
       }
 
-      // role 업데이트
-      if (body.role !== undefined) {
-        await adminProfileRepo.update(id, { role: body.role });
-        adminProfile.role = body.role;
-      }
+      const updates: Partial<AdminAccount> = {};
+      if (body.name !== undefined) updates.name = body.name;
+      if (body.role !== undefined) updates.role = body.role;
+      if (body.isActive !== undefined) updates.isActive = body.isActive;
+      if (body.password) updates.passwordHash = createHash('sha256').update(body.password).digest('hex');
 
-      // name(nickname) 업데이트
-      if (body.name !== undefined) {
-        const userRepo = AppDataSource.getRepository(User);
-        await userRepo.update(adminProfile.userId, { nickname: body.name });
-        adminProfile.user.nickname = body.name;
-      }
+      await adminAccountRepo.update(id, updates);
 
       return reply.send({
         success: true,
-        data: {
-          id: adminProfile.id,
-          userId: adminProfile.userId,
-          email: adminProfile.user?.email ?? null,
-          nickname: adminProfile.user?.nickname ?? null,
-          role: adminProfile.role,
-          createdAt: adminProfile.createdAt,
-        },
+        data: { id, ...updates, passwordHash: undefined },
       });
     },
   );
@@ -307,15 +256,14 @@ export async function adminSettingsRoutes(fastify: FastifyInstance): Promise<voi
     ) => {
       const { id } = request.params;
 
-      const adminProfileRepo = AppDataSource.getRepository(AdminProfile);
-      const adminProfile = await adminProfileRepo.findOne({ where: { id } });
+      const adminAccountRepo = AppDataSource.getRepository(AdminAccount);
+      const account = await adminAccountRepo.findOne({ where: { id } });
 
-      if (!adminProfile) {
+      if (!account) {
         throw AppError.notFound(ErrorCode.NOT_FOUND, '어드민 계정을 찾을 수 없습니다.');
       }
 
-      // AdminProfile만 삭제 (User는 유지)
-      await adminProfileRepo.delete(id);
+      await adminAccountRepo.delete(id);
 
       return reply.send({ success: true, data: { message: '계정이 삭제되었습니다.' } });
     },

@@ -99,6 +99,13 @@ export enum ErrorCode {
   TEAM_COMMENT_NOT_AUTHOR = 'TEAM_015',
   TEAM_INSUFFICIENT_PERMISSION = 'TEAM_016',
 
+  // KCP 본인인증 (KCP_)
+  PHONE_NUMBER_BANNED = 'KCP_001',
+  KCP_INVALID_KEY = 'KCP_002',
+  KCP_KEY_ALREADY_USED = 'KCP_003',
+  KCP_SERVER_ERROR = 'KCP_004',
+  VERIFICATION_REQUIRED = 'KCP_005',
+
   // 공통 (COMMON_)
   VALIDATION_ERROR = 'COMMON_001',
   NOT_FOUND = 'COMMON_002',
@@ -202,6 +209,11 @@ export class AppError extends Error {
       [ErrorCode.TEAM_COMMENT_NOT_FOUND]: '팀 댓글을 찾을 수 없습니다.',
       [ErrorCode.TEAM_COMMENT_NOT_AUTHOR]: '댓글 작성자만 삭제할 수 있습니다.',
       [ErrorCode.TEAM_INSUFFICIENT_PERMISSION]: '캡틴 또는 부캡틴만 수행할 수 있는 작업입니다.',
+      [ErrorCode.PHONE_NUMBER_BANNED]: '해당 전화번호로는 가입이 불가합니다.',
+      [ErrorCode.KCP_INVALID_KEY]: '인증 정보가 유효하지 않습니다. 다시 시도해주세요.',
+      [ErrorCode.KCP_KEY_ALREADY_USED]: '이미 처리된 인증입니다.',
+      [ErrorCode.KCP_SERVER_ERROR]: '인증 서버와 통신 중 오류가 발생했습니다.',
+      [ErrorCode.VERIFICATION_REQUIRED]: '본인인증이 필요합니다.',
       [ErrorCode.VALIDATION_ERROR]: '입력값이 올바르지 않습니다.',
       [ErrorCode.NOT_FOUND]: '요청한 리소스를 찾을 수 없습니다.',
       [ErrorCode.INTERNAL_SERVER_ERROR]: '서버 오류가 발생했습니다.',

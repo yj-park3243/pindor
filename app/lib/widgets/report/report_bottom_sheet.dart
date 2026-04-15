@@ -3,12 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../config/theme.dart';
 import '../../repositories/support_repository.dart';
 import '../common/app_toast.dart';
+import '../../core/network/api_client.dart';
 
 /// 신고 사유 목록
 const _reportReasons = [
   ('MANNER', '비매너'),
   ('ABUSIVE', '욕설/혐오'),
-  ('NOSHOW', '노쇼'),
   ('SPAM', '스팸'),
   ('OTHER', '기타'),
 ];
@@ -77,7 +77,7 @@ class _ReportBottomSheetState extends ConsumerState<ReportBottomSheet> {
       }
     } catch (e) {
       if (mounted) {
-        AppToast.error('신고 접수에 실패했습니다: $e');
+        AppToast.error(extractErrorMessage(e, '신고 접수에 실패했습니다.'));
       }
     } finally {
       if (mounted) setState(() => _isSubmitting = false);

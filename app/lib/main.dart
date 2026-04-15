@@ -218,14 +218,33 @@ class _AppInitializerState extends ConsumerState<_AppInitializer>
     // 딥링크 콜백 연결
     PushNotificationService.instance.onDeepLink = (deepLink) {
       if (mounted) {
-        ref.read(routerProvider).push(deepLink);
+        final router = ref.read(routerProvider);
+        // ShellRoute 내부 경로면 go, 바깥이면 홈 먼저 확보 후 push
+        if (deepLink.startsWith('/home') || deepLink.startsWith('/matches') ||
+            deepLink.startsWith('/map') || deepLink.startsWith('/profile')) {
+          router.go(deepLink);
+        } else {
+          router.go('/home');
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (mounted) router.push(deepLink);
+          });
+        }
       }
     };
 
     // 로컬 알림 탭 콜백
     LocalNotificationService.instance.onNotificationTap = (payload) {
       if (payload != null && mounted) {
-        ref.read(routerProvider).push(payload);
+        final router = ref.read(routerProvider);
+        if (payload.startsWith('/home') || payload.startsWith('/matches') ||
+            payload.startsWith('/map') || payload.startsWith('/profile')) {
+          router.go(payload);
+        } else {
+          router.go('/home');
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (mounted) router.push(payload);
+          });
+        }
       }
     };
 

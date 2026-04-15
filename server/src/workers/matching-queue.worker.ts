@@ -8,8 +8,10 @@ import {
   ChatRoom,
   MatchAcceptance,
   Message,
+  UserBlock,
 } from '../entities/index.js';
 import { MatchRequestStatus, MessageType, RoomType } from '../entities/index.js';
+import { In } from 'typeorm';
 import { decayRD } from '../shared/utils/glicko2.js';
 
 // ─────────────────────────────────────
@@ -98,6 +100,7 @@ function isRecentOpponent(a: WaitingRequest, b: WaitingRequest): boolean {
 function findOptimalPairs(
   requests: WaitingRequest[],
   smallPool: boolean = false,
+  blockedPairs: Set<string> = new Set(),
 ): [WaitingRequest, WaitingRequest][] {
   if (requests.length < 2) return [];
 
@@ -108,6 +111,10 @@ function findOptimalPairs(
     for (let j = i + 1; j < n; j++) {
       // 동일 유저 매칭 방지
       if (requests[i].requesterId === requests[j].requesterId) continue;
+
+      // 차단 관계 확인 — 차단된 쌍은 절대 매칭 불가
+      const blockKey = [requests[i].requesterId, requests[j].requesterId].sort().join('::');
+      if (blockedPairs.has(blockKey)) continue;
 
       // 연패 조정: 3연패 이상이면 유효 레이팅 -50 적용
       const adjustedRatingI = requests[i].lossStreak >= 3
@@ -252,7 +259,24 @@ export async function processMatchingQueue(): Promise<void> {
     }
   }
 
-  // 2-b) (pinId, sportType) 기준으로 그룹핑
+  // 2-b) 차단 관계 조회 (차단된 유저 쌍은 매칭에서 제외)
+  const allRequesterIds = [...new Set(waitingRequests.map(r => r.requesterId))];
+  let blocks: UserBlock[] = [];
+  if (allRequesterIds.length > 0) {
+    blocks = await AppDataSource.getRepository(UserBlock).find({
+      where: [
+        { blockerId: In(allRequesterIds) },
+        { blockedId: In(allRequesterIds) },
+      ],
+    });
+  }
+  const blockedPairs = new Set<string>();
+  for (const b of blocks) {
+    const key = [b.blockerId, b.blockedId].sort().join('::');
+    blockedPairs.add(key);
+  }
+
+  // 2-c) (pinId, sportType) 기준으로 그룹핑
   const groups = new Map<string, typeof waitingRequests>();
   for (const req of waitingRequests) {
     const key = `${req.pinId}::${req.sportType}`;
@@ -281,7 +305,7 @@ export async function processMatchingQueue(): Promise<void> {
         `[MatchingQueueWorker] Small pool (${available.length} users) for group: ${groupKey} — dynamic range disabled`,
       );
     }
-    const optimalPairs = findOptimalPairs(available, smallPool);
+    const optimalPairs = findOptimalPairs(available, smallPool, blockedPairs);
 
     if (optimalPairs.length === 0) {
       console.info(`[MatchingQueueWorker] No valid pairs found for group: ${groupKey}`);

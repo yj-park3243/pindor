@@ -25,6 +25,7 @@ import {
   Message,
   ScoreHistory,
   RankingEntry,
+  Report,
 } from '../../entities/index.js';
 import { MatchRequestStatus, RequestType, ScoreChangeType } from '../../entities/index.js';
 
@@ -1027,19 +1028,19 @@ export class MatchingService {
         select: { rejectionCount: true } as any,
       });
 
-      // 6) 거절 쿨다운 적용
-      let cooldownHours = 0;
+      // 6) 거절 쿨다운 적용 (분 단위)
+      let cooldownMinutes = 0;
       const rejectionCount = (updatedUser as any)?.rejectionCount ?? 0;
       if (rejectionCount >= 20) {
-        cooldownHours = 6;
+        cooldownMinutes = 60; // 1시간
       } else if (rejectionCount >= 10) {
-        cooldownHours = 2;
+        cooldownMinutes = 30;
       } else if (rejectionCount >= 5) {
-        cooldownHours = 0.5; // 30분
+        cooldownMinutes = 15;
       }
 
-      if (cooldownHours > 0) {
-        const cooldownUntil = new Date(Date.now() + cooldownHours * 60 * 60 * 1000);
+      if (cooldownMinutes > 0) {
+        const cooldownUntil = new Date(Date.now() + cooldownMinutes * 60 * 1000);
         await manager
           .createQueryBuilder()
           .update(User)
@@ -2175,7 +2176,7 @@ export class MatchingService {
   // 노쇼 신고
   // ─────────────────────────────────────
 
-  async reportNoshow(reporterUserId: string, matchId: string) {
+  async reportNoshow(reporterUserId: string, matchId: string, imageUrls?: string[]) {
     // 1. Match 확인 — CHAT/CONFIRMED 상태만 신고 가능
     const match = await this.getMatch(reporterUserId, matchId);
     if (!['CHAT', 'CONFIRMED'].includes(match.status)) {
@@ -2254,7 +2255,22 @@ export class MatchingService {
       .where('id = :id', { id: reporterProfileId })
       .execute();
 
-    // 7. 알림 발송
+    // 7. 증거 사진 포함 Report 레코드 생성
+    if (imageUrls && imageUrls.length > 0) {
+      const reportRepo = this.dataSource.getRepository(Report);
+      await reportRepo.save(
+        reportRepo.create({
+          reporterId: reporterUserId,
+          targetType: 'USER' as any,
+          targetId: noshowUserId,
+          reason: 'NOSHOW',
+          description: `매치 ${matchId} 노쇼 신고`,
+          imageUrls,
+        }),
+      );
+    }
+
+    // 8. 알림 발송
     if (this.notificationService) {
       await this.notificationService.send({
         userId: noshowUserId,

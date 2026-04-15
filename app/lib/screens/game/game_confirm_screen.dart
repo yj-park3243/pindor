@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../config/theme.dart';
 import '../../models/game.dart';
 import '../../providers/game_provider.dart';
+import '../../core/network/api_client.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/error_view.dart';
 import '../../widgets/common/app_toast.dart';
@@ -72,7 +73,7 @@ class _GameConfirmContentState extends ConsumerState<_GameConfirmContent> {
       }
     } catch (e) {
       if (mounted) {
-        AppToast.error('오류: ${e.toString()}');
+        AppToast.error(extractErrorMessage(e, '처리에 실패했습니다.'));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

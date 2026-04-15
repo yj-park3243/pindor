@@ -184,7 +184,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
     } catch (e) {
       debugPrint('[ProfileSetup] _submit 에러: $e');
       if (mounted) {
-        AppToast.error('프로필 저장 실패: $e');
+        AppToast.error(extractErrorMessage(e, '프로필 저장에 실패했습니다.'));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

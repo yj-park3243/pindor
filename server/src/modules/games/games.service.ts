@@ -769,35 +769,9 @@ export class GamesService {
     const finalDisplayScoreA = newScoreA;
     const finalDisplayScoreB = newScoreB;
 
-    // 일반 게임에서만 티어 계산
+    // 티어는 트랜잭션 안에서 ranking_entries upsert 후 점수 기반으로 계산
     let newTierRequester = requesterProfile.tier as Tier;
     let newTierOpponent = opponentProfile.tier as Tier;
-
-    if (!isCasual && match.pinId) {
-      // 핀별+스포츠별 등수 기반 티어 계산
-      const sportType = requesterProfile.sportType;
-      const rankingEntryRepo = this.dataSource.getRepository(RankingEntry);
-
-      // 해당 핀+스포츠의 전체 랭킹 엔트리 수
-      const totalPlayers = await rankingEntryRepo.count({
-        where: { pinId: match.pinId, sportType: sportType as any },
-      });
-
-      // 각 유저의 등수 조회
-      const reqEntry = await rankingEntryRepo.findOne({
-        where: { pinId: match.pinId, sportType: sportType as any, sportsProfileId: requesterProfile.id },
-      });
-      const oppEntry = await rankingEntryRepo.findOne({
-        where: { pinId: match.pinId, sportType: sportType as any, sportsProfileId: opponentProfile.id },
-      });
-
-      if (reqEntry && totalPlayers > 0) {
-        newTierRequester = calculateTierByRank(reqEntry.rank, totalPlayers);
-      }
-      if (oppEntry && totalPlayers > 0) {
-        newTierOpponent = calculateTierByRank(oppEntry.rank, totalPlayers);
-      }
-    }
 
     const txResult = await this.dataSource.transaction(async (manager) => {
       // 비관적 잠금: 다중 인스턴스에서 동시 처리 방지 (SELECT FOR UPDATE)
@@ -950,6 +924,24 @@ export class GamesService {
 
           reqNewCurrentScore = reqMaxResult?.maxScore ?? finalDisplayScoreA;
           oppNewCurrentScore = oppMaxResult?.maxScore ?? finalDisplayScoreB;
+
+          // 해당 핀+스포츠의 등수 즉시 재계산 (점수 높은 순)
+          const allEntries = await rankingEntryRepo.find({
+            where: { pinId: match.pinId, sportType: sportType as any },
+            order: { score: 'DESC' },
+          });
+          for (let i = 0; i < allEntries.length; i++) {
+            const newRank = i + 1;
+            const newTier = calculateTierByRank(newRank, allEntries.length);
+            await rankingEntryRepo.update(allEntries[i].id, { rank: newRank, tier: newTier });
+            // 현재 유저들의 티어도 갱신
+            if (allEntries[i].sportsProfileId === requesterProfile.id) {
+              newTierRequester = newTier;
+            }
+            if (allEntries[i].sportsProfileId === opponentProfile.id) {
+              newTierOpponent = newTier;
+            }
+          }
         }
 
         // 일반: 요청자 점수 + Glicko-2 + 부가 통계 업데이트

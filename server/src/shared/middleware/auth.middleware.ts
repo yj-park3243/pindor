@@ -3,7 +3,7 @@ import fp from 'fastify-plugin';
 import { verifyAccessToken } from '../utils/jwt.js';
 import { AppError, ErrorCode } from '../errors/app-error.js';
 import { AppDataSource } from '../../config/database.js';
-import { User } from '../../entities/index.js';
+import { User, AdminAccount } from '../../entities/index.js';
 
 // ─────────────────────────────────────
 // JWT 검증 플러그인
@@ -23,7 +23,25 @@ async function authPlugin(fastify: FastifyInstance): Promise<void> {
         const token = authHeader.slice(7);
         const payload = await verifyAccessToken(token);
 
-        // 사용자 상태 확인
+        // 먼저 AdminAccount 테이블에서 확인 (어드민 토큰인 경우)
+        const adminAccountRepo = AppDataSource.getRepository(AdminAccount);
+        const adminAccount = await adminAccountRepo.findOne({
+          where: { id: payload.userId },
+          select: { id: true, username: true, isActive: true },
+        });
+
+        if (adminAccount) {
+          if (!adminAccount.isActive) {
+            throw new AppError(ErrorCode.USER_SUSPENDED, 403);
+          }
+          request.user = {
+            userId: adminAccount.id,
+            email: adminAccount.username,
+          };
+          return;
+        }
+
+        // AdminAccount에 없으면 일반 User 테이블에서 확인
         const userRepo = AppDataSource.getRepository(User);
         const user = await userRepo.findOne({
           where: { id: payload.userId },

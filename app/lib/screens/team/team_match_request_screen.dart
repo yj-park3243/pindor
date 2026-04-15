@@ -7,6 +7,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/team_provider.dart';
 import '../../repositories/team_repository.dart';
 import '../../widgets/common/app_toast.dart';
+import '../../core/network/api_client.dart';
 
 /// 팀 매칭 요청 생성 화면 (CAPTAIN/VICE_CAPTAIN 전용)
 class TeamMatchRequestScreen extends ConsumerStatefulWidget {
@@ -108,7 +109,7 @@ class _TeamMatchRequestScreenState
       }
     } catch (e) {
       if (mounted) {
-        AppToast.error('요청 실패: ${e.toString()}');
+        AppToast.error(extractErrorMessage(e, '매칭 요청에 실패했습니다.'));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

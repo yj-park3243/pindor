@@ -29,6 +29,7 @@ export class AuthService {
       nickname: string;
       profileImageUrl: string | null;
       isNewUser: boolean;
+      isVerified: boolean;
     };
   }> {
     // 카카오 사용자 정보 조회
@@ -103,6 +104,7 @@ export class AuthService {
           nickname: user.nickname,
           profileImageUrl: user.profileImageUrl,
           isNewUser: false,
+          isVerified: user.isVerified ?? false,
         },
       };
     }
@@ -135,6 +137,7 @@ export class AuthService {
             nickname: existingUser.nickname,
             profileImageUrl: existingUser.profileImageUrl,
             isNewUser: false,
+            isVerified: existingUser.isVerified ?? false,
           },
         };
       }
@@ -181,6 +184,7 @@ export class AuthService {
         nickname: user.nickname,
         profileImageUrl: user.profileImageUrl,
         isNewUser,
+        isVerified: false,
       },
     };
   }
@@ -197,6 +201,7 @@ export class AuthService {
       nickname: string;
       profileImageUrl: string | null;
       isNewUser: boolean;
+      isVerified: boolean;
     };
   }> {
     // Google ID Token 검증
@@ -240,6 +245,7 @@ export class AuthService {
           nickname: user.nickname,
           profileImageUrl: user.profileImageUrl,
           isNewUser: false,
+          isVerified: user.isVerified ?? false,
         },
       };
     }
@@ -268,6 +274,7 @@ export class AuthService {
             nickname: existingUser.nickname,
             profileImageUrl: existingUser.profileImageUrl,
             isNewUser: false,
+            isVerified: existingUser.isVerified ?? false,
           },
         };
       }
@@ -310,6 +317,7 @@ export class AuthService {
         nickname: user.nickname,
         profileImageUrl: user.profileImageUrl,
         isNewUser: true,
+        isVerified: false,
       },
     };
   }
@@ -326,6 +334,7 @@ export class AuthService {
       nickname: string;
       profileImageUrl: string | null;
       isNewUser: boolean;
+      isVerified: boolean;
     };
   }> {
     const applePayload = await this.verifyAppleIdentityToken(dto.identityToken);
@@ -359,6 +368,7 @@ export class AuthService {
           nickname: user.nickname,
           profileImageUrl: user.profileImageUrl,
           isNewUser: false,
+          isVerified: user.isVerified ?? false,
         },
       };
     }
@@ -387,6 +397,7 @@ export class AuthService {
             nickname: existingUser.nickname,
             profileImageUrl: existingUser.profileImageUrl,
             isNewUser: false,
+            isVerified: existingUser.isVerified ?? false,
           },
         };
       }
@@ -428,6 +439,7 @@ export class AuthService {
         nickname: user.nickname,
         profileImageUrl: user.profileImageUrl,
         isNewUser: true,
+        isVerified: false,
       },
     };
   }
@@ -486,6 +498,7 @@ export class AuthService {
         nickname: user.nickname,
         profileImageUrl: user.profileImageUrl,
         isNewUser: true,
+        isVerified: false,
       },
     };
   }
@@ -523,6 +536,7 @@ export class AuthService {
         nickname: user.nickname,
         profileImageUrl: user.profileImageUrl,
         isNewUser: false,
+        isVerified: user.isVerified ?? false,
       },
     };
   }

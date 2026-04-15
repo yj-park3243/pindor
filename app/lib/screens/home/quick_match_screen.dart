@@ -10,6 +10,7 @@ import '../../providers/sport_preference_provider.dart';
 import '../../screens/profile/profile_screen.dart';
 import '../../repositories/matching_repository.dart';
 import '../../widgets/common/app_toast.dart';
+import '../../core/network/api_client.dart';
 
 /// "오늘 대결 나가고 싶다" 즉시 매칭 화면
 /// 즐겨찾기 핀이 기본 선택, 종목도 기본값 적용
@@ -62,7 +63,7 @@ class _QuickMatchScreenState extends ConsumerState<QuickMatchScreen> {
       }
     } catch (e) {
       if (mounted) {
-        AppToast.error('오류: ${e.toString()}');
+        AppToast.error(extractErrorMessage(e, '매칭 요청에 실패했습니다.'));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

@@ -6,6 +6,7 @@ import '../../config/router.dart';
 import '../../config/theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/common/app_toast.dart';
+import '../../core/network/api_client.dart';
 
 /// 로그인 화면
 class LoginScreen extends ConsumerStatefulWidget {
@@ -31,7 +32,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await ref.read(authStateProvider.notifier).loginWithApple();
       if (mounted) {
         final authState = ref.read(authStateProvider).valueOrNull;
-        if (authState?.isNewUser == true) {
+        if (authState?.isNewUser == true && authState?.isVerified != true) {
+          context.go(AppRoutes.phoneVerification);
+        } else if (authState?.isNewUser == true) {
           context.go(AppRoutes.profileSetup);
         } else {
           context.go(AppRoutes.home);
@@ -39,7 +42,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       }
     } catch (e) {
       if (mounted) {
-        AppToast.error('Apple 로그인 실패: ${e.toString()}');
+        AppToast.error(extractErrorMessage(e, 'Apple 로그인에 실패했습니다.'));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -52,7 +55,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await ref.read(authStateProvider.notifier).loginWithGoogle();
       if (mounted) {
         final authState = ref.read(authStateProvider).valueOrNull;
-        if (authState?.isNewUser == true) {
+        if (authState?.isNewUser == true && authState?.isVerified != true) {
+          context.go(AppRoutes.phoneVerification);
+        } else if (authState?.isNewUser == true) {
           context.go(AppRoutes.profileSetup);
         } else {
           context.go(AppRoutes.home);
@@ -60,7 +65,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       }
     } catch (e) {
       if (mounted) {
-        AppToast.error('로그인 실패: ${e.toString()}');
+        AppToast.error(extractErrorMessage(e, '로그인에 실패했습니다.'));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

@@ -32,6 +32,20 @@
 				<string>com.googleusercontent.apps.391322938059-2rle7rqcpfgeac2qmagmivhb3fs9nqj9</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>kr.pindor.app.kcp</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>spots</string>
+			</array>
+		</dict>
+	</array>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>tauthlink</string>
+		<string>ktauthexternalcall</string>
+		<string>upluscorporation</string>
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>

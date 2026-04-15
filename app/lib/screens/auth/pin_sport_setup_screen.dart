@@ -12,6 +12,7 @@ import '../../providers/pin_provider.dart';
 import '../../providers/sport_preference_provider.dart';
 import '../../widgets/map/sport_marker.dart';
 import '../../widgets/common/app_toast.dart';
+import '../../core/network/api_client.dart';
 
 /// 자주 가는 핀 + 선호 종목 설정 화면 (온보딩 4단계)
 class PinSportSetupScreen extends ConsumerStatefulWidget {
@@ -115,7 +116,7 @@ class _PinSportSetupScreenState extends ConsumerState<PinSportSetupScreen> {
       if (mounted) context.go(AppRoutes.home);
     } catch (e) {
       if (mounted) {
-        AppToast.error('오류: ${e.toString()}');
+        AppToast.error(extractErrorMessage(e, '설정에 실패했습니다.'));
       }
     } finally {
       if (mounted) setState(() => _isSubmitting = false);

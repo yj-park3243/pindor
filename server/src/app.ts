@@ -12,7 +12,9 @@ import { registerRateLimit } from './shared/middleware/rate-limit.js';
 
 // ─── 라우트 임포트 ───
 import { authRoutes } from './modules/auth/auth.routes.js';
+import { kcpRoutes } from './modules/auth/kcp.routes.js';
 import { usersRoutes } from './modules/users/users.routes.js';
+import { blocksRoutes } from './modules/users/blocks.routes.js';
 import { profilesRoutes } from './modules/profiles/profiles.routes.js';
 import { matchingRoutes } from './modules/matching/matching.routes.js';
 import { gamesRoutes } from './modules/games/games.routes.js';
@@ -270,7 +272,9 @@ export async function createApp(): Promise<FastifyInstance> {
   const V1_PREFIX = '/v1';
 
   await fastify.register(authRoutes, { prefix: V1_PREFIX });
+  await fastify.register(kcpRoutes, { prefix: V1_PREFIX });
   await fastify.register(usersRoutes, { prefix: V1_PREFIX });
+  await fastify.register(blocksRoutes, { prefix: V1_PREFIX });
   await fastify.register(profilesRoutes, { prefix: V1_PREFIX });
   await fastify.register(matchingRoutes, { prefix: V1_PREFIX });
   await fastify.register(gamesRoutes, { prefix: V1_PREFIX });

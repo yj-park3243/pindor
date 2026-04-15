@@ -2,7 +2,7 @@ import apiClient from '@/config/api';
 import type { AdminUser } from '@/store/auth.store';
 
 export interface AdminLoginRequest {
-  email: string;
+  username: string;
   password: string;
   mfaCode?: string;
 }

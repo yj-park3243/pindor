@@ -15,6 +15,7 @@ import '../../repositories/matching_repository.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/error_view.dart';
 import '../../widgets/common/app_toast.dart';
+import '../../core/network/api_client.dart';
 import '../../widgets/common/user_avatar.dart';
 import '../../widgets/common/score_display.dart';
 import '../../providers/chat_provider.dart';
@@ -48,8 +49,9 @@ class _MatchListScreenState extends ConsumerState<MatchListScreen> {
   @override
   void initState() {
     super.initState();
-    // 화면 진입 시 매칭 목록 + 요청 목록 새로고침
+    // 화면 진입 시 서버에서 강제 갱신 (캐시 무시)
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(matchListForceRefreshProvider.notifier).state = true;
       ref.invalidate(matchListProvider(null));
       ref.invalidate(matchRequestProvider);
     });
@@ -163,7 +165,9 @@ class _MatchListScreenState extends ConsumerState<MatchListScreen> {
             // 내가 수락 완료한 PENDING_ACCEPT (상대 응답 대기 중)도 표시
             if (m.isPendingAccept &&
                 m.acceptances?.any((a) => a.accepted == true) == true) return true;
-            // 완료/취소 매칭도 표시
+            // 취소된 매칭은 숨김
+            if (m.isCancelled) return false;
+            // 완료된 매칭만 표시
             if (m.isCompleted || m.isCancelled) return true;
             return false;
           }).toList();
@@ -633,7 +637,7 @@ class _WaitingRequestCard extends ConsumerWidget {
                       await ref.read(matchRequestProvider.notifier).cancelRequest(request.id);
                       if (context.mounted) AppToast.success('매칭 요청이 취소되었습니다.');
                     } catch (e) {
-                      if (context.mounted) AppToast.error('취소 실패: $e');
+                      if (context.mounted) AppToast.error(extractErrorMessage(e, '매칭 취소에 실패했습니다.'));
                     }
                   },
                   icon: const Icon(Icons.close_rounded, size: 20),
@@ -1374,22 +1378,25 @@ class _MatchListTileState extends ConsumerState<_MatchListTile>
         animation: _lightController,
         builder: (context, child) => GestureDetector(
         onTap: onTap,
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            color: Color.lerp(const Color(0xFF1E1E1E), accentColor, 0.15),
-            border: Border.all(color: accentColor.withValues(alpha: 0.25), width: 1),
+            color: Color.lerp(const Color(0xFF1E1E1E), accentColor, 0.22),
+            border: Border(
+              left: BorderSide(color: accentColor, width: 4),
+            ),
             boxShadow: [
               BoxShadow(
-                color: accentColor.withValues(alpha: 0.10),
+                color: accentColor.withValues(alpha: 0.12),
                 blurRadius: 12,
                 offset: const Offset(0, 4),
               ),
             ],
           ),
           foregroundDecoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
             gradient: RadialGradient(
               center: Alignment(_lightX.value, _lightY.value),
               radius: 1.5,
@@ -1524,6 +1531,8 @@ class _MatchListTileState extends ConsumerState<_MatchListTile>
             ),
           ),
         ),
+      ),
+      ),
       ),
       ),
       // 읽지 않은 메시지 배지

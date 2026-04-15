@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../config/theme.dart';
+import '../../core/network/api_client.dart';
 import '../../core/utils/permission_helper.dart';
 import '../../repositories/dispute_repository.dart';
 import '../../repositories/upload_repository.dart';
@@ -98,7 +99,7 @@ class _CreateDisputeScreenState extends ConsumerState<CreateDisputeScreen> {
       }
     } catch (e) {
       if (mounted) {
-        AppToast.error('접수 실패: ${e.toString()}');
+        AppToast.error(extractErrorMessage(e, '이의 접수에 실패했습니다.'));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

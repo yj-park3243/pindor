@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../config/theme.dart';
+import '../../core/network/api_client.dart';
 import '../../models/notification.dart';
 import '../../repositories/notification_repository.dart';
 import '../../widgets/common/app_toast.dart';
@@ -50,7 +51,7 @@ class _NotificationSettingsScreenState
       }
     } catch (e) {
       if (mounted) {
-        AppToast.error('저장에 실패했습니다: $e');
+        AppToast.error(extractErrorMessage(e, '알림 설정 저장에 실패했습니다.'));
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);

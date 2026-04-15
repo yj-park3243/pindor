@@ -12,6 +12,7 @@ import '../../providers/pin_provider.dart';
 import '../../widgets/map/sport_marker.dart';
 import '../profile/profile_screen.dart' show selectedPinProvider;
 import '../../widgets/common/app_toast.dart';
+import '../../core/network/api_client.dart';
 
 /// 3단계: 자주 가는 핀 선택 화면
 class LocationSetupScreen extends ConsumerStatefulWidget {
@@ -94,7 +95,7 @@ class _LocationSetupScreenState extends ConsumerState<LocationSetupScreen> {
       if (mounted) context.go(AppRoutes.home);
     } catch (e) {
       if (mounted) {
-        AppToast.error('오류: ${e.toString()}');
+        AppToast.error(extractErrorMessage(e, '위치 설정에 실패했습니다.'));
       }
     } finally {
       if (mounted) setState(() => _isSubmitting = false);

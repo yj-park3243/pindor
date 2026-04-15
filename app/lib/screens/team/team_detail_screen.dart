@@ -13,6 +13,7 @@ import '../../widgets/team/team_member_tile.dart';
 import '../../widgets/team/team_match_card.dart';
 import '../team/team_board_screen.dart';
 import '../../widgets/common/app_toast.dart';
+import '../../core/network/api_client.dart';
 
 /// 팀 상세 화면
 class TeamDetailScreen extends ConsumerWidget {
@@ -282,7 +283,7 @@ class _TeamDetailViewState extends ConsumerState<_TeamDetailView> {
         }
       } catch (e) {
         if (mounted) {
-          AppToast.error('팀 탈퇴에 실패했습니다: $e');
+          AppToast.error(extractErrorMessage(e, '팀 탈퇴에 실패했습니다.'));
         }
       }
     }
