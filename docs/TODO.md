@@ -1,128 +1,248 @@
-# 핀돌 개발 TODO
+# PINDOR 코드 품질 개선 TODO
 
-> 최종 업데이트: 2026-04-09
+> 작성일: 2026-04-16
+> 총 44건 (CRITICAL 9 / HIGH 13 / MEDIUM 14 / LOW 8)
 > 상태: `[ ]` 미착수 / `[~]` 진행중 / `[x]` 완료
 
 ---
 
-## 1. 매칭 수락/거절 버그 수정 (CRITICAL)
+## Phase 1 — 보안 + 크래시 방지 (즉시)
 
-- [ ] **main_tab_screen PENDING_ACCEPT 필터 수정** — 수락한 경우 탭 이동 잠금 해제 (acceptances에서 내 수락 여부 체크)
-- [ ] **서버 listMatches에 acceptances 포함** — PENDING_ACCEPT 매칭에 myAcceptance 필드 반환
-- [ ] **matchListProvider SWR 강제 갱신** — invalidate() 시 TTL 리셋, 항상 API 호출
-- [ ] **chatRoomId null 체크** — 채팅 이동 전 chatRoomId?.isNotEmpty == true 검사
+### CRITICAL
 
----
+- [ ] **#1 SHA256 비밀번호 해싱 → bcrypt 교체**
+  - 파일: `server/src/modules/auth/auth.service.ts` (L544-546)
+  - 현재: 솔트 없는 `createHash('sha256')` 사용
+  - 수정: `bcrypt.hash(password, 12)` + `bcrypt.compare()` 사용
+  - 영향: 기존 이메일 유저 비밀번호 마이그레이션 필요
 
-## 2. 타이머 / 폴링 안정화
+- [ ] **#2 패스워드 비교 타이밍 공격 취약**
+  - 파일: `server/src/modules/auth/auth.service.ts` (L519)
+  - 현재: `===` 직접 비교
+  - 수정: `crypto.timingSafeEqual(Buffer.from(stored), Buffer.from(computed))`
 
-- [ ] **타이머 단일 소스로 통합** — match_accept_screen.dart initState에서만 시작, build에서 중복 제거
-- [ ] **폴링 실패 카운터** — 3회 연속 실패 시 폴링 중지, 에러 메시지 표시
-- [ ] **ref.listen 중복 네비게이션 방지** — CHAT 상태 전환 시 한 번만 이동하도록 플래그 처리
-- [ ] **expiresAt 서버 필수화** — listMatches, getMatch, getActiveMatch 모두에서 expiresAt 포함
+- [ ] **#3 KCP 인증키 소스코드 하드코딩**
+  - 파일: `server/src/modules/auth/kcp.service.ts` (L11-15)
+  - 현재: `const KCP_SITE_CD = 'J26040912350'` 직접 노출
+  - 수정: `env.KCP_SITE_CD`, `env.KCP_CERT_KEY`로 환경변수 이동
 
----
+- [ ] **#4 KCP key 재사용 경쟁 조건**
+  - 파일: `server/src/modules/auth/kcp.service.ts` (L79-89)
+  - 현재: `redis.get()` → 처리 → `redis.setex()` 비원자적
+  - 수정: `redis.set(key, '1', 'EX', 86400, 'NX')` 원자적 처리
 
-## 3. 캐시 / 상태 정합성
+- [ ] **#5 소켓 룸 미정리 (메모리 누수)**
+  - 파일: `app/lib/screens/matching/match_list_screen.dart` (L60-81)
+  - 현재: `joinMatch()` 호출 후 dispose에서 `leaveMatch()` 안 함
+  - 수정: dispose에서 `_joinedMatchRooms` 순회하며 `leaveMatch()` 호출
 
-- [ ] **hasMatchesCache TTL 체크** — count > 0 && !expired 조건으로 변경
-- [ ] **경기 확정/취소 후 목록 동기화** — ref.invalidate(matchListProvider(null)) 추가
-- [ ] **Drift 캐시 정합성** — 수락/거절 후 로컬 DB 해당 매칭 갱신, 앱 시작 시 서버에 없는 PENDING_ACCEPT 정리
+- [ ] **#6 StreamSubscription 누적**
+  - 파일: `app/lib/providers/matching_provider.dart` (L196-215)
+  - 현재: provider 재생성 시 `_connectionSub`, `_matchStatusSub` 잔류 가능
+  - 수정: `ref.onDispose()`에서 모든 subscription 명시적 cancel
 
----
+- [ ] **#7 forceRefresh 경쟁 조건**
+  - 파일: `app/lib/providers/matching_provider.dart` (L43-70)
+  - 현재: `Future.microtask`로 빌드 중 다른 provider state 변경
+  - 수정: Notifier 메서드로 중앙화하거나 별도 flag provider 패턴 변경
 
-## 4. 서버 응답 일관성
+- [ ] **#8 토큰 갱신 경쟁 조건**
+  - 파일: `app/lib/core/network/api_client.dart` (L144-247)
+  - 현재: `_refreshCompleter` null 타이밍 문제 → 401 무한루프 가능
+  - 수정: enum 상태 머신 (`notRefreshing`, `refreshing`, `refreshed`) 사용
 
-- [ ] **acceptMatch 응답에 매칭 상세 포함** — { status, message, match: { id, chatRoomId, ... } } 로 변경 (MATCHED일 때)
-- [ ] **getMatchStatus 응답 형식 통일** — acceptMatch 응답과 형식 맞추기
-
----
-
-## 5. 티어 / 승급 프로그레스바
-
-- [ ] 서버: GET /users/me 응답에 pointsToNext, progress, subTier 필드 추가
-- [ ] 서버: elo.ts에 getTierInfo(score) 함수 구현 (현재 티어 + 다음 티어 경계 + 남은 점수)
-- [ ] 앱: 홈 화면 내 핀 상태 카드에 프로그레스바 표시
-- [ ] 앱: 스포츠 프로필 카드에 프로그레스바 추가
-- [ ] 앱: 매칭 결과 화면에 점수 변동 + 승급/강등 애니메이션
-
-> 설계 문서: [design-tier-system.md](./design-tier-system.md)
-
----
-
-## 6. 매칭 알고리즘
-
-- [ ] 매칭 큐 워커 (BullMQ) — 10초마다 핀별 매칭 풀 스캔
-- [ ] 같은 핀 + 같은 종목에서 MatchScore 최고 쌍 자동 매칭
-- [ ] 대기 시간에 따른 MMR 범위 점진적 확대 (0~2분: +-100, 5분: +-200, 10분+: +-500)
-- [ ] 매칭 수락/거절 타임아웃 처리 (10분, BullMQ Job)
-- [ ] 수락/거절/타임아웃 시 점수 처리 (거절: -15, 수락+상대미응답: +5)
+- [ ] **#9 서버 동기화 실패 무시**
+  - 파일: `app/lib/providers/chat_provider.dart` (L179-182)
+  - 현재: `catchError`로 에러 삼킴 → 유저가 동기화 실패 인지 못함
+  - 수정: state에 `isSyncError` 플래그 추가 + 수동 재시도 지원
 
 ---
 
-## 7. 노쇼 패널티
+## Phase 2 — 성능 + 안정성 (1주)
 
-- [ ] 서버: 매칭 확정 후 당일 취소 또는 무응답 → 노쇼 판정
-- [ ] 서버: 포기자 -30점, 상대방 +15점
-- [ ] 서버: SportsProfile에 noShowCount, matchBanUntil 필드 추가
-- [ ] 서버: 노쇼 누적 시 매칭 제한 (3회: 24시간, 5회: 3일, 10회: 7일)
-- [ ] 앱: 노쇼 제재 시 매칭 신청 버튼 비활성화 + "N시간 후 매칭 가능" 표시
+### HIGH
+
+- [ ] **#10 N+1 쿼리: ranking_entry 건당 조회**
+  - 파일: `server/src/modules/matching/matching.service.ts` (L1618-1635)
+  - 현재: 매칭 상세 응답에서 ranking_entry를 async 콜백 내 개별 조회
+  - 수정: `findBy({ sportsProfileId: In(profileIds) })` 배치 조회
+
+- [ ] **#11 프로필 미존재 시 무시 (silent fail)**
+  - 파일: `server/src/modules/matching/matching.service.ts` (L594-607)
+  - 현재: `if (!requesterProfile) return;` 에러 없이 무시
+  - 수정: `throw AppError.notFound(ErrorCode.SPORTS_PROFILE_NOT_FOUND)`
+
+- [ ] **#12 중복 함수: calculateAge**
+  - 파일: `matching.service.ts` (L36-44) + `match-accept-timeout.worker.ts` (L31-39)
+  - 수정: `shared/utils/age.ts`로 추출
+
+- [ ] **#13 중복 코드: 토큰 저장 로직**
+  - 파일: `auth.service.ts` (L714-717) + `kcp.service.ts` (L133, 201, 233)
+  - 현재: 동일한 `redis.setex(refresh_token:...)` 4회 반복
+  - 수정: `shared/utils/token.ts`에 `storeRefreshToken()` 추출
+
+- [ ] **#14 트랜잭션 내 경쟁 조건 (매칭 큐)**
+  - 파일: `server/src/workers/matching-queue.worker.ts` (L324-340)
+  - 현재: WAITING 상태 체크 시 `SELECT FOR UPDATE` 미사용
+  - 수정: 비관적 잠금 추가
+
+- [ ] **#15 바텀시트 UI 중복**
+  - 파일: 10+ 화면에서 동일한 Container/핸들/버튼 패턴 반복
+  - 수정: `ConfirmationBottomSheet`, `ActionBottomSheet` 공통 위젯 추출
+
+- [ ] **#16 main_tab_screen 230줄 소켓 리스너**
+  - 파일: `app/lib/screens/main_tab_screen.dart`
+  - 현재: 10+ `listenManual`, 15+ `invalidate` 인라인
+  - 수정: `SocketEventHandlerProvider` 별도 provider로 분리
+
+- [ ] **#17 forceRefresh 5곳에서 수정**
+  - 파일: `match_list_screen.dart`, `main_tab_screen.dart` 등
+  - 현재: `matchListForceRefreshProvider` 소유권 불명확
+  - 수정: Notifier 메서드 `triggerForceRefresh()` 중앙화
+
+- [ ] **#18 채팅방 목록 30분 TTL 과도**
+  - 파일: `app/lib/providers/chat_provider.dart` (L16-48)
+  - 현재: 30분간 캐시 유지 → 삭제된 방/읽지않음 표시 부정확
+  - 수정: 5~10분으로 축소, 소켓 이벤트 수신 시 invalidate
+
+- [ ] **#19 폴링 타이머 누적**
+  - 파일: `app/lib/providers/matching_provider.dart` (L332-377)
+  - 현재: `startPolling()` 다중 호출 시 타이머 중복 생성 가능
+  - 수정: `if (_pollingTimer?.isActive ?? false) return;` 가드 추가
+
+- [ ] **#20 소켓 싱글톤 상태 잔류**
+  - 파일: `app/lib/core/network/socket_service.dart` (L10-15)
+  - 현재: 로그아웃→재로그인 시 이전 room ID 잔류 가능
+  - 수정: `disconnect()`에서 모든 Set/Map 명시적 초기화 확인
+
+- [ ] **#21 acceptances nullable 문제**
+  - 파일: `app/lib/models/match.dart` (L116-131)
+  - 현재: 서버가 null 반환 시 모든 사용처에서 null 체크 필요
+  - 수정: 서버에서 항상 빈 배열 반환, 모델 기본값 `const []`
+
+- [ ] **#22 인증번호 덮어쓰기**
+  - 파일: `app/lib/providers/chat_provider.dart` (L245-254)
+  - 현재: 두 인증번호 코드가 빠르게 도착하면 첫 번째 유실
+  - 수정: 타임스탬프 비교 또는 최신 코드만 유지하는 로직
 
 ---
 
-## 8. 활동량 보너스
+## Phase 3 — 리팩토링 (2주)
 
-- [ ] 서버: 주간 게임 수 카운트 (3게임+: K계수 +2, 5게임+: K계수 +4)
-- [ ] 서버: 연승 스트릭 보너스 (2연승: +3, 3연승: +5, 5연승+: +8)
-- [ ] 서버: 일간 첫 게임 승리 보너스 (+5)
-- [ ] 서버: 주간 목표 달성 보상 (3게임: +10, 5게임: +20)
-- [ ] 앱: 홈 화면에 주간 목표 프로그레스 표시
-- [ ] 앱: 매칭 결과 화면에 보너스 점수 표시
+### MEDIUM
+
+- [ ] **#23 KCP 에러 타입 미구분**
+  - 파일: `server/src/modules/auth/kcp.service.ts` (L273-288)
+  - 현재: 네트워크 에러/타임아웃 동일 처리
+  - 수정: `AbortError` → 504, 기타 → 502 분리
+
+- [ ] **#24 수동 날짜 포맷팅**
+  - 파일: `server/src/modules/matching/matching.service.ts` (L177-181)
+  - 현재: 수동 `padStart` 날짜 포맷
+  - 수정: `getKSTDateString()` 유틸 사용
+
+- [ ] **#25 limit 파라미터 NaN 검증 부족**
+  - 파일: `server/src/modules/matching/matching.service.ts` (L1215, 1253)
+  - 현재: `Number(query.limit)` NaN 시 기본값 20 사용되지만 타입 불명확
+  - 수정: `parseInt` + `isNaN` 명시적 검증
+
+- [ ] **#26 동적 import 순환 의존**
+  - 파일: `matching.service.ts` → `pins.service.ts` 동적 import
+  - 수정: 생성자 주입으로 변경
+
+- [ ] **#27 const 미사용 위젯**
+  - 파일: 여러 화면의 내부 위젯
+  - 현재: 불변 위젯에 `const` 미적용 → 불필요한 재생성
+  - 수정: const 생성자 + const 인스턴스 사용
+
+- [ ] **#28 메시지 읽음 처리 전체 리스트 복사**
+  - 파일: `app/lib/providers/chat_provider.dart` (L288-300)
+  - 현재: 1개 읽음 처리에 전체 메시지 리스트 O(n) 복사
+  - 수정: indexed Map 또는 배치 업데이트
+
+- [ ] **#29 폴링 60초 cap 무한 반복**
+  - 파일: `app/lib/providers/matching_provider.dart` (L370-376)
+  - 현재: 서버 다운 시 60초마다 무한 요청
+  - 수정: max attempt 후 중단, 유저 액션에서만 재시작
+
+- [ ] **#30 Repository try-catch 반복**
+  - 파일: `matching_repository.dart`, `chat_repository.dart`, `user_repository.dart`
+  - 수정: `BaseRepository._handleError()` 추출
+
+- [ ] **#31 build()에 복잡한 필터 로직**
+  - 파일: `app/lib/screens/matching/match_list_screen.dart` (L163-173)
+  - 수정: Notifier 메서드 또는 별도 함수로 추출
+
+- [ ] **#32 소켓 재연결 시 room 중복 join**
+  - 파일: `app/lib/core/network/socket_service.dart` (L114-129)
+  - 수정: `isAlreadyJoined` 체크 추가
+
+- [ ] **#33 desiredDate 대신 createdAt 할당**
+  - 파일: `server/src/workers/matching-queue.worker.ts` (L362)
+  - 현재: `desiredDate: pairA.createdAt` → 잘못된 필드 할당
+  - 수정: 매칭 요청의 `desiredDate` 사용
+
+- [ ] **#34 ScoreChangeType 잘못된 enum**
+  - 파일: `server/src/workers/match-accept-timeout.worker.ts` (L495)
+  - 현재: 보상에 `NO_SHOW_PENALTY` 타입 사용
+  - 수정: `NO_SHOW_COMPENSATION` 사용
+
+- [ ] **#35 admin.service todayStart UTC 기준**
+  - 파일: `server/src/modules/admin/admin.service.ts` (L23-24)
+  - 수정: `getKSTMidnight()` 사용
+
+- [ ] **#36 Promise.all 에러 미처리**
+  - 파일: `server/src/modules/matching/matching.service.ts` (L748-756)
+  - 현재: 이벤트 발행 실패 시 전체 매칭 수락 실패 가능
+  - 수정: `Promise.allSettled()` 사용
 
 ---
 
-## 9. 연습 게임 (캐주얼 모드)
+## Phase 4 — 코드 품질 (지속)
 
-- [ ] 서버: RequestType에 CASUAL 추가
-- [ ] 서버: SportsProfile에 casualScore, casualWin, casualLoss 필드 추가
-- [ ] 서버: 연습 매칭 요청 시 별도 MMR로 매칭, 랭크 점수 변동 없음
-- [ ] 앱: 매칭 요청 화면에 "랭크 / 연습" 토글 추가
-- [ ] 앱: 매칭 카드에 "연습" 뱃지 표시
+### LOW
+
+- [ ] **#37 매직 넘버 추출**
+  - 30분 TTL, 10초 폴링, 색상값 `0xFF0A0A0A`, 아바타 크기 56 등
+  - 수정: `constants.dart` / `constants.ts` 파일 생성
+
+- [ ] **#38 프로덕션 로깅 체계 부재**
+  - 현재: `debugPrint()` / `console.log()` 만 사용
+  - 수정: Sentry/DataDog 등 로깅 서비스 연동
+
+- [ ] **#39 Message 모델 빈 문자열 허용**
+  - 파일: `app/lib/models/message.dart`
+  - 수정: factory에서 `assert(senderId.isNotEmpty)` 추가
+
+- [ ] **#40 워커 메트릭 미수집**
+  - 매칭 생성/실패, 수락 타임아웃, ELO 계산 에러 등 추적 없음
+  - 수정: Prometheus/OpenTelemetry 카운터 추가
+
+- [ ] **#41 미사용 변수 할당**
+  - 파일: `server/src/modules/games/games.service.ts` (L373)
+  - `isCasual` 조기 할당
+  - 수정: 사용 시점으로 이동
+
+- [ ] **#42 에러 코드 enum 일부 미정의**
+  - `AUTH_DUPLICATE_EMAIL`, `AUTH_APPLE_FAILED` 등 일부 미등록
+  - 수정: 모든 사용처 에러 코드 enum 등록 확인
+
+- [ ] **#43 모델 필드 검증 부재**
+  - fromJson에서 타입 캐스팅만, 값 유효성 미검증
+  - 수정: 필수 필드 assertion 추가
+
+- [ ] **#44 테스트 커버리지 부족**
+  - 현재: e2e 테스트 일부만 존재
+  - 수정: 핵심 비즈니스 로직 (ELO, 매칭 큐, CI 중복) 단위 테스트 추가
 
 ---
 
-## 10. 게시판 입장 조건
+## 진행 상황
 
-- [ ] 서버: canAccessPinBoard(userId, pinId) 미들웨어 — 해당 핀 완료 매칭 1회 이상 시 작성/댓글/좋아요 허용
-- [ ] 서버: 게시글/댓글/좋아요 라우트에 미들웨어 적용
-- [ ] 앱: 권한 없을 때 "이 핀에서 1회 이상 매칭에 참가해야 합니다" 다이얼로그
-
----
-
-## 11. 신고 / 문의 시스템
-
-- [ ] 서버: POST /reports 신고 접수 API (유저/게시글/채팅/매칭)
-- [ ] 서버: POST /inquiries 문의 접수 API
-- [ ] 서버: Inquiry, UserSanction 모델 추가
-- [ ] 서버: 자동 제재 규칙 (7일 내 3건+ 신고 → 24시간 정지)
-- [ ] 앱: 마이페이지 > 고객센터 메뉴
-- [ ] 앱: 신고 접수 바텀시트 (사유 + 상세 + 사진 첨부)
-- [ ] 앱: 문의 접수 화면
-- [ ] 어드민: 신고 목록/처리 UI, 문의 목록/응답 UI
-
-> 설계 문서: [design-report-system.md](./design-report-system.md)
-
----
-
-## 우선순위
-
-| 순위 | 항목 | 이유 |
-|------|------|------|
-| 1 | 매칭 버그 수정 (#1~4) | 매칭이 동작해야 서비스가 됨 |
-| 2 | 매칭 알고리즘 (#6) | 핵심 기능 |
-| 3 | 티어 프로그레스바 (#5) | 유저 동기부여, 리텐션 |
-| 4 | 노쇼 패널티 (#7) | 매칭 품질 보장 |
-| 5 | 활동량 보너스 (#8) | 리텐션 + 매칭 풀 확대 |
-| 6 | 연습 게임 (#9) | 신규 유저 진입 장벽 낮춤 |
-| 7 | 게시판 입장 조건 (#10) | 커뮤니티 품질 |
-| 8 | 신고/문의 (#11) | 서비스 안정성 |
+| Phase | 상태 | 완료 | 전체 |
+|-------|------|------|------|
+| Phase 1 (보안+크래시) | 미시작 | 0 | 9 |
+| Phase 2 (성능+안정성) | 미시작 | 0 | 13 |
+| Phase 3 (리팩토링) | 미시작 | 0 | 14 |
+| Phase 4 (코드 품질) | 미시작 | 0 | 8 |
+| **합계** | | **0** | **44** |

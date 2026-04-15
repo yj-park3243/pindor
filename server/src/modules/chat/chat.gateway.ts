@@ -2,6 +2,7 @@ import { Server, Socket } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import Redis from 'ioredis';
 import { verifyAccessToken } from '../../shared/utils/jwt.js';
+import { getKSTDateString, getKSTHour } from '../../shared/utils/timezone.js';
 import { AppDataSource } from '../../config/database.js';
 import { User } from '../../entities/user.entity.js';
 import { ChatRoom } from '../../entities/chat-room.entity.js';
@@ -119,8 +120,8 @@ export function setupSocketGateway(io: Server, redis: Redis): void {
     await redis.set(`user_socket:${userId}`, socket.id, 'EX', 86400);
 
     // ─── Analytics: DAU / 시간대별 / 세션 추적 ───
-    const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD (UTC)
-    const currentHour = new Date().getUTCHours();
+    const todayStr = getKSTDateString(); // YYYY-MM-DD (KST)
+    const currentHour = getKSTHour();
 
     // DAU 추적 (일별 유니크 유저)
     await redis.sadd(`dau:${todayStr}`, userId);
@@ -489,7 +490,7 @@ export function setupSocketGateway(io: Server, redis: Redis): void {
       if (sessionStart) {
         const duration = Math.floor((Date.now() - parseInt(sessionStart, 10)) / 1000); // 초
         if (duration > 0 && duration < 86400) { // 24시간 이하만 유효한 세션으로 처리
-          const todayStr = new Date().toISOString().split('T')[0];
+          const todayStr = getKSTDateString(); // YYYY-MM-DD (KST)
           await redis.rpush(`sessions:${todayStr}`, duration.toString());
           await redis.expire(`sessions:${todayStr}`, 172800);
         }

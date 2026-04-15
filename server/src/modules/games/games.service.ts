@@ -7,6 +7,7 @@ import {
   calculateTierByRank,
   determineGolfWinner,
 } from '../../shared/utils/elo.js';
+import { getKSTMidnight } from '../../shared/utils/timezone.js';
 import { updateGlicko2 } from '../../shared/utils/glicko2.js';
 import type { Glicko2Rating, Glicko2Result } from '../../shared/utils/glicko2.js';
 import type {
@@ -652,7 +653,7 @@ export class GamesService {
     // 활동량 데이터 조회 (일반 게임에서만 사용)
     const now = new Date();
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayStart = getKSTMidnight(); // KST 자정 기준
 
     const [requesterWeekHistory, opponentWeekHistory] = await Promise.all([
       this.scoreHistoryRepo

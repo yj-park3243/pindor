@@ -289,9 +289,9 @@ export class MatchingService {
     } else if ((dto.requestType as string) === 'CASUAL') {
       expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000);
     } else if (dto.desiredDate) {
-      expiresAt = new Date(`${dto.desiredDate}T23:59:59Z`);
+      expiresAt = new Date(`${dto.desiredDate}T23:59:59+09:00`); // KST 자정
     } else {
-      expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7일
+      expiresAt = new Date(`${dto.desiredDate ?? new Date().toISOString().slice(0, 10)}T23:59:59+09:00`); // 당일 KST 자정
     }
 
     // Pin 조회 (pinId로 중심 좌표 가져오기)

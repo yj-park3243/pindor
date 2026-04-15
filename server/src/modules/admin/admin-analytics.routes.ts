@@ -3,6 +3,7 @@ import { AdminRole } from '../../entities/index.js';
 import { requireAdmin } from './admin.middleware.js';
 import { AppDataSource } from '../../config/database.js';
 import { redis } from '../../config/redis.js';
+import { getKSTDateString } from '../../shared/utils/timezone.js';
 
 export async function adminAnalyticsRoutes(fastify: FastifyInstance): Promise<void> {
   // ─── GET /admin/analytics/dashboard ── 분석 대시보드 전체 데이터
@@ -17,8 +18,8 @@ export async function adminAnalyticsRoutes(fastify: FastifyInstance): Promise<vo
       },
     },
     async (_request: FastifyRequest, reply: FastifyReply) => {
-      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD (UTC)
-      const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+      const today = getKSTDateString(); // YYYY-MM-DD (KST)
+      const yesterday = getKSTDateString(new Date(Date.now() - 86400000));
 
       // 1. 실시간 접속자 (현재 소켓 연결된 유저)
       const [onlineCount, onlineUsers] = await Promise.all([
@@ -60,7 +61,7 @@ export async function adminAnalyticsRoutes(fastify: FastifyInstance): Promise<vo
           ),
           // 6. 오늘 신규 가입자
           AppDataSource.query(
-            `SELECT COUNT(*) AS count FROM users WHERE created_at::date = $1`,
+            `SELECT COUNT(*) AS count FROM users WHERE (created_at AT TIME ZONE 'Asia/Seoul')::date = $1`,
             [today],
           ),
           // 7. 활성 매칭 수
@@ -69,7 +70,7 @@ export async function adminAnalyticsRoutes(fastify: FastifyInstance): Promise<vo
           ),
           // 8. 오늘 완료 매칭 수
           AppDataSource.query(
-            `SELECT COUNT(*) AS count FROM matches WHERE completed_at::date = $1`,
+            `SELECT COUNT(*) AS count FROM matches WHERE (completed_at AT TIME ZONE 'Asia/Seoul')::date = $1`,
             [today],
           ),
         ]);

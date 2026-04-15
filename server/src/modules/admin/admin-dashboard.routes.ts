@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { AdminRole } from '../../entities/index.js';
 import { requireAdmin } from './admin.middleware.js';
 import { AppDataSource } from '../../config/database.js';
+import { getKSTDateString } from '../../shared/utils/timezone.js';
 
 export async function adminDashboardRoutes(fastify: FastifyInstance): Promise<void> {
   // ─── GET /admin/dashboard/metrics ── 대시보드 종합 지표 (DashboardMetrics 타입 준수)
@@ -13,8 +14,8 @@ export async function adminDashboardRoutes(fastify: FastifyInstance): Promise<vo
     },
     async (_request: FastifyRequest, reply: FastifyReply) => {
       const now = new Date();
-      // 오늘 자정 (로컬 기준 날짜 문자열, PostgreSQL date 비교용)
-      const todayStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
+      // 오늘 날짜 문자열 (KST 기준, PostgreSQL date 비교용)
+      const todayStr = getKSTDateString(); // YYYY-MM-DD (KST)
       const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
@@ -61,25 +62,25 @@ export async function adminDashboardRoutes(fastify: FastifyInstance): Promise<vo
 
         // ── today: 오늘 신규 가입자
         AppDataSource.query<{ count: string }[]>(
-          `SELECT COUNT(*) AS count FROM users WHERE created_at::date = $1::date`,
+          `SELECT COUNT(*) AS count FROM users WHERE (created_at AT TIME ZONE 'Asia/Seoul')::date = $1::date`,
           [todayStr],
         ),
 
         // ── today: 오늘 생성된 매치 수
         AppDataSource.query<{ count: string }[]>(
-          `SELECT COUNT(*) AS count FROM matches WHERE created_at::date = $1::date`,
+          `SELECT COUNT(*) AS count FROM matches WHERE (created_at AT TIME ZONE 'Asia/Seoul')::date = $1::date`,
           [todayStr],
         ),
 
         // ── today: 오늘 완료된 매치 수
         AppDataSource.query<{ count: string }[]>(
-          `SELECT COUNT(*) AS count FROM matches WHERE status = 'COMPLETED' AND completed_at::date = $1::date`,
+          `SELECT COUNT(*) AS count FROM matches WHERE status = 'COMPLETED' AND (completed_at AT TIME ZONE 'Asia/Seoul')::date = $1::date`,
           [todayStr],
         ),
 
         // ── today: 오늘 접수된 신고 수
         AppDataSource.query<{ count: string }[]>(
-          `SELECT COUNT(*) AS count FROM reports WHERE created_at::date = $1::date`,
+          `SELECT COUNT(*) AS count FROM reports WHERE (created_at AT TIME ZONE 'Asia/Seoul')::date = $1::date`,
           [todayStr],
         ),
 

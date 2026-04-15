@@ -7,6 +7,7 @@ import { NotificationSettings } from '../entities/notification-settings.entity.j
 import { redis, bullmqRedis } from '../config/redis.js';
 import { initFirebase, getMessaging, isFirebaseEnabled } from '../config/firebase.js';
 import type { PushJobData, NotificationType } from '../shared/types/index.js';
+import { getKSTHour, getKSTNow } from '../shared/utils/timezone.js';
 
 // ─────────────────────────────────────
 // Firebase 초기화
@@ -172,8 +173,7 @@ async function getNotificationSettings(userId: string): Promise<NotificationSett
 function isDoNotDisturbTime(settings: NotificationSettings | null): boolean {
   if (!settings?.doNotDisturbStart || !settings?.doNotDisturbEnd) return false;
 
-  const now = new Date();
-  const current = now.getHours() * 60 + now.getMinutes();
+  const current = getKSTHour() * 60 + getKSTNow().getMinutes();
 
   // doNotDisturbStart/End는 time 타입 — "HH:MM:SS" 또는 "HH:MM" 형식
   const parseTime = (t: string): number => {
