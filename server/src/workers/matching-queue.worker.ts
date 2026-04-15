@@ -322,10 +322,16 @@ export async function processMatchingQueue(): Promise<void> {
         let createdMatchId = '';
 
         await AppDataSource.transaction(async (manager) => {
-          // 최신 상태 확인 (race condition 방지)
+          // 최신 상태 확인 + FOR UPDATE 잠금 (경쟁 조건 방지)
           const [latestA, latestB] = await Promise.all([
-            manager.findOne(MatchRequest, { where: { id: pairA.id } }),
-            manager.findOne(MatchRequest, { where: { id: pairB.id } }),
+            manager.createQueryBuilder(MatchRequest, 'mr')
+              .setLock('pessimistic_write')
+              .where('mr.id = :id', { id: pairA.id })
+              .getOne(),
+            manager.createQueryBuilder(MatchRequest, 'mr')
+              .setLock('pessimistic_write')
+              .where('mr.id = :id', { id: pairB.id })
+              .getOne(),
           ]);
 
           if (

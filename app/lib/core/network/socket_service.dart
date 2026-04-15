@@ -260,6 +260,7 @@ class SocketService {
     _disconnect();
     _currentAccessToken = null;
     _activeRoomId = null;
+    _isConnected = false; // _socket이 이미 null이었던 경우에도 확실히 초기화
   }
 
   void _disconnect() {

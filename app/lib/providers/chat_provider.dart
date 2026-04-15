@@ -12,12 +12,12 @@ import '../core/offline/offline_queue_service.dart';
 ///
 /// 1. 로컬 DB에서 즉시 반환 (있을 때)
 /// 2. 항상 백그라운드로 API 갱신 (새 채팅방 누락 방지)
-/// 3. keepAlive 유지하되, 30분 후 자동 만료하여 스테일 데이터 방지
+/// 3. keepAlive 유지하되, 10분 후 자동 만료하여 스테일 데이터 방지
 final chatRoomListProvider =
     FutureProvider.autoDispose<List<ChatRoom>>((ref) async {
-  // 채팅방 목록은 앱 전역에서 유지하되, 30분 후 자동 만료
+  // 채팅방 목록은 앱 전역에서 유지하되, 10분 후 자동 만료
   final link = ref.keepAlive();
-  Timer(const Duration(minutes: 30), () {
+  Timer(const Duration(minutes: 10), () {
     link.close();
   });
 
@@ -178,7 +178,12 @@ class ChatMessagesNotifier
 
     // 2) API에서 최신 메시지 fetch → DB 저장
     unawaited(_fetchAndMerge(roomId, localMessages).catchError((e) {
-      debugPrint('[ChatMessages] fetch failed: $e');
+      debugPrint('[ChatMessages] fetch failed: $e — will retry in 30s');
+      Future.delayed(const Duration(seconds: 30), () {
+        if (state.hasValue) {
+          _fetchAndMerge(roomId, state.value ?? []).catchError((_) {});
+        }
+      });
     }));
 
     // 로컬에 있으면 즉시 반환 + 인증번호 복원
@@ -242,12 +247,12 @@ class ChatMessagesNotifier
           createdAt: message.createdAt,
         );
 
-        // VERIFICATION_CODE 메시지 수신 시 provider에 코드 저장
+        // VERIFICATION_CODE 메시지 수신 시 provider에 코드 저장 (중복 방지)
         if (message.isVerificationCode) {
           final currentUser = ref.read(currentUserProvider);
           if (message.senderId != currentUser?.id) {
             final code = message.extraData?['verificationCode'] as String?;
-            if (code != null) {
+            if (code != null && code != ref.read(receivedVerificationCodeProvider(roomId))) {
               ref.read(receivedVerificationCodeProvider(roomId).notifier).state = code;
             }
           }
@@ -311,7 +316,7 @@ class ChatMessagesNotifier
       final m = messages[i];
       if (m.isVerificationCode && m.senderId != currentUser?.id) {
         final code = m.extraData?['verificationCode'] as String?;
-        if (code != null) {
+        if (code != null && code != ref.read(receivedVerificationCodeProvider(roomId))) {
           ref.read(receivedVerificationCodeProvider(roomId).notifier).state = code;
           break;
         }

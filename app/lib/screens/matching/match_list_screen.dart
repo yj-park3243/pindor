@@ -75,7 +75,10 @@ class _MatchListScreenState extends ConsumerState<MatchListScreen> {
 
   @override
   void dispose() {
-    // 룸 퇴장은 main_tab_screen의 글로벌 리스너가 COMPLETED/CANCELLED 시 담당
+    // 소켓 룸 명시적 퇴장 후 클리어 (메모리 누수 방지)
+    for (final matchId in _joinedMatchRooms) {
+      SocketService.instance.leaveMatch(matchId);
+    }
     _joinedMatchRooms.clear();
     super.dispose();
   }

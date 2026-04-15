@@ -28,20 +28,7 @@ import {
   Report,
 } from '../../entities/index.js';
 import { MatchRequestStatus, RequestType, ScoreChangeType } from '../../entities/index.js';
-
-// ─────────────────────────────────────
-// 나이 계산 헬퍼
-// ─────────────────────────────────────
-
-function calculateAge(birthDate: Date): number {
-  const today = new Date();
-  let age = today.getFullYear() - birthDate.getFullYear();
-  const m = today.getMonth() - birthDate.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
-    age--;
-  }
-  return age;
-}
+import { calculateAge } from '../../shared/utils/age.js';
 
 export class MatchingService {
   private matchAcceptTimeoutQueue: Queue<MatchAcceptTimeoutJobData>;
@@ -1594,6 +1581,26 @@ export class MatchingService {
       ? match.requesterVerificationCode
       : match.opponentVerificationCode;
 
+    // 핀별 점수/티어 조회 (해당 핀에서의 ranking_entry) — 배치 조회로 N+1 방지
+    let oppPinScore: number | null = null;
+    let oppPinTier: string | null = null;
+    let oppPinGamesPlayed: number | null = null;
+    if (match.pinId) {
+      const oppRankEntry = await this.dataSource.getRepository(RankingEntry).findOne({
+        where: {
+          pinId: match.pinId,
+          sportsProfileId: (opponentProfile as any).id,
+          sportType: (opponentProfile as any).sportType,
+        },
+      });
+      if (oppRankEntry) {
+        oppPinScore = oppRankEntry.score;
+        oppPinTier = oppRankEntry.tier;
+        oppPinGamesPlayed = oppRankEntry.gamesPlayed;
+      }
+    }
+    const hasPinRecord = oppPinScore !== null;
+
     return {
       ...match,
       gameId: game?.id ?? null,
@@ -1615,42 +1622,21 @@ export class MatchingService {
       opponentProfile: isRequester
         ? { ...opponentProfile, currentScore: undefined }
         : myProfile,
-      opponent: await (async () => {
-        // 핀별 점수/티어 조회 (해당 핀에서의 ranking_entry)
-        let pinScore: number | null = null;
-        let pinTier: string | null = null;
-        let pinGamesPlayed: number | null = null;
-        if (match.pinId) {
-          const oppRankEntry = await this.dataSource.getRepository(RankingEntry).findOne({
-            where: {
-              pinId: match.pinId,
-              sportsProfileId: (opponentProfile as any).id,
-              sportType: (opponentProfile as any).sportType,
-            },
-          });
-          if (oppRankEntry) {
-            pinScore = oppRankEntry.score;
-            pinTier = oppRankEntry.tier;
-            pinGamesPlayed = oppRankEntry.gamesPlayed;
-          }
-        }
-        const hasPinRecord = pinScore !== null;
-        return {
-          id: (opponentProfile as any).user?.id,
-          nickname: (opponentProfile as any).user?.nickname,
-          profileImageUrl: (opponentProfile as any).user?.profileImageUrl,
-          tier: pinTier ?? (opponentProfile as any).tier,
-          wins: (opponentProfile as any).wins,
-          losses: (opponentProfile as any).losses,
-          draws: (opponentProfile as any).draws,
-          matchMessage: (opponentProfile as any).matchMessage ?? null,
-          gamesPlayed: pinGamesPlayed ?? (opponentProfile as any).gamesPlayed ?? 0,
-          sportType: (opponentProfile as any).sportType,
-          displayScore: hasPinRecord ? pinScore : null,
-          isPlacement: !hasPinRecord,
-          placementGamesRemaining: hasPinRecord ? null : 5,
-        };
-      })(),
+      opponent: {
+        id: (opponentProfile as any).user?.id,
+        nickname: (opponentProfile as any).user?.nickname,
+        profileImageUrl: (opponentProfile as any).user?.profileImageUrl,
+        tier: oppPinTier ?? (opponentProfile as any).tier,
+        wins: (opponentProfile as any).wins,
+        losses: (opponentProfile as any).losses,
+        draws: (opponentProfile as any).draws,
+        matchMessage: (opponentProfile as any).matchMessage ?? null,
+        gamesPlayed: oppPinGamesPlayed ?? (opponentProfile as any).gamesPlayed ?? 0,
+        sportType: (opponentProfile as any).sportType,
+        displayScore: hasPinRecord ? oppPinScore : null,
+        isPlacement: !hasPinRecord,
+        placementGamesRemaining: hasPinRecord ? null : 5,
+      },
     };
   }
 

@@ -10,48 +10,48 @@
 
 ### CRITICAL
 
-- [ ] **#1 SHA256 비밀번호 해싱 → bcrypt 교체**
+- [x] **#1 SHA256 비밀번호 해싱 → bcrypt 교체**
   - 파일: `server/src/modules/auth/auth.service.ts` (L544-546)
   - 현재: 솔트 없는 `createHash('sha256')` 사용
   - 수정: `bcrypt.hash(password, 12)` + `bcrypt.compare()` 사용
   - 영향: 기존 이메일 유저 비밀번호 마이그레이션 필요
 
-- [ ] **#2 패스워드 비교 타이밍 공격 취약**
+- [x] **#2 패스워드 비교 타이밍 공격 취약**
   - 파일: `server/src/modules/auth/auth.service.ts` (L519)
   - 현재: `===` 직접 비교
   - 수정: `crypto.timingSafeEqual(Buffer.from(stored), Buffer.from(computed))`
 
-- [ ] **#3 KCP 인증키 소스코드 하드코딩**
+- [x] **#3 KCP 인증키 소스코드 하드코딩**
   - 파일: `server/src/modules/auth/kcp.service.ts` (L11-15)
   - 현재: `const KCP_SITE_CD = 'J26040912350'` 직접 노출
   - 수정: `env.KCP_SITE_CD`, `env.KCP_CERT_KEY`로 환경변수 이동
 
-- [ ] **#4 KCP key 재사용 경쟁 조건**
+- [x] **#4 KCP key 재사용 경쟁 조건**
   - 파일: `server/src/modules/auth/kcp.service.ts` (L79-89)
   - 현재: `redis.get()` → 처리 → `redis.setex()` 비원자적
   - 수정: `redis.set(key, '1', 'EX', 86400, 'NX')` 원자적 처리
 
-- [ ] **#5 소켓 룸 미정리 (메모리 누수)**
+- [x] **#5 소켓 룸 미정리 (메모리 누수)**
   - 파일: `app/lib/screens/matching/match_list_screen.dart` (L60-81)
   - 현재: `joinMatch()` 호출 후 dispose에서 `leaveMatch()` 안 함
   - 수정: dispose에서 `_joinedMatchRooms` 순회하며 `leaveMatch()` 호출
 
-- [ ] **#6 StreamSubscription 누적**
+- [x] **#6 StreamSubscription 누적** (이미 처리됨 확인)
   - 파일: `app/lib/providers/matching_provider.dart` (L196-215)
   - 현재: provider 재생성 시 `_connectionSub`, `_matchStatusSub` 잔류 가능
   - 수정: `ref.onDispose()`에서 모든 subscription 명시적 cancel
 
-- [ ] **#7 forceRefresh 경쟁 조건**
+- [x] **#7 forceRefresh 경쟁 조건**
   - 파일: `app/lib/providers/matching_provider.dart` (L43-70)
   - 현재: `Future.microtask`로 빌드 중 다른 provider state 변경
   - 수정: Notifier 메서드로 중앙화하거나 별도 flag provider 패턴 변경
 
-- [ ] **#8 토큰 갱신 경쟁 조건**
+- [x] **#8 토큰 갱신 경쟁 조건**
   - 파일: `app/lib/core/network/api_client.dart` (L144-247)
   - 현재: `_refreshCompleter` null 타이밍 문제 → 401 무한루프 가능
   - 수정: enum 상태 머신 (`notRefreshing`, `refreshing`, `refreshed`) 사용
 
-- [ ] **#9 서버 동기화 실패 무시**
+- [x] **#9 서버 동기화 실패 무시**
   - 파일: `app/lib/providers/chat_provider.dart` (L179-182)
   - 현재: `catchError`로 에러 삼킴 → 유저가 동기화 실패 인지 못함
   - 수정: state에 `isSyncError` 플래그 추가 + 수동 재시도 지원
@@ -62,26 +62,26 @@
 
 ### HIGH
 
-- [ ] **#10 N+1 쿼리: ranking_entry 건당 조회**
+- [x] **#10 N+1 쿼리: ranking_entry 건당 조회**
   - 파일: `server/src/modules/matching/matching.service.ts` (L1618-1635)
   - 현재: 매칭 상세 응답에서 ranking_entry를 async 콜백 내 개별 조회
   - 수정: `findBy({ sportsProfileId: In(profileIds) })` 배치 조회
 
-- [ ] **#11 프로필 미존재 시 무시 (silent fail)**
+- [x] **#11 프로필 미존재 시 무시 (silent fail)**
   - 파일: `server/src/modules/matching/matching.service.ts` (L594-607)
   - 현재: `if (!requesterProfile) return;` 에러 없이 무시
   - 수정: `throw AppError.notFound(ErrorCode.SPORTS_PROFILE_NOT_FOUND)`
 
-- [ ] **#12 중복 함수: calculateAge**
+- [x] **#12 중복 함수: calculateAge**
   - 파일: `matching.service.ts` (L36-44) + `match-accept-timeout.worker.ts` (L31-39)
   - 수정: `shared/utils/age.ts`로 추출
 
-- [ ] **#13 중복 코드: 토큰 저장 로직**
+- [x] **#13 중복 코드: 토큰 저장 로직**
   - 파일: `auth.service.ts` (L714-717) + `kcp.service.ts` (L133, 201, 233)
   - 현재: 동일한 `redis.setex(refresh_token:...)` 4회 반복
   - 수정: `shared/utils/token.ts`에 `storeRefreshToken()` 추출
 
-- [ ] **#14 트랜잭션 내 경쟁 조건 (매칭 큐)**
+- [x] **#14 트랜잭션 내 경쟁 조건 (매칭 큐)**
   - 파일: `server/src/workers/matching-queue.worker.ts` (L324-340)
   - 현재: WAITING 상태 체크 시 `SELECT FOR UPDATE` 미사용
   - 수정: 비관적 잠금 추가
@@ -95,32 +95,32 @@
   - 현재: 10+ `listenManual`, 15+ `invalidate` 인라인
   - 수정: `SocketEventHandlerProvider` 별도 provider로 분리
 
-- [ ] **#17 forceRefresh 5곳에서 수정**
+- [x] **#17 forceRefresh 5곳에서 수정**
   - 파일: `match_list_screen.dart`, `main_tab_screen.dart` 등
   - 현재: `matchListForceRefreshProvider` 소유권 불명확
   - 수정: Notifier 메서드 `triggerForceRefresh()` 중앙화
 
-- [ ] **#18 채팅방 목록 30분 TTL 과도**
+- [x] **#18 채팅방 목록 30분 TTL 과도**
   - 파일: `app/lib/providers/chat_provider.dart` (L16-48)
   - 현재: 30분간 캐시 유지 → 삭제된 방/읽지않음 표시 부정확
   - 수정: 5~10분으로 축소, 소켓 이벤트 수신 시 invalidate
 
-- [ ] **#19 폴링 타이머 누적**
+- [x] **#19 폴링 타이머 누적**
   - 파일: `app/lib/providers/matching_provider.dart` (L332-377)
   - 현재: `startPolling()` 다중 호출 시 타이머 중복 생성 가능
   - 수정: `if (_pollingTimer?.isActive ?? false) return;` 가드 추가
 
-- [ ] **#20 소켓 싱글톤 상태 잔류**
+- [x] **#20 소켓 싱글톤 상태 잔류**
   - 파일: `app/lib/core/network/socket_service.dart` (L10-15)
   - 현재: 로그아웃→재로그인 시 이전 room ID 잔류 가능
   - 수정: `disconnect()`에서 모든 Set/Map 명시적 초기화 확인
 
-- [ ] **#21 acceptances nullable 문제**
+- [x] **#21 acceptances nullable 문제**
   - 파일: `app/lib/models/match.dart` (L116-131)
   - 현재: 서버가 null 반환 시 모든 사용처에서 null 체크 필요
   - 수정: 서버에서 항상 빈 배열 반환, 모델 기본값 `const []`
 
-- [ ] **#22 인증번호 덮어쓰기**
+- [x] **#22 인증번호 덮어쓰기**
   - 파일: `app/lib/providers/chat_provider.dart` (L245-254)
   - 현재: 두 인증번호 코드가 빠르게 도착하면 첫 번째 유실
   - 수정: 타임스탬프 비교 또는 최신 코드만 유지하는 로직
@@ -241,8 +241,8 @@
 
 | Phase | 상태 | 완료 | 전체 |
 |-------|------|------|------|
-| Phase 1 (보안+크래시) | 미시작 | 0 | 9 |
-| Phase 2 (성능+안정성) | 미시작 | 0 | 13 |
+| Phase 1 (보안+크래시) | **완료** | **9** | 9 |
+| Phase 2 (성능+안정성) | 진행중 | 10 | 13 |
 | Phase 3 (리팩토링) | 미시작 | 0 | 14 |
 | Phase 4 (코드 품질) | 미시작 | 0 | 8 |
-| **합계** | | **0** | **44** |
+| **합계** | | **19** | **44** |

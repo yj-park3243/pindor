@@ -2,6 +2,7 @@ import { DataSource } from 'typeorm';
 import { AppError, ErrorCode } from '../../shared/errors/app-error.js';
 import { issueTokenPair, verifyRefreshToken } from '../../shared/utils/jwt.js';
 import { redis } from '../../config/redis.js';
+import { storeRefreshToken } from '../../shared/utils/token.js';
 import {
   User,
   SocialAccount,
@@ -9,9 +10,9 @@ import {
   DeviceToken,
 } from '../../entities/index.js';
 import { SocialProvider } from '../../entities/index.js';
-import { createHash } from 'crypto';
+import { createHash, createPublicKey } from 'crypto';
+import bcrypt from 'bcryptjs';
 import type { KakaoLoginDto, KakaoUserInfo, GoogleLoginDto, GoogleUserInfo, AppleLoginDto, EmailRegisterDto, EmailLoginDto } from './auth.schema.js';
-import { createPublicKey } from 'crypto';
 import * as jwt from 'jsonwebtoken';
 
 export class AuthService {
@@ -95,7 +96,7 @@ export class AuthService {
       });
 
       const tokens = await issueTokenPair({ userId: user.id, email: user.email });
-      await this.storeRefreshToken(user.id, tokens.refreshToken);
+      await storeRefreshToken(user.id, tokens.refreshToken);
 
       return {
         ...tokens,
@@ -128,7 +129,7 @@ export class AuthService {
         });
 
         const tokens = await issueTokenPair({ userId: existingUser.id, email: existingUser.email });
-        await this.storeRefreshToken(existingUser.id, tokens.refreshToken);
+        await storeRefreshToken(existingUser.id, tokens.refreshToken);
 
         return {
           ...tokens,
@@ -175,7 +176,7 @@ export class AuthService {
     });
 
     const tokens = await issueTokenPair({ userId: user.id, email: user.email });
-    await this.storeRefreshToken(user.id, tokens.refreshToken);
+    await storeRefreshToken(user.id, tokens.refreshToken);
 
     return {
       ...tokens,
@@ -236,7 +237,7 @@ export class AuthService {
       await userRepo.update(user.id, { lastLoginAt: new Date() });
 
       const tokens = await issueTokenPair({ userId: user.id, email: user.email });
-      await this.storeRefreshToken(user.id, tokens.refreshToken);
+      await storeRefreshToken(user.id, tokens.refreshToken);
 
       return {
         ...tokens,
@@ -265,7 +266,7 @@ export class AuthService {
         await userRepo.update(existingUser.id, { lastLoginAt: new Date() });
 
         const tokens = await issueTokenPair({ userId: existingUser.id, email: existingUser.email });
-        await this.storeRefreshToken(existingUser.id, tokens.refreshToken);
+        await storeRefreshToken(existingUser.id, tokens.refreshToken);
 
         return {
           ...tokens,
@@ -308,7 +309,7 @@ export class AuthService {
     });
 
     const tokens = await issueTokenPair({ userId: user.id, email: user.email });
-    await this.storeRefreshToken(user.id, tokens.refreshToken);
+    await storeRefreshToken(user.id, tokens.refreshToken);
 
     return {
       ...tokens,
@@ -359,7 +360,7 @@ export class AuthService {
       await userRepo.update(user.id, { lastLoginAt: new Date() });
 
       const tokens = await issueTokenPair({ userId: user.id, email: user.email });
-      await this.storeRefreshToken(user.id, tokens.refreshToken);
+      await storeRefreshToken(user.id, tokens.refreshToken);
 
       return {
         ...tokens,
@@ -388,7 +389,7 @@ export class AuthService {
         await userRepo.update(existingUser.id, { lastLoginAt: new Date() });
 
         const tokens = await issueTokenPair({ userId: existingUser.id, email: existingUser.email });
-        await this.storeRefreshToken(existingUser.id, tokens.refreshToken);
+        await storeRefreshToken(existingUser.id, tokens.refreshToken);
 
         return {
           ...tokens,
@@ -430,7 +431,7 @@ export class AuthService {
     });
 
     const tokens = await issueTokenPair({ userId: user.id, email: user.email });
-    await this.storeRefreshToken(user.id, tokens.refreshToken);
+    await storeRefreshToken(user.id, tokens.refreshToken);
 
     return {
       ...tokens,
@@ -460,7 +461,7 @@ export class AuthService {
       throw new AppError(ErrorCode.AUTH_DUPLICATE_EMAIL ?? 'AUTH_DUPLICATE_EMAIL', 409, '이미 가입된 이메일입니다.');
     }
 
-    const passwordHash = this.hashPassword(dto.password);
+    const passwordHash = await this.hashPassword(dto.password);
     const nickname = dto.nickname ?? await this.generateUniqueNickname(null);
 
     const user = await this.dataSource.transaction(async (manager) => {
@@ -489,7 +490,7 @@ export class AuthService {
     });
 
     const tokens = await issueTokenPair({ userId: user.id, email: user.email });
-    await this.storeRefreshToken(user.id, tokens.refreshToken);
+    await storeRefreshToken(user.id, tokens.refreshToken);
 
     return {
       ...tokens,
@@ -516,7 +517,12 @@ export class AuthService {
       relations: { user: true },
     });
 
-    if (!socialAccount || socialAccount.accessToken !== this.hashPassword(dto.password)) {
+    const storedHash = socialAccount?.accessToken ?? '';
+    const passwordMatch = socialAccount
+      ? await this.comparePassword(dto.password, storedHash)
+      : false;
+
+    if (!socialAccount || !passwordMatch) {
       throw new AppError(ErrorCode.AUTH_INVALID_CREDENTIALS ?? 'AUTH_INVALID_CREDENTIALS', 401, '이메일 또는 비밀번호가 올바르지 않습니다.');
     }
 
@@ -524,10 +530,16 @@ export class AuthService {
     if (user.status === 'SUSPENDED') throw new AppError(ErrorCode.USER_SUSPENDED, 403);
     if (user.status === 'WITHDRAWN') throw new AppError(ErrorCode.USER_WITHDRAWN, 403);
 
+    // SHA256 → bcrypt 자동 마이그레이션
+    if (!storedHash.startsWith('$2')) {
+      const newHash = await this.hashPassword(dto.password);
+      await socialAccountRepo.update(socialAccount.id, { accessToken: newHash });
+    }
+
     await userRepo.update(user.id, { lastLoginAt: new Date() });
 
     const tokens = await issueTokenPair({ userId: user.id, email: user.email });
-    await this.storeRefreshToken(user.id, tokens.refreshToken);
+    await storeRefreshToken(user.id, tokens.refreshToken);
 
     return {
       ...tokens,
@@ -541,8 +553,18 @@ export class AuthService {
     };
   }
 
-  private hashPassword(password: string): string {
-    return createHash('sha256').update(password).digest('hex');
+  private async hashPassword(password: string): Promise<string> {
+    return bcrypt.hash(password, 12);
+  }
+
+  private async comparePassword(plain: string, hashed: string): Promise<boolean> {
+    // bcrypt 해시는 $2a$ 또는 $2b$로 시작
+    if (hashed.startsWith('$2')) {
+      return bcrypt.compare(plain, hashed);
+    }
+    // 레거시 SHA256 해시 호환 (마이그레이션 기간)
+    const sha256 = createHash('sha256').update(plain).digest('hex');
+    return sha256 === hashed;
   }
 
   // ─────────────────────────────────────
@@ -572,7 +594,7 @@ export class AuthService {
     }
 
     const tokens = await issueTokenPair({ userId: user.id, email: user.email });
-    await this.storeRefreshToken(user.id, tokens.refreshToken);
+    await storeRefreshToken(user.id, tokens.refreshToken);
 
     return tokens;
   }
@@ -711,8 +733,4 @@ export class AuthService {
     return `사용자${Date.now().toString().slice(-8)}`;
   }
 
-  private async storeRefreshToken(userId: string, token: string): Promise<void> {
-    // 30일 TTL
-    await redis.setex(`refresh_token:${userId}`, 30 * 24 * 3600, token);
-  }
 }

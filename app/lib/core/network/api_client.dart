@@ -186,9 +186,11 @@ class _AuthInterceptor extends Interceptor {
 
     // 이미 갱신 중인 경우: Completer가 완료될 때까지 대기
     if (_client._isRefreshing) {
-      if (_refreshCompleter != null) {
+      // 로컬 변수에 캐싱하여 await 전 null이 되는 타이밍 문제 방지
+      final completer = _refreshCompleter;
+      if (completer != null) {
         try {
-          final newToken = await _refreshCompleter!.future;
+          final newToken = await completer.future;
           err.requestOptions.headers['Authorization'] = 'Bearer $newToken';
           final retryResponse = await _dio.fetch(err.requestOptions);
           return handler.resolve(retryResponse);

@@ -15,7 +15,7 @@ class Match {
   final DateTime? confirmedAt;
   final DateTime? completedAt;
   final DateTime createdAt;
-  final List<MatchAcceptance>? acceptances;
+  final List<MatchAcceptance> acceptances;
   final bool isCasual; // true = 친선 게임, false = 랭크 게임
   final String? gameResult; // WIN | LOSS | DRAW (완료된 매칭만)
   final String? pinName; // 매칭 핀 지역명
@@ -40,7 +40,7 @@ class Match {
     this.confirmedAt,
     this.completedAt,
     required this.createdAt,
-    this.acceptances,
+    this.acceptances = const [],
     this.isCasual = false,
     this.gameResult,
     this.pinName,
@@ -74,7 +74,7 @@ class Match {
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'] as String)
           : DateTime.now(),
-      acceptances: _parseAcceptances(json),
+      acceptances: _parseAcceptances(json) ?? const [],
       isCasual: json['isCasual'] as bool? ?? false,
       gameResult: json['gameResult'] as String?,
       pinName: json['pinName'] as String?,
@@ -101,7 +101,7 @@ class Match {
         'confirmedAt': confirmedAt?.toIso8601String(),
         'completedAt': completedAt?.toIso8601String(),
         'createdAt': createdAt.toIso8601String(),
-        'acceptances': acceptances?.map((e) => e.toJson()).toList(),
+        'acceptances': acceptances.map((e) => e.toJson()).toList(),
         'isCasual': isCasual,
         if (gameResult != null) 'gameResult': gameResult,
         if (pinName != null) 'pinName': pinName,
