@@ -210,7 +210,7 @@
   - 현재: `debugPrint()` / `console.log()` 만 사용
   - 수정: Sentry/DataDog 등 로깅 서비스 연동
 
-- [ ] **#39 Message 모델 빈 문자열 허용**
+- [x] **#39 Message 모델 빈 문자열 허용**
   - 파일: `app/lib/models/message.dart`
   - 수정: factory에서 `assert(senderId.isNotEmpty)` 추가
 
@@ -223,7 +223,7 @@
   - `isCasual` 조기 할당
   - 수정: 사용 시점으로 이동
 
-- [ ] **#42 에러 코드 enum 일부 미정의**
+- [x] **#42 에러 코드 enum 일부 미정의**
   - `AUTH_DUPLICATE_EMAIL`, `AUTH_APPLE_FAILED` 등 일부 미등록
   - 수정: 모든 사용처 에러 코드 enum 등록 확인
 
@@ -244,5 +244,5 @@
 | Phase 1 (보안+크래시) | **완료** | **9** | 9 |
 | Phase 2 (성능+안정성) | 진행중 | 10 | 13 |
 | Phase 3 (리팩토링) | 진행중 | 11 | 14 |
-| Phase 4 (코드 품질) | 미시작 | 0 | 8 |
-| **합계** | | **30** | **44** |
+| Phase 4 (코드 품질) | 진행중 | 2 | 8 |
+| **합계** | | **32** | **44** |

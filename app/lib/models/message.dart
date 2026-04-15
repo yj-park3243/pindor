@@ -34,8 +34,11 @@ class Message {
       id: json['id'] as String,
       chatRoomId: json['chatRoomId'] as String? ??
           json['roomId'] as String? ?? '',
-      senderId: sender?['id'] as String? ??
-          json['senderId'] as String? ?? '',
+      senderId: (sender?['id'] as String?)?.isNotEmpty == true
+          ? sender!['id'] as String
+          : ((json['senderId'] as String?)?.isNotEmpty == true
+              ? json['senderId'] as String
+              : 'system'),
       senderNickname: sender?['nickname'] as String? ?? '',
       senderProfileImageUrl: sender?['profileImageUrl'] as String?,
       messageType: json['messageType'] as String? ?? 'TEXT',
@@ -118,8 +121,11 @@ class Message {
     return Message(
       id: data['id'] as String? ?? DateTime.now().millisecondsSinceEpoch.toString(),
       chatRoomId: data['roomId'] as String? ?? '',
-      senderId: sender?['id'] as String? ??
-          data['senderId'] as String? ?? '',
+      senderId: (sender?['id'] as String?)?.isNotEmpty == true
+          ? sender!['id'] as String
+          : ((data['senderId'] as String?)?.isNotEmpty == true
+              ? data['senderId'] as String
+              : 'system'),
       senderNickname: sender?['nickname'] as String? ?? '',
       senderProfileImageUrl: sender?['profileImageUrl'] as String?,
       messageType: data['messageType'] as String? ?? 'TEXT',

@@ -458,7 +458,7 @@ export class AuthService {
       where: { provider: SocialProvider.EMAIL, providerId: dto.email },
     });
     if (existing) {
-      throw new AppError(ErrorCode.AUTH_DUPLICATE_EMAIL ?? 'AUTH_DUPLICATE_EMAIL', 409, '이미 가입된 이메일입니다.');
+      throw new AppError(ErrorCode.AUTH_DUPLICATE_EMAIL, 409, '이미 가입된 이메일입니다.');
     }
 
     const passwordHash = await this.hashPassword(dto.password);
@@ -523,7 +523,7 @@ export class AuthService {
       : false;
 
     if (!socialAccount || !passwordMatch) {
-      throw new AppError(ErrorCode.AUTH_INVALID_CREDENTIALS ?? 'AUTH_INVALID_CREDENTIALS', 401, '이메일 또는 비밀번호가 올바르지 않습니다.');
+      throw new AppError(ErrorCode.AUTH_INVALID_CREDENTIALS, 401, '이메일 또는 비밀번호가 올바르지 않습니다.');
     }
 
     const user = socialAccount.user;

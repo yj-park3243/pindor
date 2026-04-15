@@ -13,6 +13,8 @@ export enum ErrorCode {
   AUTH_FORBIDDEN = 'AUTH_007',
   AUTH_GOOGLE_FAILED = 'AUTH_008',
   AUTH_APPLE_FAILED = 'AUTH_009',
+  AUTH_DUPLICATE_EMAIL = 'AUTH_010',
+  AUTH_INVALID_CREDENTIALS = 'AUTH_011',
 
   // 사용자 (USER_)
   USER_NOT_FOUND = 'USER_001',
@@ -148,6 +150,8 @@ export class AppError extends Error {
       [ErrorCode.AUTH_FORBIDDEN]: '접근 권한이 없습니다.',
       [ErrorCode.AUTH_GOOGLE_FAILED]: 'Google 인증에 실패했습니다.',
       [ErrorCode.AUTH_APPLE_FAILED]: 'Apple 인증에 실패했습니다.',
+      [ErrorCode.AUTH_DUPLICATE_EMAIL]: '이미 가입된 이메일입니다.',
+      [ErrorCode.AUTH_INVALID_CREDENTIALS]: '이메일 또는 비밀번호가 올바르지 않습니다.',
       [ErrorCode.USER_NOT_FOUND]: '사용자를 찾을 수 없습니다.',
       [ErrorCode.USER_NICKNAME_TAKEN]: '이미 사용 중인 닉네임입니다.',
       [ErrorCode.USER_SUSPENDED]: '정지된 계정입니다.',
