@@ -39,19 +39,6 @@ class MatchRequestListState {
 /// 소켓 이벤트 등으로 캐시를 무시하고 서버에서 직접 가져와야 할 때 true로 설정
 final matchListForceRefreshProvider = StateProvider<bool>((ref) => false);
 
-/// 매칭 목록 강제 갱신 트리거 (forceRefresh 설정 + invalidate)
-/// WidgetRef (UI 레이어)에서 사용
-void triggerMatchListRefresh(WidgetRef ref) {
-  ref.read(matchListForceRefreshProvider.notifier).state = true;
-  ref.invalidate(matchListProvider(null));
-}
-
-/// 매칭 목록 강제 갱신 트리거 — Ref (Notifier/Provider 레이어)에서 사용
-void triggerMatchListRefreshFromRef(Ref ref) {
-  ref.read(matchListForceRefreshProvider.notifier).state = true;
-  ref.invalidate(matchListProvider(null));
-}
-
 /// 매칭 목록 프로바이더 (SWR 패턴)
 final matchListProvider = FutureProvider.autoDispose
     .family<List<Match>, String?>((ref, status) async {
@@ -60,12 +47,9 @@ final matchListProvider = FutureProvider.autoDispose
 
   // 소켓 이벤트 등으로 강제 갱신이 필요한 경우 서버에서 직접 가져옴
   if (forceRefresh) {
-    final result = await repo.getMyMatches(status: status);
-    // fetch 완료 후 리셋 (microtask로 build cycle 분리)
-    Future.microtask(() {
-      try { ref.read(matchListForceRefreshProvider.notifier).state = false; } catch (_) {}
-    });
-    return result;
+    // 빌드 중 다른 provider 수정 불가 → microtask로 지연 리셋
+    Future.microtask(() => ref.read(matchListForceRefreshProvider.notifier).state = false);
+    return repo.getMyMatches(status: status);
   }
 
   final hasCache = await repo.hasMatchesCache();
@@ -346,12 +330,6 @@ class MatchAcceptNotifier
 
   /// 다음 폴링을 스케줄 (exponential backoff)
   void _scheduleNextPoll() {
-    if (_pollingTimer?.isActive ?? false) return; // 중복 방지
-    // 최대 실패 횟수 도달 시 폴링 중단
-    if (_failureCount >= _maxFailureCount) {
-      debugPrint('[MatchAccept] Max poll failures reached, stopping');
-      return;
-    }
     _pollingTimer?.cancel();
     _pollingTimer = Timer(Duration(seconds: _pollIntervalSeconds), () async {
       await _checkMatchStatus();

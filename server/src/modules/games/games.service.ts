@@ -1236,9 +1236,7 @@ export class GamesService {
       } as any,
     });
 
-    if (!game) {
-      throw new AppError(ErrorCode.NOT_FOUND, 404, `Game not found: ${gameId}`);
-    }
+    if (!game) return;
 
     // 이미 처리된 경우 스킵
     if (!['PENDING', 'PROOF_UPLOADED'].includes(game.resultStatus)) return;
@@ -1303,9 +1301,7 @@ export class GamesService {
       } as any,
     });
 
-    if (!game) {
-      throw new AppError(ErrorCode.NOT_FOUND, 404, `Game not found: ${gameId}`);
-    }
+    if (!game) return;
 
     const requesterClaim = (game as any).requesterClaimedResult as string | null;
     const opponentClaim = (game as any).opponentClaimedResult as string | null;

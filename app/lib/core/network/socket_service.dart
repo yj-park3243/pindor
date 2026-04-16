@@ -177,7 +177,6 @@ class SocketService {
   /// 채팅방 입장
   void joinRoom(String roomId) {
     if (!_isConnected) return;
-    if (_activeRoomId == roomId) return; // 이미 같은 룸 — 재연결 시 중복 join 방지
     _activeRoomId = roomId;
     _socket!.emit('JOIN_ROOM', {'roomId': roomId});
     debugPrint('[Socket] 채팅방 입장: $roomId');
@@ -261,7 +260,6 @@ class SocketService {
     _disconnect();
     _currentAccessToken = null;
     _activeRoomId = null;
-    _isConnected = false; // _socket이 이미 null이었던 경우에도 확실히 초기화
   }
 
   void _disconnect() {

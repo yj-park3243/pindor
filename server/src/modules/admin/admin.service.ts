@@ -12,7 +12,6 @@ import {
 } from '../../entities/index.js';
 import { AppError, ErrorCode } from '../../shared/errors/app-error.js';
 import { calculateTier } from '../../shared/utils/elo.js';
-import { getKSTMidnight } from '../../shared/utils/timezone.js';
 import { parsePageParams, paginatedResponse } from '../../shared/pagination.js';
 
 export class AdminService {
@@ -21,7 +20,8 @@ export class AdminService {
   // ─────────────────────────────────────
 
   async getDashboard() {
-    const today = getKSTMidnight(); // KST 기준 오늘 자정 (UTC Date)
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const yesterday = new Date(today.getTime() - 86400000);
     const thirtyDaysAgo = new Date(today.getTime() - 30 * 86400000);
 

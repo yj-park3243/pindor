@@ -28,8 +28,20 @@ import {
   Report,
 } from '../../entities/index.js';
 import { MatchRequestStatus, RequestType, ScoreChangeType } from '../../entities/index.js';
-import { calculateAge } from '../../shared/utils/age.js';
-import { getKSTDateString } from '../../shared/utils/timezone.js';
+
+// ─────────────────────────────────────
+// 나이 계산 헬퍼
+// ─────────────────────────────────────
+
+function calculateAge(birthDate: Date): number {
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const m = today.getMonth() - birthDate.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+    age--;
+  }
+  return age;
+}
 
 export class MatchingService {
   private matchAcceptTimeoutQueue: Queue<MatchAcceptTimeoutJobData>;
@@ -161,11 +173,12 @@ export class MatchingService {
     // ─── 날짜 제한 체크: 오늘 또는 내일만 가능 ───
     const desiredDate = dto.desiredDate;
     if (desiredDate) {
-      const kstNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+      const now = new Date();
+      const kstNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
       const kstHour = kstNow.getHours();
-      const today = getKSTDateString();
+      const today = `${kstNow.getFullYear()}-${String(kstNow.getMonth() + 1).padStart(2, '0')}-${String(kstNow.getDate()).padStart(2, '0')}`;
       const tomorrowDate = new Date(kstNow.getFullYear(), kstNow.getMonth(), kstNow.getDate() + 1);
-      const tomorrow = getKSTDateString(tomorrowDate);
+      const tomorrow = `${tomorrowDate.getFullYear()}-${String(tomorrowDate.getMonth() + 1).padStart(2, '0')}-${String(tomorrowDate.getDate()).padStart(2, '0')}`;
 
       // 밤 11시 이후 당일 매칭 차단
       if (desiredDate === today && kstHour >= 23) {
@@ -732,8 +745,7 @@ export class MatchingService {
 
       // 실시간 매칭 성사 이벤트 발행 (소켓 룸 기반)
       // matchrequest:{requestId} 룸에서 대기 중인 클라이언트에게 직접 전달
-      // allSettled: 한쪽 이벤트 발행 실패가 다른 쪽을 막지 않도록 처리
-      await Promise.allSettled([
+      await Promise.all([
         this.emitMatchEvent('MATCH_FOUND', {
           requestId,
           data: { matchId: savedMatch.id, status: 'PENDING_ACCEPT' },
@@ -1200,8 +1212,7 @@ export class MatchingService {
 
   async listMatchRequests(userId: string, query: ListMatchRequestsQuery) {
     const { status, sportType, cursor } = query;
-    const rawLimit = parseInt(String(query.limit ?? '20'), 10);
-    const limit = Math.min(Math.max(isNaN(rawLimit) ? 20 : rawLimit, 1), 100);
+    const limit = Math.min(Math.max(Number(query.limit) || 20, 1), 100);
 
     const qb = this.matchRequestRepo
       .createQueryBuilder('mr')
@@ -1239,8 +1250,7 @@ export class MatchingService {
 
   async listMatches(userId: string, query: ListMatchesQuery) {
     const { status, cursor } = query;
-    const rawLimit = parseInt(String(query.limit ?? '20'), 10);
-    const limit = Math.min(Math.max(isNaN(rawLimit) ? 20 : rawLimit, 1), 100);
+    const limit = Math.min(Math.max(Number(query.limit) || 20, 1), 100);
 
     const qb = this.matchRepo
       .createQueryBuilder('match')
@@ -1584,26 +1594,6 @@ export class MatchingService {
       ? match.requesterVerificationCode
       : match.opponentVerificationCode;
 
-    // 핀별 점수/티어 조회 (해당 핀에서의 ranking_entry) — 배치 조회로 N+1 방지
-    let oppPinScore: number | null = null;
-    let oppPinTier: string | null = null;
-    let oppPinGamesPlayed: number | null = null;
-    if (match.pinId) {
-      const oppRankEntry = await this.dataSource.getRepository(RankingEntry).findOne({
-        where: {
-          pinId: match.pinId,
-          sportsProfileId: (opponentProfile as any).id,
-          sportType: (opponentProfile as any).sportType,
-        },
-      });
-      if (oppRankEntry) {
-        oppPinScore = oppRankEntry.score;
-        oppPinTier = oppRankEntry.tier;
-        oppPinGamesPlayed = oppRankEntry.gamesPlayed;
-      }
-    }
-    const hasPinRecord = oppPinScore !== null;
-
     return {
       ...match,
       gameId: game?.id ?? null,
@@ -1625,21 +1615,42 @@ export class MatchingService {
       opponentProfile: isRequester
         ? { ...opponentProfile, currentScore: undefined }
         : myProfile,
-      opponent: {
-        id: (opponentProfile as any).user?.id,
-        nickname: (opponentProfile as any).user?.nickname,
-        profileImageUrl: (opponentProfile as any).user?.profileImageUrl,
-        tier: oppPinTier ?? (opponentProfile as any).tier,
-        wins: (opponentProfile as any).wins,
-        losses: (opponentProfile as any).losses,
-        draws: (opponentProfile as any).draws,
-        matchMessage: (opponentProfile as any).matchMessage ?? null,
-        gamesPlayed: oppPinGamesPlayed ?? (opponentProfile as any).gamesPlayed ?? 0,
-        sportType: (opponentProfile as any).sportType,
-        displayScore: hasPinRecord ? oppPinScore : null,
-        isPlacement: !hasPinRecord,
-        placementGamesRemaining: hasPinRecord ? null : 5,
-      },
+      opponent: await (async () => {
+        // 핀별 점수/티어 조회 (해당 핀에서의 ranking_entry)
+        let pinScore: number | null = null;
+        let pinTier: string | null = null;
+        let pinGamesPlayed: number | null = null;
+        if (match.pinId) {
+          const oppRankEntry = await this.dataSource.getRepository(RankingEntry).findOne({
+            where: {
+              pinId: match.pinId,
+              sportsProfileId: (opponentProfile as any).id,
+              sportType: (opponentProfile as any).sportType,
+            },
+          });
+          if (oppRankEntry) {
+            pinScore = oppRankEntry.score;
+            pinTier = oppRankEntry.tier;
+            pinGamesPlayed = oppRankEntry.gamesPlayed;
+          }
+        }
+        const hasPinRecord = pinScore !== null;
+        return {
+          id: (opponentProfile as any).user?.id,
+          nickname: (opponentProfile as any).user?.nickname,
+          profileImageUrl: (opponentProfile as any).user?.profileImageUrl,
+          tier: pinTier ?? (opponentProfile as any).tier,
+          wins: (opponentProfile as any).wins,
+          losses: (opponentProfile as any).losses,
+          draws: (opponentProfile as any).draws,
+          matchMessage: (opponentProfile as any).matchMessage ?? null,
+          gamesPlayed: pinGamesPlayed ?? (opponentProfile as any).gamesPlayed ?? 0,
+          sportType: (opponentProfile as any).sportType,
+          displayScore: hasPinRecord ? pinScore : null,
+          isPlacement: !hasPinRecord,
+          placementGamesRemaining: hasPinRecord ? null : 5,
+        };
+      })(),
     };
   }
 

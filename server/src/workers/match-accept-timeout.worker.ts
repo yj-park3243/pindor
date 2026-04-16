@@ -10,7 +10,6 @@ import {
   ScoreHistory,
 } from '../entities/index.js';
 import { MatchRequestStatus, ScoreChangeType } from '../entities/index.js';
-import { calculateAge } from '../shared/utils/age.js';
 
 // ─────────────────────────────────────
 // 매칭 수락 타임아웃 Worker
@@ -24,6 +23,20 @@ export const matchAcceptTimeoutQueue = new Queue<MatchAcceptTimeoutJobData>(
   'match-accept-timeout',
   { connection: bullmqRedis },
 );
+
+// ─────────────────────────────────────
+// 나이 계산 헬퍼
+// ─────────────────────────────────────
+
+function calculateAge(birthDate: Date): number {
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const m = today.getMonth() - birthDate.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+    age--;
+  }
+  return age;
+}
 
 export const matchAcceptTimeoutWorker = new Worker<MatchAcceptTimeoutJobData>(
   'match-accept-timeout',
@@ -479,7 +492,7 @@ async function handleAcceptTimeout(
         await manager.save(ScoreHistory, manager.create(ScoreHistory, {
           sportsProfileId: acceptorProfile.id,
           gameId: null,
-          changeType: ScoreChangeType.NO_SHOW_COMPENSATION, // 상대 노쇼에 대한 보상 점수
+          changeType: ScoreChangeType.NO_SHOW_PENALTY,
           scoreBefore: acceptorScoreBefore,
           scoreChange: 5,
           scoreAfter: acceptorNewScore,

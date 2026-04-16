@@ -86,7 +86,8 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> {
             final matchId = data['data']?['matchId'] as String?;
             ref.invalidate(matchRequestProvider);
             // 캐시 무시하고 서버에서 직접 가져오도록 강제 갱신
-            triggerMatchListRefresh(ref);
+            ref.read(matchListForceRefreshProvider.notifier).state = true;
+            ref.invalidate(matchListProvider(null));
             if (matchId != null) {
               ref.invalidate(matchDetailProvider(matchId));
             }
@@ -101,7 +102,8 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> {
           // 매칭 완료 — 완료 탭으로 이동
           if (type == 'MATCH_COMPLETED') {
             final matchId = data['data']?['matchId'] as String?;
-            triggerMatchListRefresh(ref);
+            ref.read(matchListForceRefreshProvider.notifier).state = true;
+            ref.invalidate(matchListProvider(null));
             ref.invalidate(matchRequestProvider);
             if (matchId != null) ref.invalidate(matchDetailProvider(matchId));
             ref.read(notificationListProvider.notifier).addNotification(data);
@@ -112,7 +114,8 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> {
 
           // 매칭 취소/거절 — 목록 갱신
           if (type == 'MATCH_CANCELLED' || type == 'MATCH_REJECTED' || type == 'MATCH_ACCEPT_TIMEOUT') {
-            triggerMatchListRefresh(ref);
+            ref.read(matchListForceRefreshProvider.notifier).state = true;
+            ref.invalidate(matchListProvider(null));
             ref.invalidate(matchRequestProvider);
             final matchId = data['data']?['matchId'] as String?;
             if (matchId != null) ref.invalidate(matchDetailProvider(matchId));
@@ -181,7 +184,8 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> {
 
           if (matchId != null) {
             // 캐시 무시하고 서버에서 직접 가져오도록 강제 갱신
-            triggerMatchListRefresh(ref);
+            ref.read(matchListForceRefreshProvider.notifier).state = true;
+            ref.invalidate(matchListProvider(null));
             ref.invalidate(matchDetailProvider(matchId));
           }
 

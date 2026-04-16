@@ -10,48 +10,48 @@
 
 ### CRITICAL
 
-- [x] **#1 SHA256 비밀번호 해싱 → bcrypt 교체**
+- [ ] **#1 SHA256 비밀번호 해싱 → bcrypt 교체**
   - 파일: `server/src/modules/auth/auth.service.ts` (L544-546)
   - 현재: 솔트 없는 `createHash('sha256')` 사용
   - 수정: `bcrypt.hash(password, 12)` + `bcrypt.compare()` 사용
   - 영향: 기존 이메일 유저 비밀번호 마이그레이션 필요
 
-- [x] **#2 패스워드 비교 타이밍 공격 취약**
+- [ ] **#2 패스워드 비교 타이밍 공격 취약**
   - 파일: `server/src/modules/auth/auth.service.ts` (L519)
   - 현재: `===` 직접 비교
   - 수정: `crypto.timingSafeEqual(Buffer.from(stored), Buffer.from(computed))`
 
-- [x] **#3 KCP 인증키 소스코드 하드코딩**
+- [ ] **#3 KCP 인증키 소스코드 하드코딩**
   - 파일: `server/src/modules/auth/kcp.service.ts` (L11-15)
   - 현재: `const KCP_SITE_CD = 'J26040912350'` 직접 노출
   - 수정: `env.KCP_SITE_CD`, `env.KCP_CERT_KEY`로 환경변수 이동
 
-- [x] **#4 KCP key 재사용 경쟁 조건**
+- [ ] **#4 KCP key 재사용 경쟁 조건**
   - 파일: `server/src/modules/auth/kcp.service.ts` (L79-89)
   - 현재: `redis.get()` → 처리 → `redis.setex()` 비원자적
   - 수정: `redis.set(key, '1', 'EX', 86400, 'NX')` 원자적 처리
 
-- [x] **#5 소켓 룸 미정리 (메모리 누수)**
+- [ ] **#5 소켓 룸 미정리 (메모리 누수)**
   - 파일: `app/lib/screens/matching/match_list_screen.dart` (L60-81)
   - 현재: `joinMatch()` 호출 후 dispose에서 `leaveMatch()` 안 함
   - 수정: dispose에서 `_joinedMatchRooms` 순회하며 `leaveMatch()` 호출
 
-- [x] **#6 StreamSubscription 누적** (이미 처리됨 확인)
+- [ ] **#6 StreamSubscription 누적**
   - 파일: `app/lib/providers/matching_provider.dart` (L196-215)
   - 현재: provider 재생성 시 `_connectionSub`, `_matchStatusSub` 잔류 가능
   - 수정: `ref.onDispose()`에서 모든 subscription 명시적 cancel
 
-- [x] **#7 forceRefresh 경쟁 조건**
+- [ ] **#7 forceRefresh 경쟁 조건**
   - 파일: `app/lib/providers/matching_provider.dart` (L43-70)
   - 현재: `Future.microtask`로 빌드 중 다른 provider state 변경
   - 수정: Notifier 메서드로 중앙화하거나 별도 flag provider 패턴 변경
 
-- [x] **#8 토큰 갱신 경쟁 조건**
+- [ ] **#8 토큰 갱신 경쟁 조건**
   - 파일: `app/lib/core/network/api_client.dart` (L144-247)
   - 현재: `_refreshCompleter` null 타이밍 문제 → 401 무한루프 가능
   - 수정: enum 상태 머신 (`notRefreshing`, `refreshing`, `refreshed`) 사용
 
-- [x] **#9 서버 동기화 실패 무시**
+- [ ] **#9 서버 동기화 실패 무시**
   - 파일: `app/lib/providers/chat_provider.dart` (L179-182)
   - 현재: `catchError`로 에러 삼킴 → 유저가 동기화 실패 인지 못함
   - 수정: state에 `isSyncError` 플래그 추가 + 수동 재시도 지원
@@ -62,26 +62,26 @@
 
 ### HIGH
 
-- [x] **#10 N+1 쿼리: ranking_entry 건당 조회**
+- [ ] **#10 N+1 쿼리: ranking_entry 건당 조회**
   - 파일: `server/src/modules/matching/matching.service.ts` (L1618-1635)
   - 현재: 매칭 상세 응답에서 ranking_entry를 async 콜백 내 개별 조회
   - 수정: `findBy({ sportsProfileId: In(profileIds) })` 배치 조회
 
-- [x] **#11 프로필 미존재 시 무시 (silent fail)**
+- [ ] **#11 프로필 미존재 시 무시 (silent fail)**
   - 파일: `server/src/modules/matching/matching.service.ts` (L594-607)
   - 현재: `if (!requesterProfile) return;` 에러 없이 무시
   - 수정: `throw AppError.notFound(ErrorCode.SPORTS_PROFILE_NOT_FOUND)`
 
-- [x] **#12 중복 함수: calculateAge**
+- [ ] **#12 중복 함수: calculateAge**
   - 파일: `matching.service.ts` (L36-44) + `match-accept-timeout.worker.ts` (L31-39)
   - 수정: `shared/utils/age.ts`로 추출
 
-- [x] **#13 중복 코드: 토큰 저장 로직**
+- [ ] **#13 중복 코드: 토큰 저장 로직**
   - 파일: `auth.service.ts` (L714-717) + `kcp.service.ts` (L133, 201, 233)
   - 현재: 동일한 `redis.setex(refresh_token:...)` 4회 반복
   - 수정: `shared/utils/token.ts`에 `storeRefreshToken()` 추출
 
-- [x] **#14 트랜잭션 내 경쟁 조건 (매칭 큐)**
+- [ ] **#14 트랜잭션 내 경쟁 조건 (매칭 큐)**
   - 파일: `server/src/workers/matching-queue.worker.ts` (L324-340)
   - 현재: WAITING 상태 체크 시 `SELECT FOR UPDATE` 미사용
   - 수정: 비관적 잠금 추가
@@ -95,32 +95,32 @@
   - 현재: 10+ `listenManual`, 15+ `invalidate` 인라인
   - 수정: `SocketEventHandlerProvider` 별도 provider로 분리
 
-- [x] **#17 forceRefresh 5곳에서 수정**
+- [ ] **#17 forceRefresh 5곳에서 수정**
   - 파일: `match_list_screen.dart`, `main_tab_screen.dart` 등
   - 현재: `matchListForceRefreshProvider` 소유권 불명확
   - 수정: Notifier 메서드 `triggerForceRefresh()` 중앙화
 
-- [x] **#18 채팅방 목록 30분 TTL 과도**
+- [ ] **#18 채팅방 목록 30분 TTL 과도**
   - 파일: `app/lib/providers/chat_provider.dart` (L16-48)
   - 현재: 30분간 캐시 유지 → 삭제된 방/읽지않음 표시 부정확
   - 수정: 5~10분으로 축소, 소켓 이벤트 수신 시 invalidate
 
-- [x] **#19 폴링 타이머 누적**
+- [ ] **#19 폴링 타이머 누적**
   - 파일: `app/lib/providers/matching_provider.dart` (L332-377)
   - 현재: `startPolling()` 다중 호출 시 타이머 중복 생성 가능
   - 수정: `if (_pollingTimer?.isActive ?? false) return;` 가드 추가
 
-- [x] **#20 소켓 싱글톤 상태 잔류**
+- [ ] **#20 소켓 싱글톤 상태 잔류**
   - 파일: `app/lib/core/network/socket_service.dart` (L10-15)
   - 현재: 로그아웃→재로그인 시 이전 room ID 잔류 가능
   - 수정: `disconnect()`에서 모든 Set/Map 명시적 초기화 확인
 
-- [x] **#21 acceptances nullable 문제**
+- [ ] **#21 acceptances nullable 문제**
   - 파일: `app/lib/models/match.dart` (L116-131)
   - 현재: 서버가 null 반환 시 모든 사용처에서 null 체크 필요
   - 수정: 서버에서 항상 빈 배열 반환, 모델 기본값 `const []`
 
-- [x] **#22 인증번호 덮어쓰기**
+- [ ] **#22 인증번호 덮어쓰기**
   - 파일: `app/lib/providers/chat_provider.dart` (L245-254)
   - 현재: 두 인증번호 코드가 빠르게 도착하면 첫 번째 유실
   - 수정: 타임스탬프 비교 또는 최신 코드만 유지하는 로직
@@ -131,17 +131,17 @@
 
 ### MEDIUM
 
-- [x] **#23 KCP 에러 타입 미구분**
+- [ ] **#23 KCP 에러 타입 미구분**
   - 파일: `server/src/modules/auth/kcp.service.ts` (L273-288)
   - 현재: 네트워크 에러/타임아웃 동일 처리
   - 수정: `AbortError` → 504, 기타 → 502 분리
 
-- [x] **#24 수동 날짜 포맷팅**
+- [ ] **#24 수동 날짜 포맷팅**
   - 파일: `server/src/modules/matching/matching.service.ts` (L177-181)
   - 현재: 수동 `padStart` 날짜 포맷
   - 수정: `getKSTDateString()` 유틸 사용
 
-- [x] **#25 limit 파라미터 NaN 검증 부족**
+- [ ] **#25 limit 파라미터 NaN 검증 부족**
   - 파일: `server/src/modules/matching/matching.service.ts` (L1215, 1253)
   - 현재: `Number(query.limit)` NaN 시 기본값 20 사용되지만 타입 불명확
   - 수정: `parseInt` + `isNaN` 명시적 검증
@@ -155,12 +155,12 @@
   - 현재: 불변 위젯에 `const` 미적용 → 불필요한 재생성
   - 수정: const 생성자 + const 인스턴스 사용
 
-- [x] **#28 메시지 읽음 처리 전체 리스트 복사**
+- [ ] **#28 메시지 읽음 처리 전체 리스트 복사**
   - 파일: `app/lib/providers/chat_provider.dart` (L288-300)
   - 현재: 1개 읽음 처리에 전체 메시지 리스트 O(n) 복사
   - 수정: indexed Map 또는 배치 업데이트
 
-- [x] **#29 폴링 60초 cap 무한 반복**
+- [ ] **#29 폴링 60초 cap 무한 반복**
   - 파일: `app/lib/providers/matching_provider.dart` (L370-376)
   - 현재: 서버 다운 시 60초마다 무한 요청
   - 수정: max attempt 후 중단, 유저 액션에서만 재시작
@@ -169,29 +169,29 @@
   - 파일: `matching_repository.dart`, `chat_repository.dart`, `user_repository.dart`
   - 수정: `BaseRepository._handleError()` 추출
 
-- [x] **#31 build()에 복잡한 필터 로직**
+- [ ] **#31 build()에 복잡한 필터 로직**
   - 파일: `app/lib/screens/matching/match_list_screen.dart` (L163-173)
   - 수정: Notifier 메서드 또는 별도 함수로 추출
 
-- [x] **#32 소켓 재연결 시 room 중복 join**
+- [ ] **#32 소켓 재연결 시 room 중복 join**
   - 파일: `app/lib/core/network/socket_service.dart` (L114-129)
   - 수정: `isAlreadyJoined` 체크 추가
 
-- [x] **#33 desiredDate 대신 createdAt 할당**
+- [ ] **#33 desiredDate 대신 createdAt 할당**
   - 파일: `server/src/workers/matching-queue.worker.ts` (L362)
   - 현재: `desiredDate: pairA.createdAt` → 잘못된 필드 할당
   - 수정: 매칭 요청의 `desiredDate` 사용
 
-- [x] **#34 ScoreChangeType 잘못된 enum**
+- [ ] **#34 ScoreChangeType 잘못된 enum**
   - 파일: `server/src/workers/match-accept-timeout.worker.ts` (L495)
   - 현재: 보상에 `NO_SHOW_PENALTY` 타입 사용
   - 수정: `NO_SHOW_COMPENSATION` 사용
 
-- [x] **#35 admin.service todayStart UTC 기준**
+- [ ] **#35 admin.service todayStart UTC 기준**
   - 파일: `server/src/modules/admin/admin.service.ts` (L23-24)
   - 수정: `getKSTMidnight()` 사용
 
-- [x] **#36 Promise.all 에러 미처리**
+- [ ] **#36 Promise.all 에러 미처리**
   - 파일: `server/src/modules/matching/matching.service.ts` (L748-756)
   - 현재: 이벤트 발행 실패 시 전체 매칭 수락 실패 가능
   - 수정: `Promise.allSettled()` 사용
@@ -202,15 +202,15 @@
 
 ### LOW
 
-- [x] **#37 매직 넘버 추출**
+- [ ] **#37 매직 넘버 추출**
   - 30분 TTL, 10초 폴링, 색상값 `0xFF0A0A0A`, 아바타 크기 56 등
   - 수정: `constants.dart` / `constants.ts` 파일 생성
 
-- [x] **#38 프로덕션 로깅 체계 부재**
+- [ ] **#38 프로덕션 로깅 체계 부재**
   - 현재: `debugPrint()` / `console.log()` 만 사용
   - 수정: Sentry/DataDog 등 로깅 서비스 연동
 
-- [x] **#39 Message 모델 빈 문자열 허용**
+- [ ] **#39 Message 모델 빈 문자열 허용**
   - 파일: `app/lib/models/message.dart`
   - 수정: factory에서 `assert(senderId.isNotEmpty)` 추가
 
@@ -223,7 +223,7 @@
   - `isCasual` 조기 할당
   - 수정: 사용 시점으로 이동
 
-- [x] **#42 에러 코드 enum 일부 미정의**
+- [ ] **#42 에러 코드 enum 일부 미정의**
   - `AUTH_DUPLICATE_EMAIL`, `AUTH_APPLE_FAILED` 등 일부 미등록
   - 수정: 모든 사용처 에러 코드 enum 등록 확인
 
@@ -241,8 +241,8 @@
 
 | Phase | 상태 | 완료 | 전체 |
 |-------|------|------|------|
-| Phase 1 (보안+크래시) | **완료** | **9** | 9 |
-| Phase 2 (성능+안정성) | 진행중 | 10 | 13 |
-| Phase 3 (리팩토링) | 진행중 | 11 | 14 |
-| Phase 4 (코드 품질) | 진행중 | 4 | 8 |
-| **합계** | | **34** | **44** |
+| Phase 1 (보안+크래시) | 미시작 | 0 | 9 |
+| Phase 2 (성능+안정성) | 미시작 | 0 | 13 |
+| Phase 3 (리팩토링) | 미시작 | 0 | 14 |
+| Phase 4 (코드 품질) | 미시작 | 0 | 8 |
+| **합계** | | **0** | **44** |

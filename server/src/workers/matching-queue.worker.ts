@@ -24,7 +24,6 @@ interface WaitingRequest {
   sportsProfileId: string;
   pinId: string;
   sportType: string;
-  desiredDate: Date | null;
   desiredTimeSlot: string | null;
   createdAt: Date;
   expiresAt: Date;
@@ -227,7 +226,6 @@ export async function processMatchingQueue(): Promise<void> {
       mr.sports_profile_id AS "sportsProfileId",
       mr.pin_id AS "pinId",
       mr.sport_type AS "sportType",
-      mr.desired_date AS "desiredDate",
       mr.desired_time_slot AS "desiredTimeSlot",
       mr.created_at AS "createdAt",
       mr.expires_at AS "expiresAt",
@@ -324,16 +322,10 @@ export async function processMatchingQueue(): Promise<void> {
         let createdMatchId = '';
 
         await AppDataSource.transaction(async (manager) => {
-          // 최신 상태 확인 + FOR UPDATE 잠금 (경쟁 조건 방지)
+          // 최신 상태 확인 (race condition 방지)
           const [latestA, latestB] = await Promise.all([
-            manager.createQueryBuilder(MatchRequest, 'mr')
-              .setLock('pessimistic_write')
-              .where('mr.id = :id', { id: pairA.id })
-              .getOne(),
-            manager.createQueryBuilder(MatchRequest, 'mr')
-              .setLock('pessimistic_write')
-              .where('mr.id = :id', { id: pairB.id })
-              .getOne(),
+            manager.findOne(MatchRequest, { where: { id: pairA.id } }),
+            manager.findOne(MatchRequest, { where: { id: pairB.id } }),
           ]);
 
           if (
@@ -367,7 +359,7 @@ export async function processMatchingQueue(): Promise<void> {
             sportType: pairA.sportType as any,
             status: 'PENDING_ACCEPT' as any,
             chatRoomId: savedChatRoom.id,
-            desiredDate: pairA.desiredDate ?? pairB.desiredDate,
+            desiredDate: pairA.createdAt,
             desiredTimeSlot: resolvedSlot as any,
           });
           const savedMatch = await manager.save(Match, match);

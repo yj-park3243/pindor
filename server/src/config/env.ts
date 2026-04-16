@@ -33,10 +33,6 @@ const envSchema = z.object({
   // Firebase (로컬 개발 시 빈 값 허용 — 푸시만 비활성)
   FIREBASE_SERVICE_ACCOUNT: z.string().default(''),
 
-  // KCP 본인인증
-  KCP_SITE_CD: z.string().default('J26040912350'),
-  KCP_CERT_KEY: z.string().default('eaa433b5da2ae426aa0d637e46c5644436c104870fa1eabd4af6e7f26e9536df'),
-
   // 어드민
   ADMIN_SECRET_KEY: z.string().default('dev-admin-secret-key-32chars-min'),
 

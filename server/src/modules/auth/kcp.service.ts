@@ -3,15 +3,13 @@ import { createHmac } from 'crypto';
 import { AppError, ErrorCode } from '../../shared/errors/app-error.js';
 import { issueTokenPair } from '../../shared/utils/jwt.js';
 import { redis } from '../../config/redis.js';
-import { storeRefreshToken } from '../../shared/utils/token.js';
-import { env } from '../../config/env.js';
 import { User, SocialAccount } from '../../entities/index.js';
 import { UserStatus } from '../../entities/enums.js';
 import type { KcpRawResult, KcpVerifyResult } from './kcp.schema.js';
 
 // KCP 설정
-const KCP_SITE_CD = env.KCP_SITE_CD;
-const KCP_CERT_KEY = env.KCP_CERT_KEY;
+const KCP_SITE_CD = 'J26040912350';
+const KCP_CERT_KEY = 'eaa433b5da2ae426aa0d637e46c5644436c104870fa1eabd4af6e7f26e9536df';
 const KCP_CERT_URL = 'https://cert.kcp.co.kr/kcp_cert/cert_view.jsp';
 const KCP_RESULT_URL = 'https://cert.kcp.co.kr/kcp_cert/cert_action_new.jsp';
 const KCP_RESULT_URL_DEV = 'https://testcert.kcp.co.kr/kcp_cert/cert_action_new.jsp';
@@ -78,14 +76,17 @@ export class KcpService {
   // ─────────────────────────────────────
 
   async verifyCert(userId: string, key: string): Promise<KcpVerifyResult> {
-    // key 재사용 방지 체크 (원자적 SET NX로 경쟁 조건 방지)
-    const setResult = await redis.set(`kcp:used_key:${key}`, '1', 'EX', 24 * 3600, 'NX');
-    if (!setResult) {
+    // key 재사용 방지 체크
+    const usedKey = await redis.get(`kcp:used_key:${key}`);
+    if (usedKey) {
       throw new AppError(ErrorCode.KCP_KEY_ALREADY_USED, 409);
     }
 
     // KCP 서버에서 인증 결과 조회
     const kcpData = await this.fetchKcpResult(key);
+
+    // key 사용 처리 (24시간 TTL)
+    await redis.setex(`kcp:used_key:${key}`, 24 * 3600, '1');
 
     // CI 중복 체크
     const userRepo = this.dataSource.getRepository(User);
@@ -129,7 +130,7 @@ export class KcpService {
     if (!updatedUser) throw new AppError(ErrorCode.USER_NOT_FOUND, 404);
 
     const tokens = await issueTokenPair({ userId: updatedUser.id, email: updatedUser.email });
-    await storeRefreshToken(updatedUser.id, tokens.refreshToken);
+    await redis.setex(`refresh_token:${updatedUser.id}`, 30 * 24 * 3600, tokens.refreshToken);
 
     return {
       ...tokens,
@@ -197,7 +198,7 @@ export class KcpService {
       if (!updatedUser) throw new AppError(ErrorCode.USER_NOT_FOUND, 404);
 
       const tokens = await issueTokenPair({ userId: updatedUser.id, email: updatedUser.email });
-      await storeRefreshToken(updatedUser.id, tokens.refreshToken);
+      await redis.setex(`refresh_token:${updatedUser.id}`, 30 * 24 * 3600, tokens.refreshToken);
 
       return {
         ...tokens,
@@ -229,7 +230,7 @@ export class KcpService {
     if (!updatedExisting) throw new AppError(ErrorCode.USER_NOT_FOUND, 404);
 
     const tokens = await issueTokenPair({ userId: updatedExisting.id, email: updatedExisting.email });
-    await storeRefreshToken(updatedExisting.id, tokens.refreshToken);
+    await redis.setex(`refresh_token:${updatedExisting.id}`, 30 * 24 * 3600, tokens.refreshToken);
 
     return {
       ...tokens,
@@ -276,13 +277,9 @@ export class KcpService {
         body: params.toString(),
         signal: AbortSignal.timeout(10000),
       });
-    } catch (e: any) {
-      if (e?.name === 'AbortError' || e?.name === 'TimeoutError') {
-        console.error('[KCP] fetchKcpResult timeout:', e);
-        throw new AppError(ErrorCode.KCP_SERVER_ERROR, 504, 'KCP 인증 서버 응답 시간이 초과되었습니다.');
-      }
+    } catch (e) {
       console.error('[KCP] fetchKcpResult network error:', e);
-      throw new AppError(ErrorCode.KCP_SERVER_ERROR, 502, 'KCP 인증 서버에 연결할 수 없습니다.');
+      throw new AppError(ErrorCode.KCP_SERVER_ERROR, 502);
     }
 
     if (!response.ok) {
