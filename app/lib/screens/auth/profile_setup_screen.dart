@@ -226,7 +226,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                     ),
                   ),
                   Text(
-                    '1 / 3',
+                    '1 / 4',
                     style: TextStyle(
                       fontSize: 12,
                       color: AppTheme.textSecondary,

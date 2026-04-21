@@ -92,6 +92,28 @@ export function useUpdateUserStatus() {
   });
 }
 
+// 휴대폰 인증 처리/해제 뮤테이션
+export function useSetVerified() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, isVerified }: { id: string; isVerified: boolean }) =>
+      usersApi.setVerified(id, isVerified),
+    onSuccess: (_, { id, isVerified }) => {
+      message.success(
+        isVerified
+          ? '휴대폰 인증이 처리되었습니다.'
+          : '휴대폰 인증이 해제되었습니다.',
+      );
+      queryClient.invalidateQueries({ queryKey: USER_QUERY_KEYS.detail(id) });
+      queryClient.invalidateQueries({ queryKey: USER_QUERY_KEYS.all });
+    },
+    onError: () => {
+      message.error('인증 상태 변경에 실패했습니다.');
+    },
+  });
+}
+
 // 사용자 탈퇴 처리 뮤테이션
 export function useWithdrawUser() {
   const queryClient = useQueryClient();

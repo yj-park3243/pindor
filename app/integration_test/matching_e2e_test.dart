@@ -13,91 +13,58 @@ import 'flows/user_b_flow_ui.dart';
 
 /// E2E 매칭 플로우 테스트 — 토큰 주입 방식
 ///
-/// 전략:
-///   1. API로 계정 생성 + 프로필 설정
-///   2. SecureStorage에 토큰 주입 (자동 로그인)
-///   3. 앱 실행
-///   4. 이후 모든 동작은 UI 조작으로 진행
+/// orchestrator(run_matching_test.sh)가 사전 준비:
+///   1. API로 유저 등록 + is_verified=true + 프로필/스포츠/위치 세팅
+///   2. 발급된 토큰과 userId를 --dart-define으로 주입
 ///
-/// 실행 방법:
-///   # User A (iOS 시뮬레이터 'match')
-///   flutter drive \
-///     --driver=test_driver/integration_test.dart \
-///     --target=integration_test/matching_e2e_test.dart \
-///     --dart-define=TEST_USER_ROLE=A \
-///     --dart-define=TEST_API_BASE_URL=http://127.0.0.1:3000/v1 \
-///     -d match
-///
-///   # User B (iOS 시뮬레이터 'kids')
-///   flutter drive \
-///     --driver=test_driver/integration_test.dart \
-///     --target=integration_test/matching_e2e_test.dart \
-///     --dart-define=TEST_USER_ROLE=B \
-///     --dart-define=TEST_API_BASE_URL=http://127.0.0.1:3000/v1 \
-///     -d kids
+/// 테스트는 다음만 수행:
+///   1. SecureStorage에 주입된 토큰 저장
+///   2. 앱 실행 (자동 로그인)
+///   3. 역할별 UI 시나리오 (매칭 요청 → 수락 → 결과 → 점수 반영)
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   final api = ApiHelper();
 
   const role = String.fromEnvironment('TEST_USER_ROLE', defaultValue: 'A');
+  const accessToken = String.fromEnvironment('TEST_ACCESS_TOKEN');
+  const refreshToken = String.fromEnvironment('TEST_REFRESH_TOKEN');
+  const userId = String.fromEnvironment('TEST_USER_ID');
 
   testWidgets(
     '매칭 E2E — UI 조작 방식 — 역할: $role',
     (tester) async {
-      final ts = DateTime.now().millisecondsSinceEpoch;
-
-      // ── 1. API로 계정 생성 ──────────────────────────────────────────
-      final email =
-          'e2e_${role.toLowerCase()}_$ts@test.com';
-      final regResult = await api.registerFull(email, 'test123456');
-      final token = regResult['accessToken'] as String;
-      final userId = (regResult['user'] as Map<String, dynamic>)['id'] as String;
-
-      // ── 2. 프로필 설정 (API) ─────────────────────────────────────────
-      final nickname = '테스트${role}_$ts';
-      await api.updateProfile(token, nickname: nickname);
-
-      await api.createSportsProfile(
-        token,
-        sportType: TestConfig.testSportType,
-        displayName: '테스트골퍼$role',
-        gHandicap: 30.0,
+      expect(
+        accessToken.isNotEmpty,
+        true,
+        reason:
+            'TEST_ACCESS_TOKEN이 비어있습니다. run_matching_test.sh로 실행하거나 --dart-define=TEST_ACCESS_TOKEN=... 을 지정하세요.',
       );
+      expect(userId.isNotEmpty, true,
+          reason: 'TEST_USER_ID가 비어있습니다.');
 
-      await api.setLocation(
-        token,
-        latitude: TestConfig.testLatitude,
-        longitude: TestConfig.testLongitude,
-        address: TestConfig.testAddress,
-      );
+      debugPrint('[E2E] role=$role userId=$userId');
 
-      // ── 3. SecureStorage에 토큰 주입 ────────────────────────────────
-      // 앱과 동일한 옵션으로 storage 인스턴스 생성
+      // ── 1. SecureStorage에 토큰 주입 ────────────────────────────────
       const storage = FlutterSecureStorage(
-        aOptions: AndroidOptions(
-          encryptedSharedPreferences: true,
-        ),
+        aOptions: AndroidOptions(encryptedSharedPreferences: true),
         iOptions: IOSOptions(
           accessibility: KeychainAccessibility.first_unlock_this_device,
         ),
       );
 
-      await storage.deleteAll(); // 기존 토큰 초기화
-      await storage.write(key: 'access_token', value: token);
-      await storage.write(
-        key: 'refresh_token',
-        value: regResult['refreshToken'] as String,
-      );
+      await storage.deleteAll();
+      await storage.write(key: 'access_token', value: accessToken);
+      if (refreshToken.isNotEmpty) {
+        await storage.write(key: 'refresh_token', value: refreshToken);
+      }
       await storage.write(key: 'user_id', value: userId);
 
-      // ── 4. 앱 실행 (자동 로그인) ────────────────────────────────────
+      // ── 2. 앱 실행 (자동 로그인) ────────────────────────────────────
       unawaited(Future(() => app.main()));
 
-      // 스플래시→홈 전환 대기 (pumpAndSettle 대신 반복 pump)
       bool reachedHome = false;
       for (var i = 0; i < 30; i++) {
         await tester.pump(const Duration(seconds: 1));
-        // 바텀 네비의 '홈' 텍스트가 보이면 홈 도달
         if (find.text('홈').evaluate().isNotEmpty) {
           reachedHome = true;
           break;
@@ -106,13 +73,13 @@ void main() {
       debugPrint('[E2E] 홈 도달: $reachedHome (role: $role)');
       await tester.pump(const Duration(seconds: 2));
 
-      // ── 5. 역할별 UI 플로우 실행 ────────────────────────────────────
+      // ── 3. 역할별 UI 플로우 실행 ────────────────────────────────────
       if (role == 'A') {
         await runUserAFlowUI(
           tester,
           binding,
           api: api,
-          token: token,
+          token: accessToken,
           userId: userId,
         );
       } else if (role == 'B') {
@@ -120,22 +87,11 @@ void main() {
           tester,
           binding,
           api: api,
-          token: token,
+          token: accessToken,
           userId: userId,
         );
       } else {
-        fail(
-          'TEST_USER_ROLE 환경변수를 "A" 또는 "B"로 설정하세요.\n'
-          '현재 값: "$role"\n'
-          '예: --dart-define=TEST_USER_ROLE=A',
-        );
-      }
-
-      // ── 6. Cleanup ───────────────────────────────────────────────────
-      try {
-        await api.deleteUser(token);
-      } catch (e) {
-        debugPrint('[E2E] 계정 삭제 실패 (수동 정리 필요): $e');
+        fail('TEST_USER_ROLE 환경변수는 "A" 또는 "B"여야 합니다. 현재: "$role"');
       }
     },
     timeout: const Timeout(TestConfig.testTimeout),

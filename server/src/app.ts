@@ -1,6 +1,7 @@
 import Fastify, { FastifyInstance } from 'fastify';
 import fastifyCors from '@fastify/cors';
 import fastifyEtag from '@fastify/etag';
+import fastifyFormbody from '@fastify/formbody';
 import fastifyHelmet from '@fastify/helmet';
 import fastifySwagger from '@fastify/swagger';
 import fastifySwaggerUi from '@fastify/swagger-ui';
@@ -86,6 +87,7 @@ export async function createApp(): Promise<FastifyInstance> {
   // 보안 플러그인
   // ─────────────────────────────────────
 
+  await fastify.register(fastifyFormbody); // KCP 콜백 등 x-www-form-urlencoded 파싱
   await fastify.register(fastifyHelmet, {
     contentSecurityPolicy: false,
   });

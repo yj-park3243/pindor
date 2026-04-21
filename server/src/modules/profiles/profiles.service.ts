@@ -7,6 +7,37 @@ import type {
   UpdateSportsProfileDto,
 } from './profiles.schema.js';
 
+/**
+ * 종목별 실력 점수를 초기 MMR(ELO)로 변환.
+ * 일반인 수준(기준값) = 1000, 실력자는 ±로 이동.
+ */
+function skillScoreToInitialMmr(
+  sportType: SportType,
+  skillScore: number | null | undefined,
+  gHandicap: number | null | undefined,
+): number {
+  if (sportType === SportType.GOLF) {
+    // G핸디는 낮을수록 고수. 기존 elo.gHandicapToInitialScore 사용.
+    if (gHandicap != null) return gHandicapToInitialScore(gHandicap);
+    if (skillScore != null) return gHandicapToInitialScore(skillScore);
+    return 1000;
+  }
+  if (skillScore == null) return 1000;
+  switch (sportType) {
+    case SportType.BILLIARDS_4BALL:
+      // 4구: 100점 = 1000, 점수 10 증가 시 MMR 10 증가
+      return Math.round(1000 + (skillScore - 100) * 1.0);
+    case SportType.BILLIARDS_3CUSHION:
+      // 3쿠션: 15점 = 1000, 점수 1 증가 시 MMR 10 증가
+      return Math.round(1000 + (skillScore - 15) * 10);
+    case SportType.BOWLING:
+      // 볼링 평균: 150 = 1000, 평균 1 증가 시 MMR 2 증가
+      return Math.round(1000 + (skillScore - 150) * 2);
+    default:
+      return 1000;
+  }
+}
+
 export class ProfilesService {
   constructor(private dataSource: DataSource) {}
 
@@ -29,11 +60,14 @@ export class ProfilesService {
       );
     }
 
-    // G핸디 → ELO 초기 점수 변환 (골프 전용)
-    let initialScore = 1000;
-    if (dto.sportType === SportType.GOLF && dto.gHandicap !== undefined) {
-      initialScore = gHandicapToInitialScore(dto.gHandicap);
-    }
+    // 종목별 실력 점수 → 초기 MMR 변환
+    let initialScore = skillScoreToInitialMmr(
+      dto.sportType,
+      dto.skillScore,
+      dto.gHandicap,
+    );
+    // MMR 허용 범위 제한 (400 ~ 1800)
+    initialScore = Math.max(400, Math.min(1800, initialScore));
 
     const tier: Tier = calculateTier(initialScore);
 

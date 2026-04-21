@@ -22,27 +22,62 @@ class SportProfileSetupScreen extends ConsumerStatefulWidget {
 class _SportProfileSetupScreenState
     extends ConsumerState<SportProfileSetupScreen> {
   String _selectedSport = 'GOLF';
-  final _gHandiController = TextEditingController();
+  final _skillController = TextEditingController();
   final _displayNameController = TextEditingController();
-  double _gHandicap = 20.0;
   bool _isLoading = false;
 
-  // allSports from config/sports.dart (서버 enum과 일치)
+  /// 종목별 실력 점수 메타데이터
+  /// - label: 표시 라벨
+  /// - hint: placeholder
+  /// - defaultValue: 일반인 수준 기본값 (→ MMR 1000)
+  /// - min/max: 입력 허용 범위
+  static const Map<String, Map<String, Object>> _skillMeta = {
+    'GOLF': {
+      'label': '골프존 G핸디',
+      'hint': '0.0 ~ 54.0 (낮을수록 고수)',
+      'defaultValue': 15.0,
+      'min': 0.0,
+      'max': 54.0,
+      'caption': '예: G핸디 15 = MMR 1000',
+    },
+    'BILLIARDS_4BALL': {
+      'label': '당구 4구 점수',
+      'hint': '예: 100 (일반), 200+ 고수',
+      'defaultValue': 100.0,
+      'min': 0.0,
+      'max': 1000.0,
+      'caption': '예: 100점 = MMR 1000, 200점 = MMR 1100',
+    },
+    'BILLIARDS_3CUSHION': {
+      'label': '당구 3쿠션 점수',
+      'hint': '예: 15 (일반), 25+ 고수',
+      'defaultValue': 15.0,
+      'min': 0.0,
+      'max': 100.0,
+      'caption': '예: 15점 = MMR 1000, 25점 = MMR 1100',
+    },
+    'BOWLING': {
+      'label': '볼링 평균 점수',
+      'hint': '예: 150 (일반), 200+ 고수',
+      'defaultValue': 150.0,
+      'min': 0.0,
+      'max': 300.0,
+      'caption': '예: 150점 = MMR 1000, 200점 = MMR 1100',
+    },
+  };
 
-  void _updateGHandicap(double value) {
-    setState(() {
-      _gHandicap = value;
-      _gHandiController.text = value.toStringAsFixed(1);
-    });
-  }
+  Map<String, Object>? get _currentSkillMeta => _skillMeta[_selectedSport];
 
-  void _updateGHandicapFromText(String value) {
-    final parsed = double.tryParse(value);
-    if (parsed != null) {
-      setState(() {
-        _gHandicap = parsed.clamp(0, 54);
-      });
-    }
+  double? _parseSkillScore() {
+    final meta = _currentSkillMeta;
+    if (meta == null) return null;
+    final raw = _skillController.text.trim();
+    if (raw.isEmpty) return (meta['defaultValue'] as num).toDouble();
+    final parsed = double.tryParse(raw);
+    if (parsed == null) return null;
+    final min = (meta['min'] as num).toDouble();
+    final max = (meta['max'] as num).toDouble();
+    return parsed.clamp(min, max);
   }
 
   Future<void> _submit() async {
@@ -50,10 +85,13 @@ class _SportProfileSetupScreenState
 
     try {
       final repo = ref.read(profileRepositoryProvider);
+      final skillScore = _parseSkillScore();
+
       await repo.createSportsProfile(
         sportType: _selectedSport,
-        displayName: _displayNameController.text.trim(),
-        gHandicap: _selectedSport == 'GOLF' ? _gHandicap : null,
+        matchMessage: _displayNameController.text.trim(),
+        gHandicap: _selectedSport == 'GOLF' ? skillScore : null,
+        skillScore: skillScore,
       );
 
       if (mounted) context.go(AppRoutes.locationSetup);
@@ -66,9 +104,58 @@ class _SportProfileSetupScreenState
     }
   }
 
+  List<Widget> _buildSkillScoreField() {
+    final meta = _currentSkillMeta;
+    if (meta == null) return const [];
+    return [
+      const SizedBox(height: 24),
+      Row(
+        children: [
+          Text(
+            meta['label'] as String,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: AppTheme.secondaryColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: const Text(
+              '선택',
+              style: TextStyle(
+                fontSize: 11,
+                color: AppTheme.secondaryColor,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 4),
+      Text(
+        meta['caption'] as String,
+        style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+      ),
+      const SizedBox(height: 12),
+      TextField(
+        controller: _skillController,
+        keyboardType:
+            const TextInputType.numberWithOptions(decimal: true),
+        decoration: InputDecoration(
+          hintText: meta['hint'] as String,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        ),
+        onChanged: (_) => setState(() {}),
+      ),
+    ];
+  }
+
   @override
   void dispose() {
-    _gHandiController.dispose();
+    _skillController.dispose();
     _displayNameController.dispose();
     super.dispose();
   }
@@ -170,69 +257,13 @@ class _SportProfileSetupScreenState
               controller: _displayNameController,
               maxLength: 30,
               decoration: const InputDecoration(
-                hintText: '예: 한판 붙자!',
+                hintText: '예: 자주 가는 동네, 상호명',
                 counterText: '',
               ),
             ),
 
-            // G핸디 입력 (골프만)
-            if (_selectedSport == 'GOLF') ...[
-              const SizedBox(height: 24),
-
-              Row(
-                children: [
-                  const Text(
-                    '골프존 G핸디',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: AppTheme.secondaryColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: const Text(
-                      '선택',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: AppTheme.secondaryColor,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                '정확한 매칭을 위해 입력해주세요.',
-                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-              ),
-              const SizedBox(height: 14),
-
-              // Slider + 현재 값 표시
-              AdaptiveSlider(
-                value: _gHandicap / 54,
-                min: 0.0,
-                max: 1.0,
-                onChanged: (value) => _updateGHandicap(value * 54),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _gHandiController
-                  ..text = _gHandicap.toStringAsFixed(1),
-                keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true),
-                textAlign: TextAlign.center,
-                decoration: const InputDecoration(
-                  hintText: '0.0 ~ 54.0',
-                  contentPadding: EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 12),
-                ),
-                onChanged: _updateGHandicapFromText,
-              ),
-            ],
+            // 종목별 실력 점수 입력
+            ..._buildSkillScoreField(),
 
             const SizedBox(height: 48),
 

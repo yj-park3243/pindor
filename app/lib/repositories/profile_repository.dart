@@ -12,6 +12,7 @@ class ProfileRepository {
     String? displayName,
     String? matchMessage,
     double? gHandicap,
+    double? skillScore,
   }) async {
     final response = await _api.post(
       '/sports-profiles',
@@ -20,6 +21,7 @@ class ProfileRepository {
         if (displayName != null && displayName.isNotEmpty) 'displayName': displayName,
         if (matchMessage != null && matchMessage.isNotEmpty) 'matchMessage': matchMessage,
         if (gHandicap != null) 'gHandicap': gHandicap,
+        if (skillScore != null) 'skillScore': skillScore,
       },
     );
     return SportsProfile.fromJson(response['data'] as Map<String, dynamic>);

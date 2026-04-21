@@ -19,7 +19,8 @@ import { ArrowLeftOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/ko';
-import { useUserDetail, useUserGameHistory } from '@/hooks/useUsers';
+import { useUserDetail, useUserGameHistory, useSetVerified } from '@/hooks/useUsers';
+import { Modal } from 'antd';
 import { UserAvatar } from '@/components/UserAvatar';
 import { TierBadge } from '@/components/TierBadge';
 import {
@@ -41,6 +42,22 @@ export function UserDetailPage() {
 
   const { data: user, isLoading, error } = useUserDetail(id!);
   const { data: gameHistory } = useUserGameHistory(id!);
+  const setVerifiedMutation = useSetVerified();
+
+  const handleToggleVerified = () => {
+    if (!user) return;
+    const next = !user.isVerified;
+    Modal.confirm({
+      title: next ? '휴대폰 인증 처리' : '휴대폰 인증 해제',
+      content: next
+        ? '이 사용자의 휴대폰 인증을 수동으로 처리합니다. KCP 본인인증 없이 is_verified=true로 설정됩니다.'
+        : '이 사용자의 휴대폰 인증을 해제합니다. is_verified=false로 변경됩니다.',
+      okText: next ? '인증 처리' : '인증 해제',
+      okType: next ? 'primary' : 'danger',
+      cancelText: '취소',
+      onOk: () => setVerifiedMutation.mutateAsync({ id: id!, isVerified: next }),
+    });
+  };
 
   if (isLoading) {
     return (
@@ -139,6 +156,24 @@ export function UserDetailPage() {
               </Descriptions.Item>
               <Descriptions.Item label="전화번호">
                 {user.phone || <Text type="secondary">없음</Text>}
+              </Descriptions.Item>
+              <Descriptions.Item label="휴대폰 인증">
+                <Space>
+                  {user.isVerified ? (
+                    <Tag color="green">인증됨</Tag>
+                  ) : (
+                    <Tag color="orange">미인증</Tag>
+                  )}
+                  <Button
+                    size="small"
+                    type={user.isVerified ? 'default' : 'primary'}
+                    danger={user.isVerified}
+                    loading={setVerifiedMutation.isPending}
+                    onClick={handleToggleVerified}
+                  >
+                    {user.isVerified ? '인증 해제' : '인증 처리'}
+                  </Button>
+                </Space>
               </Descriptions.Item>
               <Descriptions.Item label="가입일">
                 {dayjs(user.createdAt).format('YYYY-MM-DD')}

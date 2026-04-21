@@ -288,7 +288,7 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
     }
   }
 
-  /// 사용자 정보 갱신
+  /// 사용자 정보 갱신 — user뿐만 아니라 isNewUser/isVerified도 재계산
   Future<void> refreshUser() async {
     if (state.valueOrNull?.isAuthenticated != true) return;
 
@@ -296,11 +296,26 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
       final repo = ref.read(userRepositoryProvider);
       final user = await repo.getMe();
       if (user != null) {
-        state = AsyncData(state.requireValue.copyWith(user: user));
+        final isVerified = user.isVerified ?? false;
+        final hasNickname =
+            user.nickname != null && user.nickname!.isNotEmpty;
+        final isSetupIncomplete = !isVerified || !hasNickname;
+        state = AsyncData(state.requireValue.copyWith(
+          user: user,
+          isNewUser: isSetupIncomplete,
+          isVerified: isVerified,
+        ));
       }
     } catch (e) {
       // 갱신 실패 시 현재 상태 유지
     }
+  }
+
+  /// 회원가입 모든 단계 완료 — isNewUser=false로 강제
+  void completeSetup() {
+    final current = state.valueOrNull;
+    if (current == null) return;
+    state = AsyncData(current.copyWith(isNewUser: false));
   }
 
   /// 로그아웃

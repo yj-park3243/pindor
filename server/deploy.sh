@@ -27,6 +27,8 @@ rsync -az --delete \
   --exclude prisma \
   --exclude tmp \
   --exclude tests \
+  --exclude cert \
+  --exclude public \
   -e "ssh -i $KEY" \
   "$LOCAL_DIR/" "$HOST:$REMOTE_DIR/"
 

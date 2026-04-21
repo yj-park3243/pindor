@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -23,14 +25,31 @@ class _PhoneVerificationScreenState
   bool _isLoading = true;
   bool _isVerifying = false;
   String? _errorMessage;
+  Timer? _timeoutTimer;
 
   static const _kcpReturnScheme = 'spots';
   static const _kcpReturnHost = 'kcp-cert';
+  static const _authTimeout = Duration(minutes: 5);
 
   @override
   void initState() {
     super.initState();
     _loadKcpForm();
+  }
+
+  @override
+  void dispose() {
+    _timeoutTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startTimeout() {
+    _timeoutTimer?.cancel();
+    _timeoutTimer = Timer(_authTimeout, () {
+      if (mounted && !_isVerifying && _errorMessage == null) {
+        _showError('인증 시간이 초과되었습니다.\n다시 시도해주세요.');
+      }
+    });
   }
 
   Future<void> _loadKcpForm() async {
@@ -52,12 +71,13 @@ class _PhoneVerificationScreenState
             if (uri != null &&
                 uri.scheme == _kcpReturnScheme &&
                 uri.host == _kcpReturnHost) {
-              // spots://kcp-cert?key=XXXXX 딥링크 수신
-              final key = uri.queryParameters['key'];
-              if (key != null && key.isNotEmpty) {
-                _handleKcpCallback(key);
+              // spots://kcp-cert?status=success&accessToken=...&nextRoute=...
+              final status = uri.queryParameters['status'];
+              if (status == 'success') {
+                _handleKcpSuccess(uri.queryParameters);
               } else {
-                _showError('인증 결과를 받지 못했습니다. 다시 시도해주세요.');
+                final message = uri.queryParameters['message'] ?? '인증에 실패했습니다.';
+                _showError(Uri.decodeComponent(message));
               }
               return NavigationDecision.prevent;
             }
@@ -67,11 +87,24 @@ class _PhoneVerificationScreenState
             setState(() => _isLoading = false);
           },
           onWebResourceError: (error) {
-            // spots:// 딥링크 URL로 인한 에러는 무시
             final errorUrl = error.url ?? '';
+            // spots:// 딥링크 에러는 무시
             if (errorUrl.startsWith('$_kcpReturnScheme://')) return;
-            // KCP 인증 서버 접속 에러도 무시 (form submit 후 KCP 페이지로 전환되는 과정)
-            // 실제 에러는 사용자가 인증을 진행하지 못하는 상황에서만 표시
+            // 메인 프레임 아닌 리소스(이미지/폰트)는 무시
+            if (error.isForMainFrame != true) return;
+            // 메인 페이지 로드 실패 시 에러 표시
+            if (mounted && !_isVerifying && _errorMessage == null) {
+              _showError('인증 페이지를 불러올 수 없습니다.\n네트워크를 확인하고 다시 시도해주세요.');
+            }
+          },
+          onHttpError: (error) {
+            final url = error.request?.uri.toString() ?? '';
+            if (url.startsWith('$_kcpReturnScheme://')) return;
+            // 5xx 응답 시 에러 표시
+            final code = error.response?.statusCode ?? 0;
+            if (code >= 500 && mounted && !_isVerifying && _errorMessage == null) {
+              _showError('본인인증 서버 오류입니다. (HTTP $code)\n잠시 후 다시 시도해주세요.');
+            }
           },
         ),
       );
@@ -82,6 +115,7 @@ class _PhoneVerificationScreenState
           _controller = controller;
           _isLoading = false;
         });
+        _startTimeout();
       }
     } catch (e) {
       if (mounted) {
@@ -93,59 +127,50 @@ class _PhoneVerificationScreenState
     }
   }
 
-  Future<void> _handleKcpCallback(String key) async {
+  Future<void> _handleKcpSuccess(Map<String, String> params) async {
     if (_isVerifying) return;
-
+    _timeoutTimer?.cancel();
     setState(() => _isVerifying = true);
 
     try {
-      final kcpRepo = ref.read(kcpRepositoryProvider);
-      final result = await kcpRepo.verify(key);
+      final accessToken = params['accessToken'] ?? '';
+      final refreshToken = params['refreshToken'] ?? '';
+      final userId = params['userId'] ?? '';
+      final nickname = params['nickname'] ?? '';
+      final nextRoute = params['nextRoute'] ?? 'profile-setup';
+      final isNewUser = params['isNewUser'] == 'true';
 
-      final accessToken = result['accessToken'] as String;
-      final refreshToken = result['refreshToken'] as String;
-      final userData = result['user'] as Map<String, dynamic>;
-      final isNewUser = userData['isNewUser'] as bool? ?? true;
-      final nextRoute = result['nextRoute'] as String? ?? 'profile-setup';
+      if (accessToken.isEmpty || userId.isEmpty) {
+        _showError('인증 결과를 받지 못했습니다.');
+        return;
+      }
 
-      // AuthProvider 상태 업데이트
       ref.read(authStateProvider.notifier).completeVerification(
             accessToken: accessToken,
             refreshToken: refreshToken,
-            userData: userData,
+            userData: {
+              'id': userId,
+              'nickname': nickname,
+              'isNewUser': isNewUser,
+              'isVerified': true,
+            },
             isNewUser: isNewUser,
           );
 
       if (!mounted) return;
 
       if (nextRoute == 'home') {
-        // 기존 계정으로 자동 로그인
         AppToast.info('기존 계정으로 로그인되었습니다.');
         context.go(AppRoutes.home);
       } else {
-        // 정상 신규 가입 → 프로필 설정
         context.go(AppRoutes.profileSetup);
       }
-    } on ApiException catch (e) {
+    } catch (e, st) {
+      debugPrint('[KCP] 인증 처리 실패: $e\n$st');
       if (!mounted) return;
-
-      if (e.statusCode == 403 && e.code == 'KCP_001') {
-        // PHONE_NUMBER_BANNED
-        await _showBannedDialog();
-      } else if (e.statusCode == 409 && e.code == 'KCP_003') {
-        // KCP_KEY_ALREADY_USED
-        AppToast.info('이미 처리된 인증입니다.');
-        context.go(AppRoutes.home);
-      } else {
-        _showError(e.message);
-      }
-    } catch (e) {
-      if (!mounted) return;
-      _showError('인증 처리 중 오류가 발생했습니다. 다시 시도해주세요.');
+      _showError('인증 처리 중 오류가 발생했습니다.\n(${e.toString()})');
     } finally {
-      if (mounted) {
-        setState(() => _isVerifying = false);
-      }
+      if (mounted) setState(() => _isVerifying = false);
     }
   }
 
@@ -171,6 +196,7 @@ class _PhoneVerificationScreenState
 
   void _showError(String message) {
     if (!mounted) return;
+    _timeoutTimer?.cancel();
     setState(() => _errorMessage = message);
   }
 

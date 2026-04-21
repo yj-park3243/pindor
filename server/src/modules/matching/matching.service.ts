@@ -512,7 +512,7 @@ export class MatchingService {
     if (rawCandidates.length === 0) return 0;
 
     const requesterAge = opts.requesterBirthDate
-      ? calculateAge(opts.requesterBirthDate)
+      ? calculateAge(new Date(opts.requesterBirthDate))
       : null;
 
     // 2) 필터링: 성별 조건 + 나이 조건 (양방향)

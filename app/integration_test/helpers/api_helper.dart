@@ -287,19 +287,25 @@ class ApiHelper {
   // ─── 경기 결과 ───────────────────────────────────────────────
 
   /// 경기 결과 입력
+  /// - winnerId: 스포츠 프로필 ID (UUID). userId 아님.
+  /// - verificationCode: 상대방의 4자리 코드 (match의 opponent/requester verificationCode)
   Future<void> submitGameResult(
     String token,
     String gameId, {
     required int myScore,
     required int opponentScore,
-    required String winnerId,
+    required String verificationCode,
+    String? winnerId,
+    String? claimedResult,
   }) async {
     await _dio.post(
       '/games/$gameId/result',
       data: {
         'myScore': myScore,
         'opponentScore': opponentScore,
-        'winnerId': winnerId,
+        'verificationCode': verificationCode,
+        if (winnerId != null) 'winnerId': winnerId,
+        if (claimedResult != null) 'claimedResult': claimedResult,
       },
       options: _authOptions(token),
     );

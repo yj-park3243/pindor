@@ -1355,7 +1355,6 @@ class _MatchListTileState extends ConsumerState<_MatchListTile>
       case 'PENDING_ACCEPT':
         return Colors.amber;
       case 'CHAT':
-        return AppTheme.primaryColor;
       case 'CONFIRMED':
         return Colors.blue;
       default:
@@ -1601,13 +1600,10 @@ class _ActiveStatusRow extends StatelessWidget {
     if (match.isPendingAccept) {
       dotColor = Colors.amber;
       label = '수락 대기중';
-    } else if (match.isChat) {
-      dotColor = AppTheme.primaryColor;
-      label = '매칭 성사 · 경기 전';
     } else {
-      // CONFIRMED
+      // CHAT / CONFIRMED
       dotColor = Colors.blue;
-      label = '경기 확정';
+      label = '매칭 성사 · 경기 전';
     }
 
     return Row(
@@ -1772,12 +1768,9 @@ class _StatusChip extends StatelessWidget {
         label = '상대 응답 대기';
         break;
       case 'CHAT':
-        color = AppTheme.primaryColor;
-        label = '채팅 중';
-        break;
       case 'CONFIRMED':
         color = Colors.blue;
-        label = '경기 확정';
+        label = '채팅 중';
         break;
       case 'COMPLETED':
         color = AppTheme.textSecondary;

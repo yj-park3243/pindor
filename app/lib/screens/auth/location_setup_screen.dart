@@ -92,6 +92,9 @@ class _LocationSetupScreenState extends ConsumerState<LocationSetupScreen> {
       // 유저 정보 새로 고침 (sportsProfiles 포함)
       await ref.read(authStateProvider.notifier).refreshUser();
 
+      // 회원가입 4단계 전체 완료 → isNewUser=false로 강제
+      ref.read(authStateProvider.notifier).completeSetup();
+
       if (mounted) context.go(AppRoutes.home);
     } catch (e) {
       if (mounted) {

@@ -49,6 +49,14 @@ export const usersApi = {
     await apiClient.delete(`/admin/users/${id}`, { data: { reason } });
   },
 
+  // 휴대폰 인증 수동 처리/해제
+  setVerified: async (id: string, isVerified: boolean): Promise<User> => {
+    const response = await apiClient.patch(`/admin/users/${id}/verify`, {
+      isVerified,
+    });
+    return response.data.data;
+  },
+
   // 사용자 경기 이력 조회
   getGameHistory: async (id: string, params?: { page?: number; pageSize?: number }) => {
     const response = await apiClient.get(`/admin/users/${id}/games`, { params });

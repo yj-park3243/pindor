@@ -40,6 +40,52 @@ export async function adminUsersExtRoutes(fastify: FastifyInstance): Promise<voi
     },
   );
 
+  // ─── PATCH /admin/users/:id/verify ── 휴대폰 인증 처리/해제 (ADMIN 이상)
+  fastify.patch(
+    '/admin/users/:id/verify',
+    {
+      onRequest: [fastify.authenticate, requireAdmin(AdminRole.ADMIN)],
+      schema: {
+        tags: ['Admin'],
+        summary: '휴대폰 인증 수동 처리/해제',
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: 'object',
+          properties: { id: { type: 'string', format: 'uuid' } },
+        },
+        body: {
+          type: 'object',
+          properties: {
+            isVerified: { type: 'boolean' },
+          },
+          required: ['isVerified'],
+        },
+      },
+    },
+    async (
+      request: FastifyRequest<{
+        Params: { id: string };
+        Body: { isVerified: boolean };
+      }>,
+      reply: FastifyReply,
+    ) => {
+      const { isVerified } = request.body;
+      const userRepo = AppDataSource.getRepository(User);
+      const user = await userRepo.findOne({ where: { id: request.params.id } });
+      if (!user) {
+        throw AppError.notFound(ErrorCode.USER_NOT_FOUND);
+      }
+      await userRepo.update(request.params.id, {
+        isVerified,
+        verifiedAt: isVerified ? new Date() : null,
+      });
+      const updated = await userRepo.findOne({
+        where: { id: request.params.id },
+      });
+      return reply.send({ success: true, data: updated });
+    },
+  );
+
   // ─── PATCH /admin/users/:id/unsuspend ── 사용자 정지 해제
   fastify.patch(
     '/admin/users/:id/unsuspend',
