@@ -14,10 +14,11 @@ import {
   Badge,
 } from 'antd';
 import type { TableColumnsType } from 'antd';
-import { SearchOutlined, CloseCircleOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { SearchOutlined, CloseCircleOutlined, CheckCircleOutlined, MessageOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useMatchList, useForceCancel, useForceComplete } from '@/hooks/useMatches';
 import { ConfirmAction } from '@/components/ConfirmAction';
+import { ChatDrawer } from '@/components/ChatDrawer';
 import { MATCH_STATUS_CONFIG, SPORT_TYPE_CONFIG } from '@/config/constants';
 import type { Match, MatchStatus } from '@/types/match';
 import type { SportType } from '@/types/user';
@@ -30,6 +31,7 @@ export function MatchListPage() {
   const [sportType, setSportType] = useState<SportType | undefined>();
   const [page, setPage] = useState(1);
   const [cancelTarget, setCancelTarget] = useState<Match | null>(null);
+  const [chatMatchId, setChatMatchId] = useState<string | null>(null);
 
   const { data, isLoading } = useMatchList({
     search: search || undefined,
@@ -106,6 +108,15 @@ export function MatchListPage() {
       key: 'actions',
       render: (_, record) => (
         <Space>
+          {record.chatRoomId && (
+            <Tooltip title="채팅 보기">
+              <Button
+                type="text"
+                icon={<MessageOutlined />}
+                onClick={() => setChatMatchId(record.id)}
+              />
+            </Tooltip>
+          )}
           {['CHAT', 'CONFIRMED'].includes(record.status) && (
             <>
               <Tooltip title="강제 취소">
@@ -129,7 +140,7 @@ export function MatchListPage() {
           )}
         </Space>
       ),
-      width: 100,
+      width: 130,
     },
   ];
 
@@ -205,6 +216,11 @@ export function MatchListPage() {
           scroll={{ x: 900 }}
         />
       </Card>
+
+      <ChatDrawer
+        matchId={chatMatchId}
+        onClose={() => setChatMatchId(null)}
+      />
 
       <ConfirmAction
         open={!!cancelTarget}

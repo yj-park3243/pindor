@@ -126,10 +126,10 @@ class _MatchListScreenState extends ConsumerState<MatchListScreen> {
     final waitingCount = waitingRequests.length;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: AppTheme.backgroundDark,
       appBar: AppBar(
         title: const Text('매칭'),
-        backgroundColor: const Color(0xFF0A0A0A),
+        backgroundColor: AppTheme.backgroundDark,
         elevation: 0,
         actions: [
           IconButton(
@@ -395,7 +395,7 @@ class _MatchListScreenState extends ConsumerState<MatchListScreen> {
             child: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: const Color(0xFF2A2A2A),
+                color: AppTheme.borderColor,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
@@ -421,7 +421,7 @@ class _MatchListScreenState extends ConsumerState<MatchListScreen> {
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: compact ? 10 : 12, vertical: 8),
         decoration: BoxDecoration(
-          color: const Color(0xFF2A2A2A),
+          color: AppTheme.borderColor,
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
@@ -456,7 +456,7 @@ class _MatchListScreenState extends ConsumerState<MatchListScreen> {
         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.white),
       )).toList(),
       selectedItemIndex: selectedIndex,
-      backgroundColor: const Color(0xFF1E1E1E),
+      backgroundColor: AppTheme.cardDark,
       headerBuilder: (_) => Padding(
         padding: const EdgeInsets.only(top: 8, bottom: 4),
         child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
@@ -492,7 +492,7 @@ class _FilterChip extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
-            color: selected ? AppTheme.primaryColor.withValues(alpha: 0.2) : const Color(0xFF2A2A2A),
+            color: selected ? AppTheme.primaryColor.withValues(alpha: 0.2) : AppTheme.borderColor,
             borderRadius: BorderRadius.circular(8),
             border: selected ? Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.5)) : null,
           ),
@@ -573,9 +573,9 @@ class _WaitingRequestCard extends ConsumerWidget {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
+        color: AppTheme.cardDark,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF2A2A2A)),
+        border: Border.all(color: AppTheme.borderColor),
       ),
       child: Column(
         children: [
@@ -654,7 +654,7 @@ class _WaitingRequestCard extends ConsumerWidget {
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 20),
             height: 1,
-            color: const Color(0xFF2A2A2A),
+            color: AppTheme.borderColor,
           ),
 
           const SizedBox(height: 14),
@@ -968,9 +968,9 @@ class _PendingMatchCardState extends ConsumerState<_PendingMatchCard> {
 
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
+        color: AppTheme.cardDark,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF2A2A2A), width: 1),
+        border: Border.all(color: AppTheme.borderColor, width: 1),
       ),
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -1142,7 +1142,7 @@ class _PendingMatchCardState extends ConsumerState<_PendingMatchCard> {
               child: LinearProgressIndicator(
                 value: _progressRatio,
                 minHeight: 5,
-                backgroundColor: const Color(0xFF2A2A2A),
+                backgroundColor: AppTheme.borderColor,
                 valueColor: AlwaysStoppedAnimation<Color>(_timerColor),
               ),
             ),
@@ -1338,27 +1338,27 @@ class _MatchListTileState extends ConsumerState<_MatchListTile>
     }
   }
 
-  /// 좌측 강조 색상
+  /// 좌측 강조 색상 (tokens.js stateXXX 기반)
   Color _statusAccentColor() {
     if (match.isCompleted && match.gameResult != null) {
       switch (match.gameResult) {
         case 'WIN':
-          return const Color(0xFF22C55E); // 선명한 초록
+          return AppTheme.stateCompleted;
         case 'LOSS':
-          return const Color(0xFFEF4444); // 선명한 빨강
+          return AppTheme.rejectColor;
         case 'DRAW':
-          return const Color(0xFF9CA3AF);
+          return AppTheme.stateCanceled;
       }
     }
-    if (match.isCancelled) return const Color(0xFF9CA3AF);
+    if (match.isCancelled) return AppTheme.stateCanceled;
     switch (match.status) {
       case 'PENDING_ACCEPT':
-        return Colors.amber;
+        return AppTheme.statePendingAccept;
       case 'CHAT':
       case 'CONFIRMED':
-        return Colors.blue;
+        return AppTheme.stateAccepted;
       default:
-        return const Color(0xFFD1D5DB);
+        return AppTheme.textSecondary;
     }
   }
 
@@ -1380,17 +1380,27 @@ class _MatchListTileState extends ConsumerState<_MatchListTile>
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           child: Container(
           decoration: BoxDecoration(
-            color: Color.lerp(const Color(0xFF1E1E1E), accentColor, 0.22),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color.lerp(AppTheme.cardDark, accentColor, 0.14)!,
+                AppTheme.cardDark,
+              ],
+            ),
             border: Border(
-              left: BorderSide(color: accentColor, width: 4),
+              left: BorderSide(color: accentColor, width: 3),
+              top: BorderSide(color: AppTheme.borderColor, width: 0.5),
+              right: BorderSide(color: AppTheme.borderColor, width: 0.5),
+              bottom: BorderSide(color: AppTheme.borderColor, width: 0.5),
             ),
             boxShadow: [
               BoxShadow(
-                color: accentColor.withValues(alpha: 0.12),
-                blurRadius: 12,
+                color: accentColor.withValues(alpha: 0.18),
+                blurRadius: 14,
                 offset: const Offset(0, 4),
               ),
             ],
@@ -1821,7 +1831,7 @@ Future<bool?> _showConfirmSheet({
     backgroundColor: Colors.transparent,
     builder: (ctx) => Container(
       decoration: const BoxDecoration(
-        color: Color(0xFF1E1E1E),
+        color: AppTheme.cardDark,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       padding: EdgeInsets.fromLTRB(
@@ -1834,7 +1844,7 @@ Future<bool?> _showConfirmSheet({
             width: 36,
             height: 4,
             decoration: BoxDecoration(
-              color: const Color(0xFF2A2A2A),
+              color: AppTheme.borderColor,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -1879,7 +1889,7 @@ Future<bool?> _showConfirmSheet({
                   onPressed: () => Navigator.pop(ctx, false),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    side: const BorderSide(color: Color(0xFF2A2A2A)),
+                    side: const BorderSide(color: AppTheme.borderColor),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),

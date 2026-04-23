@@ -87,6 +87,7 @@ class _GameConfirmContentState extends ConsumerState<_GameConfirmContent> {
     final opponentResult = game.opponentResult;
 
     return SingleChildScrollView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

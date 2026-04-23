@@ -18,10 +18,10 @@ class ChatListScreen extends ConsumerWidget {
     final chatRoomsAsync = ref.watch(chatRoomListProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: AppTheme.backgroundDark,
       appBar: AppBar(
         title: const Text('채팅'),
-        backgroundColor: const Color(0xFF0A0A0A),
+        backgroundColor: AppTheme.backgroundDark,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
@@ -154,7 +154,7 @@ class _ChatRoomTile extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Container(
-        color: const Color(0xFF1E1E1E),
+        color: AppTheme.cardDark,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(
           children: [

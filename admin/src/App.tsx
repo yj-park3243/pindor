@@ -25,6 +25,7 @@ import { TeamDetailPage } from '@/pages/teams/TeamDetailPage';
 import { TeamMatchListPage } from '@/pages/teams/TeamMatchListPage';
 import { NoticeListPage } from '@/pages/notices/NoticeListPage';
 import { DisputeListPage } from '@/pages/disputes/DisputeListPage';
+import { NoshowReportPage } from '@/pages/matches/NoshowReportPage';
 
 // 인증 가드 컴포넌트
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -124,6 +125,9 @@ export function App() {
 
         {/* 의의 제기 관리 */}
         <Route path={ROUTES.DISPUTES} element={<DisputeListPage />} />
+
+        {/* 노쇼 신고 */}
+        <Route path={ROUTES.NOSHOW_REPORTS} element={<NoshowReportPage />} />
 
         {/* 설정 — SUPER_ADMIN, ADMIN만 접근 가능 */}
         <Route

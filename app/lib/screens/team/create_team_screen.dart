@@ -79,6 +79,7 @@ class _CreateTeamScreenState extends ConsumerState<CreateTeamScreen> {
       body: Form(
         key: _formKey,
         child: ListView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.all(20),
           children: [
             // ─── 종목 선택 ───

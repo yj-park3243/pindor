@@ -135,6 +135,7 @@ class _TeamMatchRequestScreenState
       body: Form(
         key: _formKey,
         child: ListView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.all(20),
           children: [
             // ─── 날짜 선택 ───

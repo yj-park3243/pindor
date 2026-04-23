@@ -265,11 +265,12 @@ export class PinsService {
     // 작성자의 해당 종목 tier 조회
     const authorIds = [...new Set(posts.map((p) => (p.author as any)?.id).filter(Boolean))];
     const tierMap = new Map<string, string>();
-    if (authorIds.length > 0 && query.sportType) {
+    if (authorIds.length > 0) {
       const tierRows = await AppDataSource.query<Array<{ userId: string; tier: string }>>(
-        `SELECT user_id AS "userId", tier FROM sports_profiles
-         WHERE user_id = ANY($1::uuid[]) AND sport_type = $2`,
-        [authorIds, query.sportType],
+        `SELECT DISTINCT ON (user_id) user_id AS "userId", tier FROM sports_profiles
+         WHERE user_id = ANY($1::uuid[]) AND is_active = true
+         ORDER BY user_id, current_score DESC`,
+        [authorIds],
       );
       for (const row of tierRows) {
         tierMap.set(row.userId, row.tier);
@@ -342,10 +343,10 @@ export class PinsService {
     // 작성자의 해당 종목 tier 조회
     let authorTier: string | null = null;
     const authorId = (post.author as any)?.id;
-    if (authorId && sportType) {
+    if (authorId) {
       const tierRows = await AppDataSource.query<Array<{ tier: string }>>(
-        `SELECT tier FROM sports_profiles WHERE user_id = $1::uuid AND sport_type = $2 LIMIT 1`,
-        [authorId, sportType],
+        `SELECT tier FROM sports_profiles WHERE user_id = $1::uuid AND is_active = true ORDER BY current_score DESC LIMIT 1`,
+        [authorId],
       );
       authorTier = tierRows[0]?.tier ?? null;
     }
@@ -377,6 +378,7 @@ export class PinsService {
       title: dto.title,
       content: dto.content,
       category: dto.category,
+      sportType: dto.sportType ?? 'GOLF',
     });
 
     const savedPost = await postRepo.save(post);
@@ -601,9 +603,9 @@ export class PinsService {
 
     const existing = await postLikeRepo.findOne({ where: { postId, userId } });
 
-    if (existing) {
-      // 좋아요 취소
-      await AppDataSource.transaction(async (manager) => {
+    const liked = !existing;
+    await AppDataSource.transaction(async (manager) => {
+      if (existing) {
         await manager.delete(PostLike, { postId, userId });
         await manager
           .createQueryBuilder()
@@ -611,11 +613,7 @@ export class PinsService {
           .set({ likeCount: () => 'like_count - 1' })
           .where('id = :postId', { postId })
           .execute();
-      });
-      return { liked: false };
-    } else {
-      // 좋아요 추가
-      await AppDataSource.transaction(async (manager) => {
+      } else {
         await manager.save(PostLike, manager.create(PostLike, { postId, userId }));
         await manager
           .createQueryBuilder()
@@ -623,9 +621,11 @@ export class PinsService {
           .set({ likeCount: () => 'like_count + 1' })
           .where('id = :postId', { postId })
           .execute();
-      });
-      return { liked: true };
-    }
+      }
+    });
+
+    const updated = await postRepo.findOne({ where: { id: postId }, select: ['likeCount'] });
+    return { liked, likeCount: updated?.likeCount ?? 0 };
   }
 
   // ─────────────────────────────────────

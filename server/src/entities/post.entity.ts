@@ -46,6 +46,9 @@ export class Post {
   @Column({ name: 'comment_count', type: 'int', default: 0 })
   commentCount!: number;
 
+  @Column({ name: 'sport_type', type: 'varchar', length: 30, default: 'GOLF' })
+  sportType!: string;
+
   @Column({ name: 'is_deleted', type: 'boolean', default: false })
   isDeleted!: boolean;
 

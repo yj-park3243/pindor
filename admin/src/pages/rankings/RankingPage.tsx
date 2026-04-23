@@ -84,13 +84,19 @@ export function RankingPage() {
     {
       title: '사용자',
       key: 'user',
-      render: (_, record) => (
-        <UserAvatar
-          src={record.user?.profileImageUrl}
-          nickname={record.user?.nickname || '-'}
-          size="small"
-        />
-      ),
+      render: (_, record) => {
+        const user =
+          record.user ??
+          (record as any).sportsProfile?.user ??
+          null;
+        return (
+          <UserAvatar
+            src={user?.profileImageUrl}
+            nickname={user?.nickname || '-'}
+            size="small"
+          />
+        );
+      },
     },
     {
       title: '종목',

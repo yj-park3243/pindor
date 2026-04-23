@@ -63,12 +63,57 @@ class _PinSportSetupScreenState extends ConsumerState<PinSportSetupScreen> {
       setState(() {
         _currentLocation = NLatLng(pos.latitude, pos.longitude);
       });
-      _mapController?.updateCamera(
-        NCameraUpdate.scrollAndZoomTo(target: _currentLocation, zoom: 13),
-      );
+      // 가장 가까운 핀으로 포커스 (핀 데이터가 이미 있으면 즉시, 아니면 나중에)
+      _focusNearestPin(pos);
     } finally {
       if (mounted) setState(() => _isLocating = false);
     }
+  }
+
+  /// 현재 위치에서 가장 가까운 핀을 찾아 카메라를 이동시킨다.
+  /// 핀 목록이 아직 로드 안 됐으면 현재 위치로만 이동.
+  void _focusNearestPin(Position pos) {
+    final pinsAsync = ref.read(allPinsProvider);
+    final pins = pinsAsync.valueOrNull;
+    if (pins == null || pins.isEmpty) {
+      _mapController?.updateCamera(
+        NCameraUpdate.scrollAndZoomTo(target: _currentLocation, zoom: 13),
+      );
+      return;
+    }
+    final nearest = pins.reduce((a, b) {
+      final da = Geolocator.distanceBetween(
+          pos.latitude, pos.longitude, a.centerLatitude, a.centerLongitude);
+      final db = Geolocator.distanceBetween(
+          pos.latitude, pos.longitude, b.centerLatitude, b.centerLongitude);
+      return da <= db ? a : b;
+    });
+    _mapController?.updateCamera(
+      NCameraUpdate.scrollAndZoomTo(
+        target: NLatLng(nearest.centerLatitude, nearest.centerLongitude),
+        zoom: 14,
+      ),
+    );
+  }
+
+  /// 현재 저장된 위치 기준으로 가장 가까운 핀으로 카메라 이동
+  void _focusNearestPinFromCurrent(List<Pin> pins) {
+    if (pins.isEmpty || _mapController == null) return;
+    final lat = _currentLocation.latitude;
+    final lng = _currentLocation.longitude;
+    final nearest = pins.reduce((a, b) {
+      final da = Geolocator.distanceBetween(
+          lat, lng, a.centerLatitude, a.centerLongitude);
+      final db = Geolocator.distanceBetween(
+          lat, lng, b.centerLatitude, b.centerLongitude);
+      return da <= db ? a : b;
+    });
+    _mapController?.updateCamera(
+      NCameraUpdate.scrollAndZoomTo(
+        target: NLatLng(nearest.centerLatitude, nearest.centerLongitude),
+        zoom: 14,
+      ),
+    );
   }
 
   void _addPinMarkers(List<Pin> pins) async {
@@ -127,13 +172,20 @@ class _PinSportSetupScreenState extends ConsumerState<PinSportSetupScreen> {
   Widget build(BuildContext context) {
     final pinsAsync = ref.watch(allPinsProvider);
 
-    // 핀 데이터 도착 시 마커 추가
+    // 핀 데이터 도착 시 마커 추가 + 가장 가까운 핀으로 포커스
     ref.listen(
       allPinsProvider,
-      (_, next) {
+      (prev, next) {
         next.whenData((pins) {
           if (mounted && _mapReady) {
             _addPinMarkers(pins);
+            // 핀이 처음 로드됐고 아직 선택된 핀이 없으면 가장 가까운 핀으로 포커스
+            final prevPins = prev?.valueOrNull;
+            if ((prevPins == null || prevPins.isEmpty) &&
+                pins.isNotEmpty &&
+                _selectedPin == null) {
+              _focusNearestPinFromCurrent(pins);
+            }
           }
         });
       },

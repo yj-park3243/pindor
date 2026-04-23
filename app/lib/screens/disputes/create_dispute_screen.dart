@@ -116,6 +116,7 @@ class _CreateDisputeScreenState extends ConsumerState<CreateDisputeScreen> {
         elevation: 0,
       ),
       body: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

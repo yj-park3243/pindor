@@ -19,8 +19,8 @@ class SportPinMarker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bgColor = isSelected ? AppTheme.primaryColor : const Color(0xFF1E1E1E);
-    final textColor = isSelected ? Colors.white : AppTheme.textPrimary;
-    final borderColor = isSelected ? AppTheme.primaryColor : const Color(0xFF34A853);
+    final textColor = Colors.white;
+    final borderColor = const Color(0xFF34A853);
 
     return Column(
       mainAxisSize: MainAxisSize.min,

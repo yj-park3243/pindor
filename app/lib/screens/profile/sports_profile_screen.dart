@@ -78,6 +78,7 @@ class SportsProfileScreen extends ConsumerWidget {
           }
 
           return ListView.builder(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: const EdgeInsets.all(16),
             itemCount: profiles.length,
             itemBuilder: (context, index) {
@@ -212,6 +213,7 @@ class SportsProfileScreen extends ConsumerWidget {
             left: 20, right: 20, top: 20,
           ),
           child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,

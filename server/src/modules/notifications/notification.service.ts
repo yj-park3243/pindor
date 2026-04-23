@@ -21,6 +21,7 @@ const TYPE_TO_SETTING: Record<NotificationType, string> = {
   MATCH_REJECTED: 'matchFound',
   MATCH_EXPIRED: 'matchFound',
   MATCH_ACCEPT_TIMEOUT: 'matchFound',
+  MATCH_ACCEPT_REMINDER: 'matchFound',
   MATCH_WAITING_OPPONENT: 'matchFound',
   MATCH_CANCELLED: 'matchFound',
   MATCH_COMPLETED: 'matchFound',

@@ -65,12 +65,18 @@ export function GameListPage() {
     {
       title: '요청자',
       key: 'requester',
-      render: (_, record) => record.requesterProfile?.user?.nickname || '-',
+      render: (_, record) =>
+        record.requesterProfile?.user?.nickname ||
+        (record as any).match?.requesterProfile?.user?.nickname ||
+        '-',
     },
     {
       title: '상대방',
       key: 'opponent',
-      render: (_, record) => record.opponentProfile?.user?.nickname || '-',
+      render: (_, record) =>
+        record.opponentProfile?.user?.nickname ||
+        (record as any).match?.opponentProfile?.user?.nickname ||
+        '-',
     },
     {
       title: '경기 상태',
@@ -89,7 +95,18 @@ export function GameListPage() {
     {
       title: '승자',
       key: 'winner',
-      render: (_, record) => record.winner?.user?.nickname || '-',
+      render: (_, record) => {
+        // winner 관계가 없으면 winnerProfileId로 requester/opponent 중 매칭
+        if (record.winner?.user?.nickname) return record.winner.user.nickname;
+        const wid = (record as any).winnerProfileId;
+        if (!wid) return '-';
+        const match = (record as any).match;
+        const rp = record.requesterProfile || match?.requesterProfile;
+        const op = record.opponentProfile || match?.opponentProfile;
+        if (rp?.id === wid) return rp.user?.nickname ?? '-';
+        if (op?.id === wid) return op.user?.nickname ?? '-';
+        return '-';
+      },
       width: 120,
     },
     {
@@ -104,7 +121,12 @@ export function GameListPage() {
       title: '증빙 수',
       key: 'proofs',
       render: (_, record) => (
-        <Tag>{record.proofs?.length || 0}장</Tag>
+        <Tag>
+          {record.proofs?.length ||
+            (record as any).proofImageUrls?.length ||
+            0}
+          장
+        </Tag>
       ),
       width: 80,
     },

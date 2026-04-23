@@ -8,10 +8,6 @@ export const updateUserSchema = z.object({
     .regex(/^[가-힣a-zA-Z0-9_]+$/, '닉네임은 한글, 영문, 숫자, 밑줄만 사용 가능합니다.')
     .optional(),
   profileImageUrl: z.string().url('올바른 URL 형식이 아닙니다.').optional(),
-  phone: z
-    .string()
-    .regex(/^01[0-9]-?\d{3,4}-?\d{4}$/, '올바른 전화번호 형식이 아닙니다.')
-    .optional(),
   gender: z.enum(['MALE', 'FEMALE', 'OTHER']).optional(),
   birthDate: z
     .string()

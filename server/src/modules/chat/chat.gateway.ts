@@ -322,13 +322,12 @@ export function setupSocketGateway(io: Server, redis: Redis): void {
               : data.messageType === 'VERIFICATION_CODE'
               ? `${senderName}님이 인증번호를 보냈습니다`
               : `${senderName}님이 메시지를 보냈습니다`;
+          // 사진/위치/인증번호 타입은 title만 사용 (body 비움)
           const notifBody =
-            data.messageType === 'IMAGE'
-              ? '사진을 확인해보세요'
-              : data.messageType === 'LOCATION'
-              ? '위치를 확인해보세요'
-              : data.messageType === 'VERIFICATION_CODE'
-              ? '매칭 결과 입력 시 사용할 인증번호입니다'
+            data.messageType === 'IMAGE' ||
+            data.messageType === 'LOCATION' ||
+            data.messageType === 'VERIFICATION_CODE'
+              ? ''
               : data.content.substring(0, 100);
 
           // socket.io를 통해 알림 전송 (user:${opponentUserId} 룸)

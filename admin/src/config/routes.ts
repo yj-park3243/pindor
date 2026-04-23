@@ -35,4 +35,6 @@ export const ROUTES = {
   NOTICES: '/notices',
 
   DISPUTES: '/disputes',
+
+  NOSHOW_REPORTS: '/noshow-reports',
 } as const;

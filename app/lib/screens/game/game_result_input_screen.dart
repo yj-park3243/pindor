@@ -8,6 +8,7 @@ import '../../providers/auth_provider.dart';
 import '../../repositories/game_repository.dart';
 import '../../repositories/upload_repository.dart';
 import '../../core/network/api_client.dart';
+import '../../core/error/error_reporter.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/app_toast.dart';
 
@@ -161,7 +162,14 @@ class _GameResultInputScreenState extends ConsumerState<GameResultInputScreen> {
       if (mounted) {
         context.go('/games/${widget.gameId}/confirm');
       }
-    } catch (e) {
+    } catch (e, st) {
+      try {
+        await ErrorReporter.instance.reportError(
+          e,
+          st,
+          screenName: 'GameResultInputScreen.submit(gameId=${widget.gameId})',
+        );
+      } catch (_) {}
       if (mounted) {
         AppToast.error(extractErrorMessage(e, '결과 제출에 실패했습니다.'));
       }
@@ -192,6 +200,7 @@ class _GameResultInputScreenState extends ConsumerState<GameResultInputScreen> {
         elevation: 0,
       ),
       body: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

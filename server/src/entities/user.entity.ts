@@ -38,9 +38,6 @@ export class User {
   @Column({ name: 'profile_image_url', type: 'text', nullable: true })
   profileImageUrl!: string | null;
 
-  @Column({ type: 'varchar', length: 20, nullable: true })
-  phone!: string | null;
-
   @Column({ type: 'varchar', length: 10, nullable: true })
   gender!: string | null;
 

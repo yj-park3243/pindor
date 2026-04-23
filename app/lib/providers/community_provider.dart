@@ -72,8 +72,13 @@ class CommunityRepository {
     await _api.delete('/pins/$pinId/posts/$postId');
   }
 
-  Future<void> toggleLike(String pinId, String postId) async {
-    await _api.post('/pins/$pinId/posts/$postId/like', body: {});
+  Future<({bool liked, int likeCount})> toggleLike(String pinId, String postId) async {
+    final response = await _api.post('/pins/$pinId/posts/$postId/like', body: {});
+    final data = response['data'] as Map<String, dynamic>;
+    return (
+      liked: data['liked'] as bool,
+      likeCount: (data['likeCount'] as num?)?.toInt() ?? 0,
+    );
   }
 
   Future<List<Comment>> getComments(String pinId, String postId) async {
@@ -242,17 +247,21 @@ class PostListNotifier
     }).toList();
     state = state.copyWith(posts: posts);
 
-    _repo.toggleLike(pinId, postId).catchError((_) {
-      // 실패시 롤백
-      final rolled = state.posts.map((p) {
-        if (p.id != postId) return p;
-        return p.copyWith(
-          isLiked: !p.isLiked,
-          likeCount: p.isLiked ? p.likeCount - 1 : p.likeCount + 1,
-        );
-      }).toList();
-      state = state.copyWith(posts: rolled);
-    });
+    () async {
+      try {
+        await _repo.toggleLike(pinId, postId);
+      } catch (_) {
+        // 실패시 롤백
+        final rolled = state.posts.map((p) {
+          if (p.id != postId) return p;
+          return p.copyWith(
+            isLiked: !p.isLiked,
+            likeCount: p.isLiked ? p.likeCount - 1 : p.likeCount + 1,
+          );
+        }).toList();
+        state = state.copyWith(posts: rolled);
+      }
+    }();
   }
 
   void removePost(String postId) {

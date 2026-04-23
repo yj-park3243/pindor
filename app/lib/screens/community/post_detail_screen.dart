@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:like_button/like_button.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../../config/theme.dart';
 import '../../core/network/api_client.dart';
@@ -42,34 +43,22 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     super.dispose();
   }
 
-  Future<void> _toggleLike(PinPost post) async {
-    final prevLiked = _localIsLiked ?? post.isLiked;
-    final prevCount = _localLikeCount ?? post.likeCount;
-    // Optimistic UI 업데이트
-    setState(() {
-      _localIsLiked = !prevLiked;
-      _localLikeCount = prevLiked ? prevCount - 1 : prevCount + 1;
-    });
+  /// LikeButton.onTap callback. 서버 응답으로 likeCount/isLiked를 영구 동기화하되
+  /// 게시글을 다시 fetch하지 않는다 (서버 getPost가 호출될 때마다 viewCount += 1 되는 부작용 회피).
+  Future<bool> _toggleLike(bool isLiked) async {
     try {
-      await ref.read(communityRepositoryProvider).toggleLike(widget.pinId, widget.postId);
-      // 서버 성공 후 local state 초기화 + postDetailProvider invalidate하여 최신 likeCount 동기화
+      final result =
+          await ref.read(communityRepositoryProvider).toggleLike(widget.pinId, widget.postId);
       if (mounted) {
         setState(() {
-          _localIsLiked = null;
-          _localLikeCount = null;
+          _localIsLiked = result.liked;
+          _localLikeCount = result.likeCount;
         });
       }
-      final key = PostDetailKey(pinId: widget.pinId, postId: widget.postId);
-      ref.invalidate(postDetailProvider(key));
+      return result.liked;
     } catch (e) {
-      // 실패 시 롤백
-      if (mounted) {
-        setState(() {
-          _localIsLiked = prevLiked;
-          _localLikeCount = prevCount;
-        });
-        AppToast.error('좋아요 처리에 실패했습니다.');
-      }
+      if (mounted) AppToast.error('좋아요 처리에 실패했습니다.');
+      return isLiked;
     }
   }
 
@@ -181,6 +170,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                 onRetry: () => ref.invalidate(postDetailProvider(key)),
               ),
               data: (post) => SingleChildScrollView(
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                 controller: _scrollController,
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -194,7 +184,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                               likeCount: _localLikeCount,
                             )
                           : post,
-                      onLikeTap: () => _toggleLike(post),
+                      onLikeTap: _toggleLike,
                     ),
                     const SizedBox(height: 24),
                     const Divider(),
@@ -330,7 +320,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
 
 class _PostContent extends StatelessWidget {
   final PinPost post;
-  final VoidCallback? onLikeTap;
+  final Future<bool> Function(bool isLiked)? onLikeTap;
   const _PostContent({required this.post, this.onLikeTap});
 
   @override
@@ -428,27 +418,34 @@ class _PostContent extends StatelessWidget {
 
         const SizedBox(height: 16),
 
-        // 좋아요 수
-        GestureDetector(
-          onTap: onLikeTap,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                post.isLiked ? Icons.favorite : Icons.favorite_border,
-                color: post.isLiked ? AppTheme.errorColor : AppTheme.textSecondary,
-                size: 20,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                '${post.likeCount}',
+        // 좋아요 (like_button 패키지 - Twitter 스타일 애니메이션)
+        Center(
+          child: LikeButton(
+            isLiked: post.isLiked,
+            likeCount: post.likeCount,
+            size: 22,
+            circleColor: const CircleColor(start: Color(0xffff5e62), end: Color(0xffff9966)),
+            bubblesColor: const BubblesColor(
+              dotPrimaryColor: Color(0xffff5e62),
+              dotSecondaryColor: Color(0xffff9966),
+            ),
+            likeBuilder: (bool isLiked) => Icon(
+              isLiked ? Icons.favorite : Icons.favorite_border,
+              color: isLiked ? AppTheme.errorColor : AppTheme.textSecondary,
+              size: 22,
+            ),
+            countBuilder: (int? count, bool isLiked, String text) => Padding(
+              padding: const EdgeInsets.only(left: 4),
+              child: Text(
+                text,
                 style: TextStyle(
                   fontSize: 14,
-                  color: post.isLiked ? AppTheme.errorColor : AppTheme.textSecondary,
+                  color: isLiked ? AppTheme.errorColor : AppTheme.textSecondary,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-            ],
+            ),
+            onTap: onLikeTap,
           ),
         ),
       ],

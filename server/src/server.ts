@@ -201,8 +201,18 @@ async function start(): Promise<void> {
       await rankingRefreshQueue.add('refresh-all', {});
     }, 60 * 60 * 1000);
 
-    // 매칭 큐 워커 (10초마다)
-    setInterval(() => processMatchingQueue().catch(console.error), 10000);
+    // 매칭 큐 워커 (동적 폴링: WAITING 있으면 10초, 없으면 60초)
+    let matchQueueInterval = 10000;
+    const runMatchQueue = async () => {
+      try {
+        const hasWaiting = await processMatchingQueue();
+        matchQueueInterval = hasWaiting ? 10000 : 60000;
+      } catch (e) {
+        console.error(e);
+      }
+      setTimeout(runMatchQueue, matchQueueInterval);
+    };
+    setTimeout(runMatchQueue, 10000);
 
     // 5분마다 경기 결과 자동 확정 백업 폴링 (3일 무입력 → 무승부, 3분 단측 → 채택)
     // BullMQ delayed job이 메인이지만, 누락 방지를 위한 백업

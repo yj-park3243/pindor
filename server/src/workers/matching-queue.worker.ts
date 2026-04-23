@@ -24,6 +24,7 @@ interface WaitingRequest {
   sportsProfileId: string;
   pinId: string;
   sportType: string;
+  desiredDate: string | null;
   desiredTimeSlot: string | null;
   createdAt: Date;
   expiresAt: Date;
@@ -211,7 +212,7 @@ async function updateRecentOpponents(profileId: string, opponentProfileId: strin
 // 매칭 큐 처리 메인 함수
 // ─────────────────────────────────────
 
-export async function processMatchingQueue(): Promise<void> {
+export async function processMatchingQueue(): Promise<boolean> {
   // AppDataSource가 초기화되지 않은 경우 초기화
   if (!AppDataSource.isInitialized) {
     await AppDataSource.initialize();
@@ -226,6 +227,7 @@ export async function processMatchingQueue(): Promise<void> {
       mr.sports_profile_id AS "sportsProfileId",
       mr.pin_id AS "pinId",
       mr.sport_type AS "sportType",
+      mr.desired_date AS "desiredDate",
       mr.desired_time_slot AS "desiredTimeSlot",
       mr.created_at AS "createdAt",
       mr.expires_at AS "expiresAt",
@@ -245,7 +247,7 @@ export async function processMatchingQueue(): Promise<void> {
     ORDER BY mr.created_at ASC`,
   );
 
-  if (waitingRequests.length === 0) return;
+  if (waitingRequests.length === 0) return false;
 
   // 2-a) 그룹핑 전, 각 요청의 RD를 마지막 게임 이후 경과일 기준으로 decay 적용
   for (const req of waitingRequests) {
@@ -276,10 +278,12 @@ export async function processMatchingQueue(): Promise<void> {
     blockedPairs.add(key);
   }
 
-  // 2-c) (pinId, sportType) 기준으로 그룹핑
+  // 2-c) (pinId, sportType, desiredDate) 기준으로 그룹핑
+  // 같은 날짜끼리만 매칭되도록 날짜도 그룹 키에 포함
   const groups = new Map<string, typeof waitingRequests>();
   for (const req of waitingRequests) {
-    const key = `${req.pinId}::${req.sportType}`;
+    const dateKey = req.desiredDate ?? 'ANY';
+    const key = `${req.pinId}::${req.sportType}::${dateKey}`;
     if (!groups.has(key)) {
       groups.set(key, []);
     }
@@ -359,7 +363,8 @@ export async function processMatchingQueue(): Promise<void> {
             sportType: pairA.sportType as any,
             status: 'PENDING_ACCEPT' as any,
             chatRoomId: savedChatRoom.id,
-            desiredDate: pairA.createdAt,
+            desiredDate: pairA.desiredDate ?? pairA.createdAt,
+            scheduledDate: pairA.desiredDate ?? null,
             desiredTimeSlot: resolvedSlot as any,
           });
           const savedMatch = await manager.save(Match, match);
@@ -482,6 +487,8 @@ export async function processMatchingQueue(): Promise<void> {
       }
     }
   }
+
+  return true;
 }
 
 // ─────────────────────────────────────

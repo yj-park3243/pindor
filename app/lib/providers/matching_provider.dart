@@ -6,6 +6,32 @@ import '../models/match_request.dart';
 import '../models/match.dart';
 import '../repositories/matching_repository.dart';
 import '../core/network/socket_service.dart';
+import '../core/storage/secure_storage.dart';
+
+/// 활성 매칭/요청이 있으면 소켓 연결, 없으면 끊기
+Future<void> syncSocketConnection(dynamic ref) async {
+  final matches = (ref as dynamic).read(matchListProvider(null)).valueOrNull as List<Match>? ?? [];
+  final requests = (ref as dynamic).read(matchRequestProvider).valueOrNull as MatchRequestListState?;
+
+  final hasActiveMatch = matches.any((m) =>
+      m.isPendingAccept || m.isChat || m.isConfirmed);
+  final hasWaitingRequest = requests?.sent.any((r) => r.isWaiting) ?? false;
+
+  if (hasActiveMatch || hasWaitingRequest) {
+    if (!SocketService.instance.isConnected) {
+      final token = await SecureStorage.instance.getAccessToken();
+      if (token != null) {
+        debugPrint('[Socket] 활성 매칭 있음 — 연결');
+        SocketService.instance.connect(token);
+      }
+    }
+  } else {
+    if (SocketService.instance.isConnected) {
+      debugPrint('[Socket] 활성 매칭 없음 — 연결 해제');
+      SocketService.instance.disconnect();
+    }
+  }
+}
 
 /// 매칭 요청 목록 상태
 class MatchRequestListState {

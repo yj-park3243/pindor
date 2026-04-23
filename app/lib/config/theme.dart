@@ -5,31 +5,64 @@ import 'package:flutter/material.dart';
 class AppTheme {
   AppTheme._();
 
-  // ─── 브랜드 색상 ───
-  static const Color primaryColor = Color(0xFFEA733A);   // 오렌지
-  static const Color primaryDark = Color(0xFFD4612A);
-  static const Color primaryLight = Color(0xFFFF8F5A);
+  // ─── PINDOR 디자인 토큰 (tokens.js 기반) ───
+  // 브랜드
+  static const Color primaryColor = Color(0xFFFF6B2C);   // primary orange
+  static const Color primaryDark = Color(0xFFD4501A);    // primaryLo
+  static const Color primaryLight = Color(0xFFFF8A56);   // primaryHi
 
-  static const Color secondaryColor = Color(0xFF22C55E); // 그린 (성공)
-  static const Color acceptColor = Color(0xFF2563EB);    // 블루 (수락)
-  static const Color rejectColor = Color(0xFFEF4444);    // 레드 (거절/삭제)
+  // 액션/세맨틱
+  static const Color secondaryColor = Color(0xFF22C55E); // success green
+  static const Color acceptColor = Color(0xFF3B82F6);    // blue
+  static const Color rejectColor = Color(0xFFEF4444);    // danger
   static const Color errorColor = Color(0xFFEF4444);
   static const Color warningColor = Color(0xFFF59E0B);
+  static const Color cyanAccent = Color(0xFF22D3EE);
 
-  // ─── 배경/표면 색상 (다크 테마 기본값) ───
-  static const Color backgroundLight = Color(0xFF0A0A0A); // 거의 블랙
-  static const Color surfaceLight = Color(0xFF1A1A1A);
-  static const Color cardLight = Color(0xFF1E1E1E);
+  // 배경/표면
+  static const Color backgroundLight = Color(0xFF07080C); // bg
+  static const Color surfaceLight = Color(0xFF12141A);    // surface
+  static const Color cardLight = Color(0xFF161923);       // card
+  static const Color cardHiLight = Color(0xFF1E222E);     // cardHi
 
-  static const Color backgroundDark = Color(0xFF0A0A0A);
-  static const Color surfaceDark = Color(0xFF1A1A1A);
-  static const Color cardDark = Color(0xFF1E1E1E);
+  static const Color backgroundDark = Color(0xFF07080C);
+  static const Color surfaceDark = Color(0xFF12141A);
+  static const Color cardDark = Color(0xFF161923);
+  static const Color cardHiDark = Color(0xFF1E222E);
 
-  // ─── 텍스트 색상 ───
-  static const Color textPrimary = Color(0xFFFFFFFF);     // 화이트
-  static const Color textSecondary = Color(0xFF9CA3AF);   // 라이트 그레이
-  static const Color textDisabled = Color(0xFF4B5563);    // 다크 그레이
+  static const Color borderColor = Color(0xFF262A36);
+  static const Color borderHiColor = Color(0xFF343947);
+
+  // 텍스트
+  static const Color textPrimary = Color(0xFFFFFFFF);
+  static const Color textSecondary = Color(0xFFB8BFCC);
+  static const Color textTertiary = Color(0xFF7A8292);
+  static const Color textDisabled = Color(0xFF4B5563);
   static const Color textOnPrimary = Color(0xFFFFFFFF);
+
+  // 매칭 상태 색
+  static const Color stateSearching = Color(0xFFA78BFA);
+  static const Color statePendingAccept = Color(0xFFFF6B2C);
+  static const Color stateAccepted = Color(0xFF22D3EE);
+  static const Color stateCompleted = Color(0xFF22C55E);
+  static const Color stateCanceled = Color(0xFF7A8292);
+  static const Color stateDisputed = Color(0xFFEF4444);
+
+  // 종목별 컬러 (그라데이션 첫/끝)
+  static const Map<String, List<Color>> sportGradients = {
+    'GOLF': [Color(0xFF4ADE80), Color(0xFF15803D)],
+    'BILLIARDS_4BALL': [Color(0xFFFF8A3B), Color(0xFFD45A14)],
+    'BILLIARDS_3CUSHION': [Color(0xFFFF6B9E), Color(0xFFC03D6E)],
+    'TENNIS': [Color(0xFFF5E849), Color(0xFFB8A516)],
+    'TABLE_TENNIS': [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
+    'BADMINTON': [Color(0xFF2DD4BF), Color(0xFF0F766E)],
+    'BOWLING': [Color(0xFFA78BFA), Color(0xFF6D28D9)],
+    'ARM_WRESTLING': [Color(0xFFF43F5E), Color(0xFF9F1239)],
+    'ROCK_PAPER_SCISSORS': [Color(0xFFFB7185), Color(0xFFBE185D)],
+  };
+
+  static List<Color> sportGradient(String sport) =>
+      sportGradients[sport] ?? const [primaryColor, primaryDark];
 
   // ─── 티어 색상 (7단계, 다크 배경 최적화) ───
   static const Color grandmasterColor = Color(0xFFFF3D3D); // 레드

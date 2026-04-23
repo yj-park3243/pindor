@@ -151,6 +151,26 @@ class PushNotificationService {
     }
   }
 
+  /// 로그인 성공 후 FCM 토큰 재등록 (인증 토큰 확보 후 호출)
+  Future<void> reregisterToken() async {
+    try {
+      final token = await _messaging.getToken();
+      if (token == null) return;
+      // 강제 재등록 (savedToken 체크 스킵)
+      await ApiClient.instance.post(
+        '/devices/push-token',
+        body: {
+          'token': token,
+          'platform': Platform.isIOS ? 'IOS' : 'ANDROID',
+        },
+      );
+      await _storage.saveFcmToken(token);
+      debugPrint('[Push] FCM 토큰 재등록 완료');
+    } catch (e) {
+      debugPrint('[Push] FCM 토큰 재등록 실패: $e');
+    }
+  }
+
   /// 서버에서 토큰 해제 (로그아웃 시)
   Future<void> unregisterToken() async {
     try {
@@ -166,6 +186,8 @@ class PushNotificationService {
     } catch (e) {
       debugPrint('[Push] FCM 토큰 해제 실패: $e');
     }
+    // 로컬 토큰 삭제 → 다음 로그인 시 재등록되도록
+    await _storage.saveFcmToken('');
   }
 
   /// 딥링크 처리
@@ -181,9 +203,4 @@ class PushNotificationService {
     }
   }
 
-  /// 백그라운드 메시지 핸들러 (최상위 함수로 등록 필요)
-  static Future<void> backgroundMessageHandler(RemoteMessage message) async {
-    debugPrint('[Push] 백그라운드 메시지: ${message.notification?.title}');
-    // 백그라운드에서는 Firebase가 자동으로 알림 표시
-  }
 }

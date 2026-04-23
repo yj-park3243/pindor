@@ -1095,21 +1095,24 @@ export class GamesService {
         ? `경기 결과: +${notifChangeB}점 획득!`
         : `경기 결과: ${notifChangeB}점`;
 
-      notifs.push({
-        userId: requesterProfile.userId,
-        type: 'SCORE_UPDATED',
-        title: isCasual ? '[친선] 경기 완료' : scoreTitleA,
-        body: isCasual ? '친선 경기가 완료되었습니다.' : `현재 점수: ${finalNotifScoreA}점`,
-        data: { gameId, deepLink: '/profile/score', isCasual: String(isCasual) },
-      });
+      // 친선 경기는 점수 알림을 보내지 않음 (랭크 경기만)
+      if (!isCasual) {
+        notifs.push({
+          userId: requesterProfile.userId,
+          type: 'SCORE_UPDATED',
+          title: scoreTitleA,
+          body: `현재 점수: ${finalNotifScoreA}점`,
+          data: { gameId, deepLink: '/profile/score', isCasual: 'false' },
+        });
 
-      notifs.push({
-        userId: opponentProfile.userId,
-        type: 'SCORE_UPDATED',
-        title: isCasual ? '[친선] 경기 완료' : scoreTitleB,
-        body: isCasual ? '친선 경기가 완료되었습니다.' : `현재 점수: ${finalNotifScoreB}점`,
-        data: { gameId, deepLink: '/profile/score', isCasual: String(isCasual) },
-      });
+        notifs.push({
+          userId: opponentProfile.userId,
+          type: 'SCORE_UPDATED',
+          title: scoreTitleB,
+          body: `현재 점수: ${finalNotifScoreB}점`,
+          data: { gameId, deepLink: '/profile/score', isCasual: 'false' },
+        });
+      }
 
       // 티어 변경 알림 (캐주얼은 티어 영향 없음)
       if (!isCasual) {

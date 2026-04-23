@@ -263,6 +263,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
 
                 return ListView.builder(
                   controller: _scrollController,
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
                   padding: const EdgeInsets.symmetric(
                       horizontal: 16, vertical: 12),
                   itemCount: messages.length,
@@ -386,6 +388,8 @@ class _GameResultButton extends ConsumerWidget {
   }
 
   Future<void> _onGameResult(BuildContext context, WidgetRef ref) async {
+    // 키보드 닫기
+    FocusScope.of(context).unfocus();
     // 1차: 캐시된 채팅방 목록에서 matchId 조회
     String? matchId;
     final chatRooms = ref.read(chatRoomListProvider).valueOrNull;

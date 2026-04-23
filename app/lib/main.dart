@@ -5,13 +5,16 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'firebase_options.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'config/router.dart';
 import 'config/theme.dart';
+import 'widgets/common/ambient_glow_background.dart';
 import 'providers/font_scale_provider.dart';
 import 'core/network/api_client.dart';
+import 'providers/matching_provider.dart';
 import 'core/error/error_reporter.dart';
 import 'core/push/local_notification_service.dart';
 import 'core/push/push_notification_service.dart';
@@ -130,6 +133,15 @@ class PindorApp extends ConsumerWidget {
       title: '핀돌',
       debugShowCheckedModeBanner: false,
 
+      // 한국어 로케일
+      locale: const Locale('ko'),
+      supportedLocales: const [Locale('ko'), Locale('en')],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+
       // 테마
       theme: AppTheme.lightTheme,
 
@@ -139,11 +151,20 @@ class PindorApp extends ConsumerWidget {
       // 빌더: 푸시 알림 서비스 초기화 (앱 컨텍스트 확보 후)
       builder: (context, child) {
         final fontScale = ref.watch(fontScaleProvider);
+        final location = router
+            .routeInformationProvider
+            .value
+            .uri
+            .path;
+        final seed = location.codeUnits.fold<int>(0, (a, b) => a + b);
         return MediaQuery(
           data: MediaQuery.of(context).copyWith(
             textScaler: TextScaler.linear(fontScale),
           ),
-          child: _AppInitializer(child: child ?? const SizedBox.shrink()),
+          child: AmbientGlowBackground(
+            seed: seed,
+            child: _AppInitializer(child: child ?? const SizedBox.shrink()),
+          ),
         );
       },
     );
@@ -170,6 +191,12 @@ class _AppInitializerState extends ConsumerState<_AppInitializer>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     // 다음 프레임에서 초기화 (BuildContext 확보 후)
+    // 401 토큰 갱신 실패 시 강제 로그아웃
+    ApiClient.instance.onForceLogout = () {
+      debugPrint('[Auth] 토큰 만료 — 로그인 화면으로 이동');
+      ref.read(authStateProvider.notifier).logout();
+    };
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializePush();
       // 버전 체크 (인증 불필요, 실패해도 앱 계속 동작)
@@ -189,6 +216,8 @@ class _AppInitializerState extends ConsumerState<_AppInitializer>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _refreshStaleData();
+      // 활성 매칭 여부에 따라 소켓 연결/해제
+      syncSocketConnection(ref);
     }
   }
 

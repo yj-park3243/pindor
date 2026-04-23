@@ -18,8 +18,8 @@ class UserNotifier extends AutoDisposeAsyncNotifier<User?> {
 
     // authState.user가 있으면 바로 사용 (로그인 직후)
     if (authState.user != null) {
-      // 서버에서 받은 preferredSportType으로 초기화
-      unawaited(ref
+      // 서버에서 받은 preferredSportType으로 초기화 (빌드 완료 후 실행)
+      Future.microtask(() => ref
           .read(sportPreferenceProvider.notifier)
           .initFromServer(authState.user!.preferredSportType));
 
@@ -28,8 +28,7 @@ class UserNotifier extends AutoDisposeAsyncNotifier<User?> {
       unawaited(repo.getMe().then((updated) {
         if (updated != null && state.hasValue) {
           state = AsyncData(updated);
-          // 갱신된 데이터로 종목 선호도 재동기화
-          unawaited(ref
+          Future.microtask(() => ref
               .read(sportPreferenceProvider.notifier)
               .initFromServer(updated.preferredSportType));
         }
@@ -44,7 +43,7 @@ class UserNotifier extends AutoDisposeAsyncNotifier<User?> {
     try {
       final user = await repo.getMe();
       if (user != null) {
-        unawaited(ref
+        Future.microtask(() => ref
             .read(sportPreferenceProvider.notifier)
             .initFromServer(user.preferredSportType));
       }

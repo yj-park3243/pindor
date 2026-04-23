@@ -7,7 +7,7 @@ cd "$SCRIPT_DIR"
 # .env 로드
 source ios/fastlane/.env
 
-PLAY_KEY="$SCRIPT_DIR/../etc/google console/youandme-6d92c-1c90442bbc10.json"
+PLAY_KEY="$SCRIPT_DIR/../etc/PINS fastlane.json"
 PLATFORM="${1:-all}"  # ios, android, all(기본)
 BUMP_FLAG="${2:-}"    # --bump: 패치 버전(x.y.Z)도 증가
 

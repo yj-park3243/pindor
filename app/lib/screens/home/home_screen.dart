@@ -1,7 +1,9 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_symbols_icons/symbols.dart';
+import 'package:fl_chart/fl_chart.dart';
 import '../../config/router.dart';
 import '../../config/sports.dart';
 import '../../config/theme.dart';
@@ -154,6 +156,11 @@ class HomeScreen extends ConsumerWidget {
 
               // ─── 내 핀 상태 카드 ───
               _MyPinStatusCard(),
+
+              const SizedBox(height: 22),
+
+              // ─── 점수 추이 그래프 ───
+              _ScoreTrendChart(),
 
               const SizedBox(height: 22),
 
@@ -924,6 +931,179 @@ class _PreviewTile extends StatelessWidget {
 }
 
 /// 최근 전적 섹션
+/// 점수 추이 차트
+class _ScoreTrendChart extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(currentUserProvider);
+    final profile = user?.primarySportsProfile;
+
+    if (profile == null) return const SizedBox.shrink();
+
+    final historyAsync = ref.watch(myRankingHistoryProvider(profile.id));
+
+    return historyAsync.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (history) {
+        if (history.length < 2) return const SizedBox.shrink();
+
+        final spots = <FlSpot>[];
+        for (var i = 0; i < history.length; i++) {
+          spots.add(FlSpot(i.toDouble(), history[i].score.toDouble()));
+        }
+
+        final scores = history.map((h) => h.score).toList();
+        final minScore = scores.reduce(math.min);
+        final maxScore = scores.reduce(math.max);
+        final padding = ((maxScore - minScore) * 0.2).clamp(30, 200).toDouble();
+        final yMin = (minScore - padding).floorToDouble();
+        final yMax = (maxScore + padding).ceilToDouble();
+
+        final lastScore = history.last.score;
+        final firstScore = history.first.score;
+        final diff = lastScore - firstScore;
+        final isUp = diff > 0;
+        final chartColor = isUp
+            ? const Color(0xFF10B981)
+            : diff < 0
+                ? const Color(0xFFEF4444)
+                : const Color(0xFF6B7280);
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E1E1E),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFF2A2A2A), width: 1),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      '점수 추이',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        Text(
+                          '$lastScore점',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: chartColor,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: chartColor.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            '${isUp ? '+' : ''}$diff',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: chartColor,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  height: 120,
+                  child: LineChart(
+                    LineChartData(
+                      gridData: const FlGridData(show: false),
+                      titlesData: const FlTitlesData(show: false),
+                      borderData: FlBorderData(show: false),
+                      minX: 0,
+                      maxX: (spots.length - 1).toDouble(),
+                      minY: yMin,
+                      maxY: yMax,
+                      lineTouchData: LineTouchData(
+                        touchTooltipData: LineTouchTooltipData(
+                          getTooltipColor: (_) =>
+                              const Color(0xFF333333),
+                          getTooltipItems: (touchedSpots) {
+                            return touchedSpots.map((spot) {
+                              final idx = spot.spotIndex;
+                              final h = history[idx];
+                              final result = h.isWin ? '승' : '패';
+                              return LineTooltipItem(
+                                '${h.score}점 ($result)\nvs ${h.opponentNickname ?? ''}',
+                                const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              );
+                            }).toList();
+                          },
+                        ),
+                      ),
+                      lineBarsData: [
+                        LineChartBarData(
+                          spots: spots,
+                          isCurved: true,
+                          curveSmoothness: 0.3,
+                          color: chartColor,
+                          barWidth: 2.5,
+                          isStrokeCapRound: true,
+                          dotData: FlDotData(
+                            show: true,
+                            getDotPainter: (spot, _, __, ___) {
+                              final idx = spot.x.toInt();
+                              final h = history[idx];
+                              return FlDotCirclePainter(
+                                radius: 3,
+                                color: h.isWin
+                                    ? const Color(0xFF10B981)
+                                    : const Color(0xFFEF4444),
+                                strokeWidth: 1.5,
+                                strokeColor: const Color(0xFF1E1E1E),
+                              );
+                            },
+                          ),
+                          belowBarData: BarAreaData(
+                            show: true,
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                chartColor.withValues(alpha: 0.25),
+                                chartColor.withValues(alpha: 0.0),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _RecentMatchHistory extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {

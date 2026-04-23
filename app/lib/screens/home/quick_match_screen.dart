@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +8,7 @@ import '../../config/theme.dart';
 import '../../models/pin.dart';
 import '../../providers/pin_provider.dart';
 import '../../providers/sport_preference_provider.dart';
+import '../../providers/matching_provider.dart';
 import '../../screens/profile/profile_screen.dart';
 import '../../repositories/matching_repository.dart';
 import '../../widgets/common/app_toast.dart';
@@ -58,7 +60,8 @@ class _QuickMatchScreenState extends ConsumerState<QuickMatchScreen> {
       });
 
       if (mounted) {
-        AppToast.success('즉시 매칭 요청이 등록되었습니다!', bottom: true);
+        unawaited(syncSocketConnection(ref));
+        AppToast.success('즉시 매칭 요청이 등록되었습니다!');
         context.go(AppRoutes.matchList);
       }
     } catch (e) {

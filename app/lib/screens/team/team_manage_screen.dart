@@ -353,6 +353,7 @@ class _TeamManageScreenState extends ConsumerState<TeamManageScreen> {
           _initControllers(team);
 
           return ListView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: const EdgeInsets.all(20),
             children: [
               // ─── 팀 정보 수정 ───

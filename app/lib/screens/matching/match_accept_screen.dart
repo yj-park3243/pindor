@@ -214,7 +214,7 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         decoration: const BoxDecoration(
-          color: Color(0xFF1E1E1E),
+          color: AppTheme.cardDark,
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
         padding: EdgeInsets.fromLTRB(
@@ -226,7 +226,7 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
               width: 36,
               height: 4,
               decoration: BoxDecoration(
-                color: const Color(0xFF2A2A2A),
+                color: AppTheme.borderColor,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -268,7 +268,7 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
                     onPressed: () => Navigator.pop(ctx, false),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
-                      side: const BorderSide(color: Color(0xFF2A2A2A)),
+                      side: const BorderSide(color: AppTheme.borderColor),
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12)),
                     ),
@@ -395,7 +395,7 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
     // 로딩 중
     if (_isLoading) {
       return const Scaffold(
-        backgroundColor: Color(0xFF0A0A0A),
+        backgroundColor: AppTheme.backgroundDark,
         body: Center(child: LoadingIndicator(size: 32)),
       );
     }
@@ -403,7 +403,7 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
     // 서버 에러 (500 등) → 재시도 가능한 에러 화면
     if (_loadError != null) {
       return Scaffold(
-        backgroundColor: const Color(0xFF0A0A0A),
+        backgroundColor: AppTheme.backgroundDark,
         body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -440,7 +440,7 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
     return PopScope(
       canPop: false, // 뒤로가기 차단 — 매칭 화면 잠금
       child: Scaffold(
-        backgroundColor: const Color(0xFF0A0A0A),
+        backgroundColor: AppTheme.backgroundDark,
         body: Builder(builder: (context) {
             final timerColor = _remaining.inMinutes >= 5
                 ? AppTheme.primaryColor
@@ -552,9 +552,9 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
                               width: double.infinity,
                               padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF1E1E1E),
+                                color: AppTheme.cardDark,
                                 borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: const Color(0xFF2A2A2A)),
+                                border: Border.all(color: AppTheme.borderColor),
                               ),
                               child: Column(
                                 children: [
@@ -616,7 +616,7 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
                     const SizedBox(height: 6),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(value: _progressRatio, minHeight: 5, backgroundColor: const Color(0xFF2A2A2A), valueColor: AlwaysStoppedAnimation<Color>(timerColor)),
+                      child: LinearProgressIndicator(value: _progressRatio, minHeight: 5, backgroundColor: AppTheme.borderColor, valueColor: AlwaysStoppedAnimation<Color>(timerColor)),
                     ),
                     const SizedBox(height: 16),
 
@@ -729,10 +729,10 @@ class _OpponentCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
+        color: AppTheme.cardDark,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: const Color(0xFF2A2A2A),
+          color: AppTheme.borderColor,
           width: 1.5,
         ),
         boxShadow: [
@@ -827,7 +827,7 @@ class _OpponentCard extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: const Color(0xFF2A2A2A),
+              color: AppTheme.borderColor,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
@@ -934,7 +934,7 @@ class _InfoRow extends StatelessWidget {
           yield Container(
             width: 1,
             height: 30,
-            color: const Color(0xFF2A2A2A),
+            color: AppTheme.borderColor,
           );
         }
       }).toList(),
@@ -1023,7 +1023,7 @@ class _TimerSection extends StatelessWidget {
           child: LinearProgressIndicator(
             value: progressRatio,
             minHeight: 8,
-            backgroundColor: const Color(0xFF2A2A2A),
+            backgroundColor: AppTheme.borderColor,
             valueColor: AlwaysStoppedAnimation<Color>(_timerColor),
           ),
         ),

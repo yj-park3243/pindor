@@ -86,6 +86,9 @@ export function GameReviewPage() {
   const handleResolve = async (values: {
     resolution: DisputeResolution;
     adminNote: string;
+    winnerProfileId?: string;
+    requesterScore?: number;
+    opponentScore?: number;
   }) => {
     if (!selectedGame) return;
     await resolveMutation.mutateAsync({
@@ -96,6 +99,8 @@ export function GameReviewPage() {
     setSelectedGame(null);
     form.resetFields();
   };
+
+  const watchedResolution = Form.useWatch('resolution', form);
 
   const columns: TableColumnsType<Game> = [
     {
@@ -113,21 +118,40 @@ export function GameReviewPage() {
     {
       title: '요청자',
       key: 'requester',
-      render: (_, record) => record.requesterProfile?.user?.nickname || '-',
+      render: (_, record) =>
+        record.requesterProfile?.user?.nickname ||
+        (record as any).match?.requesterProfile?.user?.nickname ||
+        '-',
     },
     {
       title: '상대방',
       key: 'opponent',
-      render: (_, record) => record.opponentProfile?.user?.nickname || '-',
+      render: (_, record) =>
+        record.opponentProfile?.user?.nickname ||
+        (record as any).match?.opponentProfile?.user?.nickname ||
+        '-',
     },
     {
       title: '이의 신청 사유',
       key: 'disputeReason',
-      render: (_, record) => (
-        <Text ellipsis style={{ maxWidth: 200 }}>
-          {record.dispute?.reason || '-'}
-        </Text>
-      ),
+      render: (_, record) => {
+        const reason =
+          record.dispute?.reason ||
+          (record as any).dispute?.title ||
+          // 양측 claim이 서로 같으면 불일치로 요약
+          (record.requesterClaimedResult &&
+          record.opponentClaimedResult &&
+          record.requesterClaimedResult === record.opponentClaimedResult
+            ? `양측 동일 결과 주장 (${record.requesterClaimedResult})`
+            : record.requesterClaimedResult && record.opponentClaimedResult
+            ? `결과 불일치 (${record.requesterClaimedResult} vs ${record.opponentClaimedResult})`
+            : '-');
+        return (
+          <Text ellipsis style={{ maxWidth: 240 }}>
+            {reason}
+          </Text>
+        );
+      },
     },
     {
       title: '상태',
@@ -142,16 +166,17 @@ export function GameReviewPage() {
     {
       title: '신청일',
       key: 'disputedAt',
-      render: (_, record) =>
-        record.dispute?.createdAt
-          ? dayjs(record.dispute.createdAt).format('MM-DD HH:mm')
-          : '-',
+      render: (_, record) => {
+        const d = record.dispute?.createdAt || record.createdAt;
+        return d ? dayjs(d).format('MM-DD HH:mm') : '-';
+      },
       width: 110,
     },
     {
       title: '증빙 수',
       key: 'proofs',
-      render: (_, record) => `${record.proofs?.length || 0}장`,
+      render: (_, record) =>
+        `${record.proofs?.length || record.proofImageUrls?.length || 0}장`,
       width: 80,
     },
     {
@@ -171,11 +196,17 @@ export function GameReviewPage() {
     },
   ];
 
+  const rp =
+    selectedGame?.requesterProfile ||
+    (selectedGame as any)?.match?.requesterProfile;
+  const op =
+    selectedGame?.opponentProfile ||
+    (selectedGame as any)?.match?.opponentProfile;
   const requesterProofs = selectedGame?.proofs?.filter(
-    (p) => p.uploadedBy === selectedGame?.requesterProfile?.userId
+    (p) => p.uploadedBy === rp?.userId
   ) || [];
   const opponentProofs = selectedGame?.proofs?.filter(
-    (p) => p.uploadedBy === selectedGame?.opponentProfile?.userId
+    (p) => p.uploadedBy === op?.userId
   ) || [];
 
   return (
@@ -252,13 +283,37 @@ export function GameReviewPage() {
                   {selectedGame.venueName || '-'}
                 </Descriptions.Item>
                 <Descriptions.Item label="요청자">
-                  {selectedGame.requesterProfile?.user?.nickname || '-'}
+                  <Space direction="vertical" size={0}>
+                    <Text strong>{rp?.user?.nickname || '-'}</Text>
+                    {selectedGame.requesterClaimedResult && (
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        주장: {selectedGame.requesterClaimedResult}
+                        {selectedGame.requesterScore != null &&
+                          ` / ${selectedGame.requesterScore}점`}
+                      </Text>
+                    )}
+                  </Space>
                 </Descriptions.Item>
                 <Descriptions.Item label="상대방">
-                  {selectedGame.opponentProfile?.user?.nickname || '-'}
+                  <Space direction="vertical" size={0}>
+                    <Text strong>{op?.user?.nickname || '-'}</Text>
+                    {selectedGame.opponentClaimedResult && (
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        주장: {selectedGame.opponentClaimedResult}
+                        {selectedGame.opponentScore != null &&
+                          ` / ${selectedGame.opponentScore}점`}
+                      </Text>
+                    )}
+                  </Space>
                 </Descriptions.Item>
                 <Descriptions.Item label="이의 신청 사유" span={2}>
-                  <Text type="danger">{selectedGame.dispute?.reason || '-'}</Text>
+                  <Text type="danger">
+                    {selectedGame.dispute?.reason ||
+                      (selectedGame.requesterClaimedResult &&
+                      selectedGame.opponentClaimedResult
+                        ? `결과 주장 불일치 (${selectedGame.requesterClaimedResult} vs ${selectedGame.opponentClaimedResult})`
+                        : '-')}
+                  </Text>
                 </Descriptions.Item>
               </Descriptions>
             </Card>
@@ -309,6 +364,48 @@ export function GameReviewPage() {
                   ))}
                 </Select>
               </Form.Item>
+
+              {watchedResolution === 'MODIFIED' && (rp || op) && (
+                <>
+                  <Form.Item
+                    name="winnerProfileId"
+                    label="승자 선택"
+                    rules={[{ required: true, message: '승자를 선택해주세요.' }]}
+                  >
+                    <Select placeholder="승자">
+                      {rp && (
+                        <Select.Option value={rp.id}>
+                          요청자 승 — {rp.user?.nickname}
+                        </Select.Option>
+                      )}
+                      {op && (
+                        <Select.Option value={op.id}>
+                          상대방 승 — {op.user?.nickname}
+                        </Select.Option>
+                      )}
+                    </Select>
+                  </Form.Item>
+
+                  <Row gutter={12}>
+                    <Col span={12}>
+                      <Form.Item
+                        name="requesterScore"
+                        label={`${rp?.user?.nickname ?? '요청자'} 점수`}
+                      >
+                        <Input type="number" min={0} placeholder="예: 3" />
+                      </Form.Item>
+                    </Col>
+                    <Col span={12}>
+                      <Form.Item
+                        name="opponentScore"
+                        label={`${op?.user?.nickname ?? '상대방'} 점수`}
+                      >
+                        <Input type="number" min={0} placeholder="예: 1" />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                </>
+              )}
 
               <Form.Item
                 name="adminNote"

@@ -254,12 +254,23 @@ export class KcpService {
       KCP_SITE_CD,
     );
 
+    console.info(
+      '[KCP CertGet] decrypted keys:',
+      Object.keys(decrypted),
+      'gender-related:',
+      JSON.stringify({
+        gender: decrypted.gender,
+        sex_code: decrypted.sex_code,
+        sex: decrypted.sex,
+      }),
+    );
+
     const ci = decrypted.CI || '';
     const di = decrypted.DI || '';
     const phoneNumber = decrypted.phone_no || '';
     const realName = decrypted.user_name || '';
     const birthDate = decrypted.birth_day || '';
-    const gender = decrypted.gender || decrypted.sex_code || '';
+    const gender = decrypted.gender || decrypted.sex_code || decrypted.sex || '';
     const carrier = decrypted.comm_id || decrypted.local_code || '';
 
     if (!ci && !phoneNumber) {
@@ -302,11 +313,13 @@ export class KcpService {
 
     const birthDate = this.parseBirthDate(kcpData.birthDate);
     const gender =
-      kcpData.gender === 'M' || kcpData.gender === '1'
+      kcpData.gender === 'M' || kcpData.gender === '1' || kcpData.gender === '01'
         ? 'MALE'
-        : kcpData.gender === 'F' || kcpData.gender === '0'
+        : kcpData.gender === 'F' || kcpData.gender === '0' || kcpData.gender === '02'
           ? 'FEMALE'
           : null;
+
+    console.info('[KCP verifyCert] raw gender:', kcpData.gender, '→ mapped:', gender);
 
     await userRepo.update(userId, {
       phoneNumber: kcpData.phoneNumber,
@@ -376,9 +389,9 @@ export class KcpService {
 
       const birthDate = this.parseBirthDate(kcpData.birthDate);
       const gender =
-        kcpData.gender === 'M' || kcpData.gender === '1'
+        kcpData.gender === 'M' || kcpData.gender === '1' || kcpData.gender === '01'
           ? 'MALE'
-          : kcpData.gender === 'F' || kcpData.gender === '0'
+          : kcpData.gender === 'F' || kcpData.gender === '0' || kcpData.gender === '02'
             ? 'FEMALE'
             : null;
 

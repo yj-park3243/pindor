@@ -12,6 +12,7 @@ import '../../repositories/matching_repository.dart';
 import '../../repositories/upload_repository.dart';
 import 'app_toast.dart';
 import '../../core/network/api_client.dart';
+import '../../core/error/error_reporter.dart';
 
 /// 승부 결과 입력 바텀시트
 ///
@@ -27,7 +28,7 @@ void showGameResultSheet(
   VoidCallback? onSubmitted,
 }) {
   String? selectedResult;
-  int mannerScore = 3;
+  int mannerScore = 5;
   bool isSubmitting = false;
   final List<File> photos = [];
   final verificationCodeController = TextEditingController(
@@ -416,7 +417,16 @@ void showGameResultSheet(
                                     matchDetailProvider(matchId));
                                 ref.invalidate(matchListProvider(null));
                                 onSubmitted?.call();
-                              } catch (e) {
+                              } catch (e, st) {
+                                // 서버에도 에러 기록 (app_error_logs)
+                                try {
+                                  await ErrorReporter.instance.reportError(
+                                    e,
+                                    st,
+                                    screenName:
+                                        'GameResultSheet.submit(matchId=$matchId)',
+                                  );
+                                } catch (_) {}
                                 if (ctx.mounted) {
                                   setSheetState(
                                       () => isSubmitting = false);

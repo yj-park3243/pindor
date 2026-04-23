@@ -29,6 +29,7 @@ import {
   ProfileOutlined,
   NotificationOutlined,
   AuditOutlined,
+  WarningOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { useAuthStore } from '@/store/auth.store';
@@ -66,6 +67,7 @@ function buildMenuItems(role: string): MenuProps['items'] {
         { key: ROUTES.MATCHES, icon: <SwapOutlined />, label: '매칭 관리' },
         { key: ROUTES.GAMES, icon: <TrophyOutlined />, label: '경기 결과' },
         { key: ROUTES.GAME_REVIEW, icon: <AlertOutlined />, label: '이의 신청 처리' },
+        { key: ROUTES.NOSHOW_REPORTS, icon: <WarningOutlined />, label: '노쇼 신고' },
       ],
     },
     {

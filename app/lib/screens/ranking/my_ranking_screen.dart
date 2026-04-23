@@ -309,7 +309,7 @@ class _PinRankingBody extends ConsumerWidget {
             // 랭킹 리스트
             Expanded(
               child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: EdgeInsets.zero,
                 itemCount: rankings.length,
                 itemBuilder: (context, index) {
                   return RankingListTile(

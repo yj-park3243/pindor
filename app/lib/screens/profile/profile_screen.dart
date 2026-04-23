@@ -74,7 +74,7 @@ class ProfileScreen extends ConsumerWidget {
     final profilesAsync = ref.watch(sportsProfilesProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: AppTheme.backgroundDark,
       body: userAsync.when(
         loading: () => const FullScreenLoading(),
         error: (e, _) => _ErrorBody(
@@ -296,10 +296,10 @@ class _ProfileHeaderState extends ConsumerState<_ProfileHeader>
     return SafeArea(
       bottom: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final cardSize = Size(constraints.maxWidth, 220);
+            final cardSize = Size(constraints.maxWidth, 178);
             return GestureDetector(
               onPanUpdate: (d) => _onPanUpdate(d, cardSize),
               onPanEnd: (_) => _onPanEnd(),
@@ -311,7 +311,7 @@ class _ProfileHeaderState extends ConsumerState<_ProfileHeader>
                   ..rotateX(rotateX)
                   ..rotateY(rotateY),
                 child: Container(
-                  height: 220,
+                  height: 178,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
@@ -391,7 +391,7 @@ class _ProfileHeaderState extends ConsumerState<_ProfileHeader>
 
                         // 카드 컨텐츠
                         Padding(
-                          padding: const EdgeInsets.all(22),
+                          padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -403,8 +403,8 @@ class _ProfileHeaderState extends ConsumerState<_ProfileHeader>
                                         ? () => showFullscreenImage(context, [widget.profileImageUrl!])
                                         : null,
                                     child: Container(
-                                      width: 56,
-                                      height: 56,
+                                      width: 48,
+                                      height: 48,
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
                                         border: Border.all(color: tierColor.withValues(alpha: 0.5), width: 2),
@@ -455,7 +455,7 @@ class _ProfileHeaderState extends ConsumerState<_ProfileHeader>
                               // 매칭 문구
                               if (profile?.matchMessage != null && profile!.matchMessage!.isNotEmpty)
                                 Padding(
-                                  padding: const EdgeInsets.only(top: 8),
+                                  padding: const EdgeInsets.only(top: 6),
                                   child: Text(
                                     '"${profile.matchMessage}"',
                                     style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.4), fontStyle: FontStyle.italic),
@@ -486,7 +486,7 @@ class _ProfileHeaderState extends ConsumerState<_ProfileHeader>
                                             )
                                           else if (myRank != null && myRank.rank > 0) ...[
                                               // 해당 핀에서 플레이 기록 있음 → 핀별 점수
-                                              Text('${myRank.score}점', style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Colors.white, height: 1)),
+                                              Text('${myRank.score}점', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Colors.white, height: 1)),
                                               const SizedBox(height: 4),
                                               Row(
                                                 children: [
@@ -524,7 +524,7 @@ class _ProfileHeaderState extends ConsumerState<_ProfileHeader>
                                         ),
                                       if (myRank != null && myRank.rank > 0) ...[
                                         const SizedBox(height: 4),
-                                        Text('${myRank.rank}위', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: tierColor, height: 1)),
+                                        Text('${myRank.rank}위', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: tierColor, height: 1)),
                                       ],
                                     ],
                                   ),
@@ -559,7 +559,7 @@ class _RecordSummary extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
+        color: AppTheme.cardDark,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
@@ -606,7 +606,7 @@ class _AvatarFallback extends StatelessWidget {
       child: Center(
         child: Text(
           nickname.isNotEmpty ? nickname[0] : '?',
-          style: TextStyle(fontSize: 30, fontWeight: FontWeight.w700, color: color),
+          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: color),
         ),
       ),
     );
@@ -653,7 +653,7 @@ class _StatDivider extends StatelessWidget {
     return Container(
       width: 1,
       height: 32,
-      color: const Color(0xFF2A2A2A),
+      color: AppTheme.borderColor,
     );
   }
 }
@@ -677,7 +677,7 @@ class _SportProfileSection extends ConsumerWidget {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 24),
           decoration: BoxDecoration(
-            color: const Color(0xFF1E1E1E),
+            color: AppTheme.cardDark,
             borderRadius: BorderRadius.circular(16),
           ),
           child: const Center(
@@ -731,7 +731,7 @@ class _SportProfileSection extends ConsumerWidget {
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1E1E1E),
+                  color: AppTheme.cardDark,
                   borderRadius: BorderRadius.circular(14),
                   border: Border(
                     left: BorderSide(color: AppTheme.primaryColor, width: 3.5),
@@ -1001,7 +1001,7 @@ class _MenuCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
+        color: AppTheme.cardDark,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
@@ -1107,12 +1107,33 @@ class _PinMapSelectionPageState extends ConsumerState<_PinMapSelectionPage> {
       if (pos == null || !mounted) return;
 
       setState(() => _currentLocation = NLatLng(pos.latitude, pos.longitude));
-      _mapController?.updateCamera(
-        NCameraUpdate.scrollAndZoomTo(target: _currentLocation, zoom: 13),
-      );
+      _focusNearestPin(pos);
     } finally {
       if (mounted) setState(() => _isLocating = false);
     }
+  }
+
+  void _focusNearestPin(Position pos) {
+    final pins = ref.read(allPinsProvider).valueOrNull;
+    if (pins == null || pins.isEmpty) {
+      _mapController?.updateCamera(
+        NCameraUpdate.scrollAndZoomTo(target: _currentLocation, zoom: 13),
+      );
+      return;
+    }
+    final nearest = pins.reduce((a, b) {
+      final da = Geolocator.distanceBetween(
+          pos.latitude, pos.longitude, a.centerLatitude, a.centerLongitude);
+      final db = Geolocator.distanceBetween(
+          pos.latitude, pos.longitude, b.centerLatitude, b.centerLongitude);
+      return da <= db ? a : b;
+    });
+    _mapController?.updateCamera(
+      NCameraUpdate.scrollAndZoomTo(
+        target: NLatLng(nearest.centerLatitude, nearest.centerLongitude),
+        zoom: 14,
+      ),
+    );
   }
 
   void _addPinMarkers(List<Pin> pins) async {
@@ -1161,10 +1182,10 @@ class _PinMapSelectionPageState extends ConsumerState<_PinMapSelectionPage> {
     });
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: AppTheme.backgroundDark,
       appBar: AppBar(
         title: const Text('자주 가는 핀 선택'),
-        backgroundColor: const Color(0xFF0A0A0A),
+        backgroundColor: AppTheme.backgroundDark,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.close_rounded, size: 24),
@@ -1209,7 +1230,7 @@ class _PinMapSelectionPageState extends ConsumerState<_PinMapSelectionPage> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1E1E1E),
+                        color: AppTheme.cardDark,
                         borderRadius: BorderRadius.circular(8),
                         boxShadow: [
                           BoxShadow(
@@ -1247,7 +1268,7 @@ class _PinMapSelectionPageState extends ConsumerState<_PinMapSelectionPage> {
                   child: FloatingActionButton.small(
                     heroTag: 'pin_select_location_btn',
                     onPressed: _isLocating ? null : _initLocation,
-                    backgroundColor: const Color(0xFF0A0A0A),
+                    backgroundColor: AppTheme.backgroundDark,
                     foregroundColor: AppTheme.primaryColor,
                     elevation: 4,
                     child: _isLocating
@@ -1269,7 +1290,7 @@ class _PinMapSelectionPageState extends ConsumerState<_PinMapSelectionPage> {
             padding: EdgeInsets.fromLTRB(
                 20, 16, 20, MediaQuery.of(context).padding.bottom + 16),
             decoration: const BoxDecoration(
-              color: Color(0xFF1E1E1E),
+              color: AppTheme.cardDark,
               boxShadow: [
                 BoxShadow(
                   color: Color(0x15000000),
@@ -1290,12 +1311,12 @@ class _PinMapSelectionPageState extends ConsumerState<_PinMapSelectionPage> {
                   decoration: BoxDecoration(
                     color: _selectedPin != null
                         ? AppTheme.primaryColor.withOpacity(0.15)
-                        : const Color(0xFF1E1E1E),
+                        : AppTheme.cardDark,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: _selectedPin != null
                           ? AppTheme.primaryColor.withOpacity(0.4)
-                          : const Color(0xFF2A2A2A),
+                          : AppTheme.borderColor,
                     ),
                   ),
                   child: Row(
@@ -1372,7 +1393,7 @@ class _SportSelectionSheet extends ConsumerWidget {
 
     return Container(
       decoration: const BoxDecoration(
-        color: Color(0xFF1E1E1E),
+        color: AppTheme.cardDark,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: SingleChildScrollView(
@@ -1386,7 +1407,7 @@ class _SportSelectionSheet extends ConsumerWidget {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: const Color(0xFF2A2A2A),
+                color: AppTheme.borderColor,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -1430,12 +1451,12 @@ class _SportSelectionSheet extends ConsumerWidget {
                     decoration: BoxDecoration(
                       color: isSelected
                           ? AppTheme.primaryColor.withOpacity(0.2)
-                          : const Color(0xFF1E1E1E),
+                          : AppTheme.cardDark,
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
                         color: isSelected
                             ? AppTheme.primaryColor
-                            : const Color(0xFF2A2A2A),
+                            : AppTheme.borderColor,
                         width: isSelected ? 2 : 1,
                       ),
                     ),

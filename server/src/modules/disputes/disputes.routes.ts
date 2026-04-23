@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { AppDataSource } from '../../config/database.js';
-import { AdminRole, Dispute, Match } from '../../entities/index.js';
+import { AdminRole, Dispute, Game, Match } from '../../entities/index.js';
 import { requireAdmin } from '../admin/admin.middleware.js';
 
 // ─── 입력 스키마 ───
@@ -28,6 +28,19 @@ const adminListDisputesQuerySchema = z.object({
 const adminUpdateDisputeSchema = z.object({
   status: z.enum(['IN_PROGRESS', 'RESOLVED']),
   adminReply: z.string().optional(),
+  // RESOLVED 시점에 게임 결과까지 확정할 때 사용.
+  // action:
+  //  - 'KEEP_ORIGINAL'  — 게임 원래 결과 유지 + VERIFIED
+  //  - 'MODIFY_RESULT'  — 관리자가 승자 지정 + VERIFIED (winnerProfileId 필수)
+  //  - 'VOID_GAME'      — 게임 무효 처리 (VOIDED + 매칭 CANCELLED)
+  resolution: z
+    .object({
+      action: z.enum(['KEEP_ORIGINAL', 'MODIFY_RESULT', 'VOID_GAME']),
+      winnerProfileId: z.string().uuid().optional(),
+      requesterScore: z.number().int().min(0).optional(),
+      opponentScore: z.number().int().min(0).optional(),
+    })
+    .optional(),
 });
 
 type CreateDisputeDto = z.infer<typeof createDisputeSchema>;
@@ -184,7 +197,84 @@ export async function disputesRoutes(fastify: FastifyInstance): Promise<void> {
         qb.where('d.status = :status', { status });
       }
 
-      const [items, total] = await qb.getManyAndCount();
+      const [rawItems, total] = await qb.getManyAndCount();
+
+      // 매칭/게임/상대방 정보를 배치 조회하여 붙임
+      const matchIds = Array.from(
+        new Set(rawItems.map((d) => d.matchId).filter(Boolean)),
+      );
+      const matchRows = matchIds.length
+        ? await AppDataSource.query(
+            `
+          SELECT
+            m.id AS "matchId",
+            m.sport_type AS "sportType",
+            m.status AS "matchStatus",
+            m.requester_verification_code AS "reqCode",
+            m.opponent_verification_code AS "oppCode",
+            rp.id AS "requesterProfileId",
+            rp.user_id AS "requesterUserId",
+            ru.nickname AS "requesterNickname",
+            op.id AS "opponentProfileId",
+            op.user_id AS "opponentUserId",
+            ou.nickname AS "opponentNickname",
+            g.id AS "gameId",
+            g.result_status AS "gameResultStatus",
+            g.winner_profile_id AS "winnerProfileId",
+            g.requester_score AS "requesterScore",
+            g.opponent_score AS "opponentScore",
+            g.requester_claimed_result AS "requesterClaimed",
+            g.opponent_claimed_result AS "opponentClaimed"
+          FROM matches m
+          LEFT JOIN sports_profiles rp ON rp.id = m.requester_profile_id
+          LEFT JOIN users ru ON ru.id = rp.user_id
+          LEFT JOIN sports_profiles op ON op.id = m.opponent_profile_id
+          LEFT JOIN users ou ON ou.id = op.user_id
+          LEFT JOIN games g ON g.match_id = m.id
+          WHERE m.id = ANY($1::uuid[])
+          `,
+            [matchIds],
+          )
+        : [];
+
+      const matchMap = new Map<string, any>(
+        matchRows.map((row: any) => [row.matchId, row]),
+      );
+
+      const items = rawItems.map((d: any) => {
+        const mi = matchMap.get(d.matchId);
+        return {
+          ...d,
+          match: mi
+            ? {
+                id: mi.matchId,
+                sportType: mi.sportType,
+                status: mi.matchStatus,
+                requester: {
+                  profileId: mi.requesterProfileId,
+                  userId: mi.requesterUserId,
+                  nickname: mi.requesterNickname,
+                  claimedResult: mi.requesterClaimed,
+                  score: mi.requesterScore,
+                },
+                opponent: {
+                  profileId: mi.opponentProfileId,
+                  userId: mi.opponentUserId,
+                  nickname: mi.opponentNickname,
+                  claimedResult: mi.opponentClaimed,
+                  score: mi.opponentScore,
+                },
+                game: mi.gameId
+                  ? {
+                      id: mi.gameId,
+                      resultStatus: mi.gameResultStatus,
+                      winnerProfileId: mi.winnerProfileId,
+                    }
+                  : null,
+              }
+            : null,
+        };
+      });
 
       return reply.send({
         success: true,
@@ -221,6 +311,63 @@ export async function disputesRoutes(fastify: FastifyInstance): Promise<void> {
           success: false,
           error: { code: 'NOT_FOUND', message: '의의 제기를 찾을 수 없습니다.' },
         });
+      }
+
+      // RESOLVED + resolution이 오면 게임 결과도 확정
+      if (dto.status === 'RESOLVED' && dto.resolution) {
+        const gameRepo = AppDataSource.getRepository(Game);
+        const game = await gameRepo.findOne({ where: { matchId: dispute.matchId } });
+        if (!game) {
+          return reply.status(404).send({
+            success: false,
+            error: {
+              code: 'GAME_NOT_FOUND',
+              message: '대상 경기를 찾을 수 없습니다.',
+            },
+          });
+        }
+
+        if (dto.resolution.action === 'VOID_GAME') {
+          await AppDataSource.transaction(async (manager) => {
+            await manager
+              .getRepository(Game)
+              .update(game.id, { resultStatus: 'VOIDED' as any });
+            await manager
+              .getRepository(Match)
+              .update(dispute.matchId, { status: 'CANCELLED' as any });
+          });
+        } else if (dto.resolution.action === 'MODIFY_RESULT') {
+          if (!dto.resolution.winnerProfileId) {
+            return reply.status(400).send({
+              success: false,
+              error: {
+                code: 'BAD_REQUEST',
+                message: 'MODIFY_RESULT 시 winnerProfileId가 필요합니다.',
+              },
+            });
+          }
+          await gameRepo.update(game.id, {
+            resultStatus: 'VERIFIED' as any,
+            winnerProfileId: dto.resolution.winnerProfileId,
+            requesterScore: dto.resolution.requesterScore ?? null,
+            opponentScore: dto.resolution.opponentScore ?? null,
+            verifiedAt: new Date(),
+          });
+          await AppDataSource.getRepository(Match).update(dispute.matchId, {
+            status: 'COMPLETED' as any,
+            completedAt: new Date(),
+          });
+        } else {
+          // KEEP_ORIGINAL — 게임 결과 유지 + VERIFIED
+          await gameRepo.update(game.id, {
+            resultStatus: 'VERIFIED' as any,
+            verifiedAt: new Date(),
+          });
+          await AppDataSource.getRepository(Match).update(dispute.matchId, {
+            status: 'COMPLETED' as any,
+            completedAt: new Date(),
+          });
+        }
       }
 
       await disputeRepo.update(id, {

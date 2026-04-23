@@ -20,6 +20,9 @@ class ApiClient {
   final SecureStorage _storage = SecureStorage.instance;
   bool _isRefreshing = false;
 
+  /// 401 토큰 갱신 실패 시 호출되는 콜백 (로그아웃 처리용)
+  VoidCallback? onForceLogout;
+
   void initialize() {
     _dio = Dio(BaseOptions(
       baseUrl: AppConfig.apiBaseUrl,
@@ -207,6 +210,7 @@ class _AuthInterceptor extends Interceptor {
       if (refreshToken == null) {
         await _storage.clearTokens();
         _refreshCompleter!.completeError('no_refresh_token');
+        _client.onForceLogout?.call();
         return handler.next(err);
       }
 
@@ -238,6 +242,7 @@ class _AuthInterceptor extends Interceptor {
     } catch (e) {
       await _storage.clearTokens();
       _refreshCompleter!.completeError(e);
+      _client.onForceLogout?.call();
       handler.next(err);
     } finally {
       _refreshCompleter = null;

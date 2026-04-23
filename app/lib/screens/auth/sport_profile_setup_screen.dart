@@ -1,4 +1,3 @@
-import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +6,7 @@ import '../../config/sports.dart';
 import '../../config/theme.dart';
 import '../../repositories/profile_repository.dart';
 import '../../widgets/common/app_toast.dart';
+import '../../widgets/common/sport_badge.dart';
 import '../../core/network/api_client.dart';
 
 /// 스포츠 프로필 설정 화면
@@ -172,7 +172,7 @@ class _SportProfileSetupScreenState
       body: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
         child: SingleChildScrollView(
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.all(24),
           child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -336,34 +336,45 @@ class _SportCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final grad = AppTheme.sportGradient(sportKey);
+    final c1 = grad.first;
+    final c2 = grad.last;
+
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         decoration: BoxDecoration(
-          color: isSelected
-              ? AppTheme.primaryColor.withOpacity(0.18)
-              : const Color(0xFF1E1E1E),
-          borderRadius: BorderRadius.circular(14),
+          gradient: isSelected
+              ? LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    c1.withValues(alpha: 0.22),
+                    c2.withValues(alpha: 0.08),
+                  ],
+                )
+              : null,
+          color: isSelected ? null : AppTheme.cardDark,
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected
-                ? AppTheme.primaryColor
-                : const Color(0xFF2A2A2A),
-            width: isSelected ? 2 : 1,
+                ? c1.withValues(alpha: 0.6)
+                : AppTheme.borderColor,
+            width: isSelected ? 1.5 : 1,
           ),
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: AppTheme.primaryColor.withOpacity(0.15),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
+                    color: c1.withValues(alpha: 0.22),
+                    blurRadius: 14,
+                    offset: const Offset(0, 4),
                   ),
                 ]
               : null,
         ),
         child: Stack(
           children: [
-            // 체크마크 (선택 시)
             if (isSelected)
               Positioned(
                 top: 6,
@@ -371,8 +382,8 @@ class _SportCard extends StatelessWidget {
                 child: Container(
                   width: 18,
                   height: 18,
-                  decoration: const BoxDecoration(
-                    color: AppTheme.primaryColor,
+                  decoration: BoxDecoration(
+                    color: c1,
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
@@ -382,26 +393,25 @@ class _SportCard extends StatelessWidget {
                   ),
                 ),
               ),
-            // 내용
             Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    icon,
-                    size: 28,
-                    color: isSelected
-                        ? AppTheme.primaryColor
-                        : AppTheme.textSecondary,
+                  SportBadge(
+                    sportValue: sportKey,
+                    icon: icon,
+                    size: 40,
+                    selected: isSelected,
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
                   Text(
                     name,
                     style: TextStyle(
                       fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.1,
                       color: isSelected
-                          ? AppTheme.primaryColor
+                          ? Colors.white
                           : AppTheme.textPrimary,
                     ),
                   ),

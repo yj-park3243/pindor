@@ -99,11 +99,10 @@ export class UsersService {
       email: user.email,
       nickname: user.nickname,
       profileImageUrl: user.profileImageUrl,
-      phone: user.phone,
-      gender: (user as any).gender ?? null,
-      birthDate: (user as any).birthDate ?? null,
-      realName: (user as any).realName ?? null,
-      phoneNumber: (user as any).phoneNumber ?? null,
+      gender: user.gender ?? null,
+      birthDate: user.birthDate ?? null,
+      realName: user.realName ?? null,
+      phoneNumber: user.phoneNumber ?? null,
       status: user.status,
       isVerified: (user as any).isVerified ?? false,
       createdAt: user.createdAt,
@@ -143,7 +142,6 @@ export class UsersService {
     await userRepo.update(userId, {
       ...(dto.nickname && { nickname: dto.nickname }),
       ...(dto.profileImageUrl && { profileImageUrl: dto.profileImageUrl }),
-      ...(dto.phone && { phone: dto.phone }),
       ...(dto.gender && { gender: dto.gender }),
       ...(dto.birthDate && { birthDate: new Date(dto.birthDate) }),
       ...(dto.preferredSportType !== undefined && { preferredSportType: dto.preferredSportType }),
@@ -318,7 +316,7 @@ export class UsersService {
     await userRepo.update(userId, {
       status: UserStatus.WITHDRAWN,
       email: null,
-      phone: null,
+      phoneNumber: null,
       nickname: `탈퇴회원_${Date.now()}`,
     });
   }

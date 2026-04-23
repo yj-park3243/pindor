@@ -211,12 +211,13 @@ export class MatchingService {
       }
 
       // 같은 날짜에 활성 매칭 있는지 (PENDING_ACCEPT, CHAT, CONFIRMED)
+      // desired_date 또는 scheduled_date 둘 다 체크
       const activeMatchForDate = await this.matchRepo
         .createQueryBuilder('m')
         .leftJoin('m.requesterProfile', 'rp')
         .leftJoin('m.opponentProfile', 'op')
         .where('(rp.userId = :userId OR op.userId = :userId)', { userId })
-        .andWhere('m.scheduled_date = :date', { date: desiredDate })
+        .andWhere('(m.desired_date = :date OR m.scheduled_date = :date)', { date: desiredDate })
         .andWhere('m.status IN (:...statuses)', { statuses: ['PENDING_ACCEPT', 'CHAT', 'CONFIRMED'] })
         .getOne();
 
@@ -228,8 +229,39 @@ export class MatchingService {
       }
     }
 
+    // ─── desiredDate 없이도 활성 매칭/요청 중복 차단 ───
+    // 날짜 미지정 요청이더라도 이미 활성 매칭이 있으면 차단
+    if (!desiredDate) {
+      const activeMatchAny = await this.matchRepo
+        .createQueryBuilder('m')
+        .leftJoin('m.requesterProfile', 'rp')
+        .leftJoin('m.opponentProfile', 'op')
+        .where('(rp.userId = :userId OR op.userId = :userId)', { userId })
+        .andWhere('m.status IN (:...statuses)', { statuses: ['PENDING_ACCEPT', 'CHAT', 'CONFIRMED'] })
+        .getOne();
+
+      if (activeMatchAny) {
+        throw AppError.conflict(
+          ErrorCode.MATCH_ALREADY_EXISTS,
+          '진행 중인 매칭이 있습니다. 완료 후 다시 신청해주세요.',
+        );
+      }
+
+      const waitingRequestAny = await this.matchRequestRepo
+        .createQueryBuilder('mr')
+        .where('mr.requester_id = :userId', { userId })
+        .andWhere('mr.status = :status', { status: 'WAITING' })
+        .getOne();
+
+      if (waitingRequestAny) {
+        throw AppError.conflict(
+          ErrorCode.MATCH_ALREADY_EXISTS,
+          '대기 중인 매칭 요청이 있습니다.',
+        );
+      }
+    }
+
     // ─── CONFIRMED 매칭 중 결과 미입력 차단 ───
-    // CONFIRMED 상태인 매칭에 연결된 게임이 있고 resultStatus가 PENDING이면 신규 매칭 불가
     const confirmedMatchesWithPendingResult = await this.dataSource.query<Array<{ count: string }>>(
       `SELECT COUNT(*)::int AS count
        FROM matches m
@@ -249,7 +281,7 @@ export class MatchingService {
       );
     }
 
-    // ─── 총 활성 매칭/요청 2개 제한 (COMPLETED/CANCELLED/EXPIRED 제외) ───
+    // ─── 총 활성 매칭/요청 2개 제한 (오늘 1개 + 내일 1개) ───
     const totalActiveRequests = await this.matchRequestRepo
       .createQueryBuilder('mr')
       .where('mr.requester_id = :userId', { userId })
@@ -282,16 +314,26 @@ export class MatchingService {
       }
     }
 
-    // 만료 시간 설정 (SCHEDULED: 요청 날짜 자정, INSTANT: 2시간 후, CASUAL: 2시간 후)
+    // 만료 시간 설정: 시간대 종료 시각 기준
+    // 예) 12~15시 선택 → 해당 날 15:00 KST에 만료
+    const timeSlotEndHour: Record<string, number> = {
+      DAWN: 3, EARLY_MORNING: 6, MORNING: 9, LATE_MORNING: 12,
+      AFTERNOON: 15, LATE_AFTERNOON: 18, EVENING: 21, NIGHT: 24, ANY: 24,
+    };
     let expiresAt: Date;
     if (dto.requestType === RequestType.INSTANT || (dto.requestType as string) === 'INSTANT') {
       expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000);
     } else if ((dto.requestType as string) === 'CASUAL') {
       expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000);
     } else if (dto.desiredDate) {
-      expiresAt = new Date(`${dto.desiredDate}T23:59:59+09:00`); // KST 자정
+      const endHour = timeSlotEndHour[dto.desiredTimeSlot ?? 'ANY'] ?? 24;
+      if (endHour >= 24) {
+        expiresAt = new Date(`${dto.desiredDate}T23:59:59+09:00`);
+      } else {
+        expiresAt = new Date(`${dto.desiredDate}T${String(endHour).padStart(2, '0')}:00:00+09:00`);
+      }
     } else {
-      expiresAt = new Date(`${dto.desiredDate ?? new Date().toISOString().slice(0, 10)}T23:59:59+09:00`); // 당일 KST 자정
+      expiresAt = new Date(`${new Date().toISOString().slice(0, 10)}T23:59:59+09:00`);
     }
 
     // Pin 조회 (pinId로 중심 좌표 가져오기)
@@ -676,11 +718,10 @@ export class MatchingService {
         },
       );
 
-      // 매칭 수락 리마인더 job 등록 (5분전, 3분전, 1분전)
-      // 수락 만료가 10분이므로 생성 후 5분, 7분, 9분에 발송
+      // 매칭 수락 리마인더 job 등록 (5분전, 1분전)
+      // 수락 만료가 10분이므로 생성 후 5분, 9분에 발송
       const reminders = [
         { delay: 5 * 60 * 1000, label: '5분' },
-        { delay: 7 * 60 * 1000, label: '3분' },
         { delay: 9 * 60 * 1000, label: '1분' },
       ];
       for (const { delay, label } of reminders) {
@@ -718,12 +759,10 @@ export class MatchingService {
             userId: opts.requesterUserId,
             type: 'MATCH_PENDING_ACCEPT',
             title: '매칭 상대를 찾았습니다!',
-            body: `상대: ${bestCandidate.nickname}${bestCandidate.gender ? `/${bestCandidate.gender}` : ''}${opponentAge !== null ? `/${opponentAge}세` : ''}. 수락하시겠습니까?`,
+            body: `상대: ${bestCandidate.nickname}. 수락하시겠습니까?`,
             data: {
               matchId: savedMatch.id,
               opponentNickname: bestCandidate.nickname,
-              opponentGender: bestCandidate.gender ?? '',
-              opponentAge: opponentAge !== null ? String(opponentAge) : '',
               deepLink: `/matches/${savedMatch.id}/accept`,
             },
           },
@@ -731,12 +770,10 @@ export class MatchingService {
             userId: bestCandidate.userId,
             type: 'MATCH_PENDING_ACCEPT',
             title: '매칭 상대를 찾았습니다!',
-            body: `상대: ${(requester as any)?.nickname ?? ''}${(requester as any)?.gender ? `/${(requester as any).gender}` : ''}${requesterAge !== null ? `/${requesterAge}세` : ''}. 수락하시겠습니까?`,
+            body: `상대: ${(requester as any)?.nickname ?? ''}. 수락하시겠습니까?`,
             data: {
               matchId: savedMatch.id,
               opponentNickname: (requester as any)?.nickname ?? '',
-              opponentGender: (requester as any)?.gender ?? '',
-              opponentAge: requesterAge !== null ? String(requesterAge) : '',
               deepLink: `/matches/${savedMatch.id}/accept`,
             },
           },
@@ -1133,7 +1170,7 @@ export class MatchingService {
           userId: opponentAcceptance.userId,
           type: 'MATCH_REJECTED',
           title: '매칭이 취소되었습니다',
-          body: '상대방이 매칭을 거절했습니다. 다시 매칭을 시도해 보세요.',
+          body: '상대방이 매칭을 거절했습니다.',
           data: { matchId },
         },
       ]);
@@ -1221,7 +1258,12 @@ export class MatchingService {
       .addSelect('p.name', 'pinName')
       .where('mr.requesterId = :userId', { userId });
 
-    if (status) qb.andWhere('mr.status = :status', { status });
+    if (status) {
+      qb.andWhere('mr.status = :status', { status });
+    } else {
+      // 기본: 만료/취소된 요청 숨기기
+      qb.andWhere('mr.status NOT IN (:...hideStatuses)', { hideStatuses: ['EXPIRED', 'CANCELLED'] });
+    }
     if (sportType) qb.andWhere('mr.sportType = :sportType', { sportType });
     if (cursor) qb.andWhere('mr.createdAt < :cursor', { cursor: new Date(cursor) });
 
@@ -1273,7 +1315,12 @@ export class MatchingService {
       .addSelect('game.result_status', 'game_result_status')
       .where('(rp.userId = :userId OR op.userId = :userId)', { userId });
 
-    if (status) qb.andWhere('match.status = :status', { status });
+    if (status) {
+      qb.andWhere('match.status = :status', { status });
+    } else {
+      // 기본: 취소된 매칭 숨기기
+      qb.andWhere('match.status != :hideCancelled', { hideCancelled: 'CANCELLED' });
+    }
     if (cursor) qb.andWhere('match.createdAt < :cursor', { cursor: new Date(cursor) });
 
     qb.orderBy('match.createdAt', 'DESC').take(limit + 1);
@@ -2210,21 +2257,13 @@ export class MatchingService {
       .where('id = :id', { id: noshowProfileId })
       .execute();
 
-    // 4. 노쇼 횟수 확인 후 밴 적용
-    const profile = await this.sportsProfileRepo.findOne({ where: { id: noshowProfileId } });
-    const noShowCount = profile?.noShowCount ?? 0;
-
-    if (noShowCount >= 2) {
-      // 2회 이상: 계정 영구 정지 (SUSPENDED)
-      await this.dataSource.getRepository(User).update(
-        { id: noshowUserId },
-        { status: 'SUSPENDED' as any },
-      );
-    } else {
-      // 1회: 7일 매칭 밴
-      const banUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-      await this.sportsProfileRepo.update(noshowProfileId, { matchBanUntil: banUntil } as any);
-    }
+    // 4. 자동 밴 (7일). 영구 정지는 관리자 판단으로만 처리되며
+    //    여기서는 단순히 매칭 제한 타이머만 연장한다.
+    const banUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    await this.sportsProfileRepo.update(
+      noshowProfileId,
+      { matchBanUntil: banUntil } as any,
+    );
 
     // 5. 매칭 완료 처리
     await this.matchRepo.update(matchId, {
@@ -2270,15 +2309,13 @@ export class MatchingService {
       );
     }
 
-    // 8. 알림 발송
+    // 8. 알림 발송 (자동 정지 없음 — 운영자가 관리자 페이지에서 수동 정지 시 별도 알림)
     if (this.notificationService) {
       await this.notificationService.send({
         userId: noshowUserId,
         type: 'MATCH_NO_SHOW_PENALTY',
         title: '노쇼 패널티',
-        body: noShowCount >= 2
-          ? '2회 노쇼로 계정이 정지되었습니다.'
-          : '노쇼 신고로 7일간 매칭이 제한됩니다.',
+        body: '노쇼 신고로 7일간 매칭이 제한됩니다.',
         data: { matchId },
       });
     }

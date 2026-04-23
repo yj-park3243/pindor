@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -58,11 +59,9 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
       final hasToken = await _storage.hasValidToken();
       if (!hasToken) return AuthState.unauthenticated;
 
-      // 소켓 연결 (토큰이 있으면 우선 연결)
-      final accessToken = await _storage.getAccessToken();
-      if (accessToken != null) {
-        _socket.connect(accessToken);
-      }
+      // FCM 토큰 재등록 (인증 토큰 확보된 상태)
+      unawaited(PushNotificationService.instance.reregisterToken());
+      // 소켓은 매칭 데이터 로드 후 필요 시에만 연결 (syncSocketConnection)
 
       // 서버에서 내 정보 조회 → 로컬 DB에도 저장
       final repo = ref.read(userRepositoryProvider);

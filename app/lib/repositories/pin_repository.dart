@@ -191,8 +191,13 @@ class PinRepository {
     return Comment.fromJson(response['data'] as Map<String, dynamic>);
   }
 
-  Future<void> toggleLike(String pinId, String postId) async {
-    await _api.post('/pins/$pinId/posts/$postId/like', body: {});
+  Future<({bool liked, int likeCount})> toggleLike(String pinId, String postId) async {
+    final response = await _api.post('/pins/$pinId/posts/$postId/like', body: {});
+    final data = response['data'] as Map<String, dynamic>;
+    return (
+      liked: data['liked'] as bool,
+      likeCount: (data['likeCount'] as num?)?.toInt() ?? 0,
+    );
   }
 }
 

@@ -231,7 +231,6 @@ export class ProfilesService {
 
   async getScoreHistory(userId: string, profileId: string, limit = 20) {
     const profileRepo = this.dataSource.getRepository(SportsProfile);
-    const scoreHistoryRepo = this.dataSource.getRepository(ScoreHistory);
 
     const profile = await profileRepo.findOne({
       where: { id: profileId, userId },
@@ -241,12 +240,35 @@ export class ProfilesService {
       throw AppError.notFound(ErrorCode.PROFILE_NOT_FOUND);
     }
 
-    const histories = await scoreHistoryRepo.find({
-      where: { sportsProfileId: profileId },
-      order: { createdAt: 'DESC' },
-      take: limit,
-    });
+    // 점수 히스토리 + 상대방 닉네임 조회
+    const rows = await this.dataSource.query(
+      `SELECT
+        sh.score_after AS "scoreAfter",
+        sh.score_change AS "scoreChange",
+        sh.change_type AS "changeType",
+        sh.created_at AS "date",
+        u2.nickname AS "opponentNickname"
+      FROM score_histories sh
+      LEFT JOIN games g ON g.id = sh.game_id
+      LEFT JOIN matches m ON m.id = g.match_id
+      LEFT JOIN sports_profiles sp2 ON sp2.id = CASE
+        WHEN m.requester_profile_id = $1 THEN m.opponent_profile_id
+        ELSE m.requester_profile_id
+      END
+      LEFT JOIN users u2 ON u2.id = sp2.user_id
+      WHERE sh.sports_profile_id = $1
+      ORDER BY sh.created_at ASC
+      LIMIT $2`,
+      [profileId, limit],
+    );
 
-    return histories;
+    return rows.map((r: any) => ({
+      date: r.date,
+      score: r.scoreAfter,
+      rank: 0,
+      tier: profile.tier,
+      opponentNickname: r.opponentNickname ?? null,
+      isWin: r.changeType === 'GAME_WIN',
+    }));
   }
 }

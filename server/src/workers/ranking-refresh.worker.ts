@@ -74,19 +74,33 @@ async function refreshPinRanking(pinId: string, sportType: string): Promise<void
   // ranking_entries가 없는 유저 중 조건을 만족하는 유저도 포함 (신규 진입자)
   const existingProfileIds = new Set(entriesWithProfiles.map((e) => e.sportsProfileId));
 
-  const newProfiles = await sportsProfileRepo
-    .createQueryBuilder('sp')
-    .innerJoin('sp.user', 'u')
-    .innerJoin('u.userPins', 'up', 'up.pinId = :pinId', { pinId })
-    .where('sp.sportType = :sportType', { sportType })
-    .andWhere('sp.isActive = true')
-    .andWhere('sp.gamesPlayed >= 3')
-    .andWhere('u.status = :status', { status: 'ACTIVE' })
-    .andWhere('u.lastLoginAt >= :since', { since: thirtyDaysAgo })
-    .andWhere('sp.id NOT IN (:...existingIds)', {
-      existingIds: existingProfileIds.size > 0 ? [...existingProfileIds] : ['__none__'],
-    })
-    .getMany();
+  let newProfiles: SportsProfile[] = [];
+  if (existingProfileIds.size > 0) {
+    newProfiles = await sportsProfileRepo
+      .createQueryBuilder('sp')
+      .innerJoin('sp.user', 'u')
+      .innerJoin('u.userPins', 'up', 'up.pinId = :pinId', { pinId })
+      .where('sp.sportType = :sportType', { sportType })
+      .andWhere('sp.isActive = true')
+      .andWhere('sp.gamesPlayed >= 3')
+      .andWhere('u.status = :status', { status: 'ACTIVE' })
+      .andWhere('u.lastLoginAt >= :since', { since: thirtyDaysAgo })
+      .andWhere('sp.id NOT IN (:...existingIds)', {
+        existingIds: [...existingProfileIds],
+      })
+      .getMany();
+  } else {
+    newProfiles = await sportsProfileRepo
+      .createQueryBuilder('sp')
+      .innerJoin('sp.user', 'u')
+      .innerJoin('u.userPins', 'up', 'up.pinId = :pinId', { pinId })
+      .where('sp.sportType = :sportType', { sportType })
+      .andWhere('sp.isActive = true')
+      .andWhere('sp.gamesPlayed >= 3')
+      .andWhere('u.status = :status', { status: 'ACTIVE' })
+      .andWhere('u.lastLoginAt >= :since', { since: thirtyDaysAgo })
+      .getMany();
+  }
 
   // profiles: ranking_entries 기반 순서 유지 + 신규 진입자 추가
   const profiles = [

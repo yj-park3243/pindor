@@ -143,11 +143,12 @@ class UserLocation {
   });
 
   factory UserLocation.fromJson(Map<String, dynamic> json) {
+    final homePoint = json['homePoint'] as Map<String, dynamic>?;
     return UserLocation(
-      latitude: (json['latitude'] as num).toDouble(),
-      longitude: (json['longitude'] as num).toDouble(),
+      latitude: (homePoint?['lat'] as num?)?.toDouble() ?? 0.0,
+      longitude: (homePoint?['lng'] as num?)?.toDouble() ?? 0.0,
       homeAddress: json['homeAddress'] as String?,
-      matchRadiusKm: json['matchRadiusKm'] as int? ?? 10,
+      matchRadiusKm: (json['matchRadiusKm'] as num?)?.toInt() ?? 10,
     );
   }
 

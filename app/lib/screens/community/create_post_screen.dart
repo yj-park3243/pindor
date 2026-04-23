@@ -127,6 +127,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       body: Form(
         key: _formKey,
         child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -295,6 +296,7 @@ class _ImagePicker extends StatelessWidget {
     return SizedBox(
       height: 90,
       child: ListView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         scrollDirection: Axis.horizontal,
         children: [
           if (images.length < 4)

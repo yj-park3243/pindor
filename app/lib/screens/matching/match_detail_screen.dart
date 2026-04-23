@@ -140,7 +140,7 @@ class _NoshowReportSheetState extends ConsumerState<_NoshowReportSheet> {
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     return Container(
       decoration: const BoxDecoration(
-        color: Color(0xFF1E1E1E),
+        color: AppTheme.cardDark,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       padding: EdgeInsets.fromLTRB(24, 20, 24, bottomPadding + 20),
@@ -150,7 +150,7 @@ class _NoshowReportSheetState extends ConsumerState<_NoshowReportSheet> {
           Container(
             width: 36, height: 4,
             decoration: BoxDecoration(
-              color: const Color(0xFF2A2A2A),
+              color: AppTheme.borderColor,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -197,7 +197,7 @@ class _NoshowReportSheetState extends ConsumerState<_NoshowReportSheet> {
                     child: Container(
                       width: 80, height: 80,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF2A2A2A),
+                        color: AppTheme.borderColor,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: const Color(0xFF3A3A3A)),
                       ),
@@ -258,7 +258,7 @@ class _NoshowReportSheetState extends ConsumerState<_NoshowReportSheet> {
                   onPressed: _isSubmitting ? null : () => Navigator.pop(context),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    side: const BorderSide(color: Color(0xFF2A2A2A)),
+                    side: const BorderSide(color: AppTheme.borderColor),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   child: const Text('취소',
@@ -301,7 +301,7 @@ void _showBlockConfirmDialog(
     backgroundColor: Colors.transparent,
     builder: (ctx) => Container(
       decoration: const BoxDecoration(
-        color: Color(0xFF1E1E1E),
+        color: AppTheme.cardDark,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       padding: EdgeInsets.fromLTRB(
@@ -313,7 +313,7 @@ void _showBlockConfirmDialog(
             width: 36,
             height: 4,
             decoration: BoxDecoration(
-              color: const Color(0xFF2A2A2A),
+              color: AppTheme.borderColor,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -354,7 +354,7 @@ void _showBlockConfirmDialog(
                   onPressed: () => Navigator.pop(ctx),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    side: const BorderSide(color: Color(0xFF2A2A2A)),
+                    side: const BorderSide(color: AppTheme.borderColor),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
                   ),
@@ -414,7 +414,7 @@ void _showForfeitConfirmDialog(
     backgroundColor: Colors.transparent,
     builder: (ctx) => Container(
       decoration: const BoxDecoration(
-        color: Color(0xFF1E1E1E),
+        color: AppTheme.cardDark,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       padding: EdgeInsets.fromLTRB(
@@ -424,7 +424,7 @@ void _showForfeitConfirmDialog(
         children: [
           Container(
             width: 36, height: 4,
-            decoration: BoxDecoration(color: const Color(0xFF2A2A2A), borderRadius: BorderRadius.circular(2)),
+            decoration: BoxDecoration(color: AppTheme.borderColor, borderRadius: BorderRadius.circular(2)),
           ),
           const SizedBox(height: 20),
           Container(
@@ -448,7 +448,7 @@ void _showForfeitConfirmDialog(
                   onPressed: () => Navigator.pop(ctx),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    side: const BorderSide(color: Color(0xFF2A2A2A)),
+                    side: const BorderSide(color: AppTheme.borderColor),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   child: const Text('취소', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF9CA3AF))),
@@ -516,14 +516,14 @@ class MatchDetailScreen extends ConsumerWidget {
 
     return matchAsync.when(
       loading: () => const Scaffold(
-        backgroundColor: Color(0xFF0A0A0A),
+        backgroundColor: AppTheme.backgroundDark,
         body: FullScreenLoading(),
       ),
       error: (e, _) => Scaffold(
-        backgroundColor: const Color(0xFF0A0A0A),
+        backgroundColor: AppTheme.backgroundDark,
         appBar: AppBar(
           title: const Text('매칭 상세'),
-          backgroundColor: const Color(0xFF0A0A0A),
+          backgroundColor: AppTheme.backgroundDark,
           elevation: 0,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
@@ -549,10 +549,10 @@ class MatchDetailScreen extends ConsumerWidget {
         return PopScope(
           canPop: !shouldLock,
           child: Scaffold(
-            backgroundColor: const Color(0xFF0A0A0A),
+            backgroundColor: AppTheme.backgroundDark,
             appBar: AppBar(
               title: const Text('매칭 상세'),
-              backgroundColor: const Color(0xFF0A0A0A),
+              backgroundColor: AppTheme.backgroundDark,
               elevation: 0,
               leading: shouldLock
                   ? null
@@ -771,12 +771,12 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
                           : '승부 결과'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: isResultSubmitted
-                            ? const Color(0xFF2A2A2A)
+                            ? AppTheme.borderColor
                             : AppTheme.secondaryColor,
                         foregroundColor: isResultSubmitted
                             ? AppTheme.textSecondary
                             : Colors.white,
-                        disabledBackgroundColor: const Color(0xFF2A2A2A),
+                        disabledBackgroundColor: AppTheme.borderColor,
                         disabledForegroundColor: AppTheme.textSecondary,
                       ),
                     ),
@@ -855,7 +855,7 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         decoration: const BoxDecoration(
-          color: Color(0xFF1E1E1E),
+          color: AppTheme.cardDark,
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
         padding: EdgeInsets.fromLTRB(
@@ -867,7 +867,7 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
               width: 36,
               height: 4,
               decoration: BoxDecoration(
-                color: const Color(0xFF2A2A2A),
+                color: AppTheme.borderColor,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -909,7 +909,7 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
                     onPressed: () => Navigator.pop(ctx, false),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
-                      side: const BorderSide(color: Color(0xFF2A2A2A)),
+                      side: const BorderSide(color: AppTheme.borderColor),
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12)),
                     ),
@@ -1365,7 +1365,7 @@ class _MatchupCard extends ConsumerWidget {
                         height: 1,
                         child: const DecoratedBox(
                           decoration:
-                              BoxDecoration(color: Color(0xFF2A2A2A)),
+                              BoxDecoration(color: AppTheme.borderColor),
                         ),
                       ),
                     ),

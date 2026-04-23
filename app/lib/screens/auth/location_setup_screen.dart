@@ -28,6 +28,8 @@ class _LocationSetupScreenState extends ConsumerState<LocationSetupScreen> {
   bool _mapReady = false;
 
   NLatLng _currentLocation = const NLatLng(37.5665, 126.9780);
+  Position? _lastPosition;
+  bool _didAutoFocus = false;
 
   Pin? _selectedPin;
   List<Pin>? _lastPins;
@@ -43,12 +45,42 @@ class _LocationSetupScreenState extends ConsumerState<LocationSetupScreen> {
     final pos = await LocationUtils.getCurrentPosition();
     if (pos == null || !mounted) return;
 
+    _lastPosition = pos;
     setState(() {
       _currentLocation = NLatLng(pos.latitude, pos.longitude);
     });
-    _mapController?.updateCamera(
-      NCameraUpdate.scrollAndZoomTo(target: _currentLocation, zoom: 13),
+    _maybeFocusNearestPin();
+  }
+
+  /// 위치·지도·핀 3개 중 가장 늦게 준비된 시점에 가장 가까운 핀으로 카메라 이동.
+  /// 한 번 자동 포커스된 이후에는 사용자 제스처를 존중해 재호출하지 않음.
+  void _maybeFocusNearestPin({bool force = false}) {
+    if (!force && _didAutoFocus) return;
+    final pos = _lastPosition;
+    if (pos == null || !_mapReady || _mapController == null) return;
+
+    final pins = ref.read(allPinsProvider).valueOrNull;
+    if (pins == null || pins.isEmpty) {
+      _mapController!.updateCamera(
+        NCameraUpdate.scrollAndZoomTo(target: _currentLocation, zoom: 13),
+      );
+      _didAutoFocus = true;
+      return;
+    }
+    final nearest = pins.reduce((a, b) {
+      final da = Geolocator.distanceBetween(
+          pos.latitude, pos.longitude, a.centerLatitude, a.centerLongitude);
+      final db = Geolocator.distanceBetween(
+          pos.latitude, pos.longitude, b.centerLatitude, b.centerLongitude);
+      return da <= db ? a : b;
+    });
+    _mapController!.updateCamera(
+      NCameraUpdate.scrollAndZoomTo(
+        target: NLatLng(nearest.centerLatitude, nearest.centerLongitude),
+        zoom: 14,
+      ),
     );
+    _didAutoFocus = true;
   }
 
   void _addPinMarkers(List<Pin> pins) async {
@@ -115,6 +147,7 @@ class _LocationSetupScreenState extends ConsumerState<LocationSetupScreen> {
         next.whenData((pins) {
           if (mounted && _mapReady) {
             _addPinMarkers(pins);
+            _maybeFocusNearestPin();
           }
         });
       },
@@ -220,6 +253,7 @@ class _LocationSetupScreenState extends ConsumerState<LocationSetupScreen> {
                       if (pins != null && pins.isNotEmpty) {
                         _addPinMarkers(pins);
                       }
+                      _maybeFocusNearestPin();
                     },
                   ),
                 ),

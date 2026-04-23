@@ -56,6 +56,7 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
     final currentUser = ref.watch(currentUserProvider);
 
     return SingleChildScrollView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -9,7 +10,6 @@ import '../../config/theme.dart';
 import '../../providers/sport_preference_provider.dart';
 import '../../providers/matching_provider.dart';
 import '../../widgets/common/app_toast.dart';
-import 'package:bottom_picker/bottom_picker.dart';
 
 /// 매칭 요청 생성 화면
 /// 핀 탭에서 핀 선택 후 진입 — pinId, sportType은 쿼리 파라미터로 받음
@@ -84,37 +84,47 @@ class _CreateMatchScreenState extends ConsumerState<CreateMatchScreen> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final tomorrow = today.add(const Duration(days: 1));
-    // 오늘에 이미 요청이 있거나 밤 11시 이후면 내일부터 선택 가능
     final firstDate = (_hasTodayWaiting || now.hour >= 23) ? tomorrow : today;
+    final initial = _selectedDate.isBefore(firstDate) ? firstDate : _selectedDate;
 
-    BottomPicker.date(
-      initialDateTime: _selectedDate.isBefore(firstDate) ? firstDate : _selectedDate,
-      minDateTime: firstDate,
-      maxDateTime: tomorrow,
-      backgroundColor: const Color(0xFF1E1E1E),
-      headerBuilder: (_) => const Padding(
-        padding: EdgeInsets.only(top: 8, bottom: 4),
-        child: Text('날짜 선택', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
-      ),
-      buttonSingleColor: AppTheme.primaryColor,
-      buttonContent: const Center(
-        child: Text('선택', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
-      ),
-      pickerTextStyle: const TextStyle(fontSize: 16, color: Colors.white),
-      onSubmit: (date) {
-        setState(() {
-          _selectedDate = date;
-          // 당일이면 1시간 전 cutoff 지난 시간대 선택 해제
-          if (date.year == now.year && date.month == now.month && date.day == now.day) {
-            final slot = _timeSlots.where((s) => s.$1 == _selectedTimeSlot).firstOrNull;
-            if (slot != null && now.hour >= slot.$4 + 2) {
-              _selectedTimeSlot = 'ANY';
-            }
-          }
-        });
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: firstDate,
+      lastDate: tomorrow,
+      locale: const Locale('ko'),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: AppTheme.primaryColor,
+              onPrimary: Colors.white,
+              surface: Color(0xFF1E1E1E),
+              onSurface: Colors.white,
+            ),
+            dialogTheme: const DialogThemeData(
+              backgroundColor: Color(0xFF1E1E1E),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.all(Radius.circular(16)),
+              ),
+            ),
+          ),
+          child: child!,
+        );
       },
-      dismissable: true,
-    ).show(context);
+    );
+
+    if (picked != null && mounted) {
+      setState(() {
+        _selectedDate = picked;
+        if (picked.year == now.year && picked.month == now.month && picked.day == now.day) {
+          final slot = _timeSlots.where((s) => s.$1 == _selectedTimeSlot).firstOrNull;
+          if (slot != null && now.hour >= slot.$4 + 2) {
+            _selectedTimeSlot = 'ANY';
+          }
+        }
+      });
+    }
   }
 
   Future<void> _submit() async {
@@ -171,9 +181,11 @@ class _CreateMatchScreenState extends ConsumerState<CreateMatchScreen> {
             }
           }
         } else {
+          // 매칭 요청 등록됨 → 소켓 연결 (MATCH_FOUND 수신 필요)
+          unawaited(syncSocketConnection(ref));
           context.go(AppRoutes.matchList);
           Future.delayed(const Duration(milliseconds: 300), () {
-            AppToast.success('매칭 요청이 등록되었습니다!', bottom: true);
+            AppToast.success('매칭 요청이 등록되었습니다!');
           });
         }
       }

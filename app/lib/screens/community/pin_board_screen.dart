@@ -43,12 +43,9 @@ class _PinBoardScreenState extends ConsumerState<PinBoardScreen> {
   @override
   void initState() {
     super.initState();
-
-    // 유저 기본 스포츠로 초기 탭 설정
     final preferred = ref.read(sportPreferenceProvider);
-    final initialIndex = allSports.indexWhere((t) => t.value == preferred);
-    _tabIndex = initialIndex >= 0 ? initialIndex : 0;
-
+    final idx = allSports.indexWhere((t) => t.value == preferred);
+    _tabIndex = idx >= 0 ? idx : 0;
     _scrollController.addListener(_onScroll);
   }
 
@@ -106,7 +103,7 @@ class _PinBoardScreenState extends ConsumerState<PinBoardScreen> {
             tooltip: '글쓰기',
             onPressed: () async {
               final created = await context.push<bool>(
-                '/pins/${widget.pinId}/board/posts/create',
+                '/pins/${widget.pinId}/board/posts/create?sportType=${allSports[_tabIndex].value}',
               );
               if (created == true && mounted) {
                 ref.read(postListProvider(_currentKey).notifier).refresh();
@@ -117,12 +114,15 @@ class _PinBoardScreenState extends ConsumerState<PinBoardScreen> {
       ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: List.generate(allSports.length, (index) {
+          // 종목 탭
+          SizedBox(
+            height: 44,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              itemCount: allSports.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (_, index) {
                 final isSelected = _tabIndex == index;
                 return GestureDetector(
                   onTap: () {
@@ -131,17 +131,11 @@ class _PinBoardScreenState extends ConsumerState<PinBoardScreen> {
                       _searchQuery = '';
                       _searchController.clear();
                     });
-                    ref
-                        .read(sportPreferenceProvider.notifier)
-                        .select(allSports[index].value);
                   },
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 7),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                     decoration: BoxDecoration(
-                      color: isSelected
-                          ? AppTheme.primaryColor
-                          : const Color(0xFF2A2A2A),
+                      color: isSelected ? AppTheme.primaryColor : const Color(0xFF2A2A2A),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
@@ -149,14 +143,12 @@ class _PinBoardScreenState extends ConsumerState<PinBoardScreen> {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: isSelected
-                            ? Colors.white
-                            : AppTheme.textSecondary,
+                        color: isSelected ? Colors.white : AppTheme.textSecondary,
                       ),
                     ),
                   ),
                 );
-              }),
+              },
             ),
           ),
           Padding(
@@ -233,9 +225,8 @@ class _PinBoardScreenState extends ConsumerState<PinBoardScreen> {
           return _PostListTile(
             post: post,
             onTap: () async {
-              final sport = allSports[_tabIndex].value;
               await context
-                  .push('/pins/${widget.pinId}/board/posts/${post.id}?sportType=$sport');
+                  .push('/pins/${widget.pinId}/board/posts/${post.id}?sportType=${allSports[_tabIndex].value}');
               ref.read(postListProvider(key).notifier).refresh();
             },
             onLike: () => ref
@@ -352,12 +343,15 @@ class _PostListTile extends StatelessWidget {
                       : null,
                 ),
                 const SizedBox(width: 6),
-                Text(
-                  post.authorNickname,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppTheme.textSecondary,
-                    fontWeight: FontWeight.w500,
+                Flexible(
+                  child: Text(
+                    post.authorNickname,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.textSecondary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 if (post.authorTier != null) ...[

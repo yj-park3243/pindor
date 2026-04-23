@@ -215,6 +215,8 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> {
   }
 
   void _onTabTap(int index) {
+    // 활성 매칭 여부에 따라 소켓 연결/해제
+    syncSocketConnection(ref);
     context.go(_tabRoutes[index]);
   }
 

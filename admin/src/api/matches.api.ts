@@ -31,4 +31,60 @@ export const matchesApi = {
     const response = await apiClient.patch(`/admin/matches/${id}/force-complete`);
     return response.data.data;
   },
+
+  // 매칭 채팅 메시지 조회
+  getMessages: async (matchId: string): Promise<ChatMessage[]> => {
+    const response = await apiClient.get(`/admin/matches/${matchId}/messages`);
+    return response.data.data;
+  },
+
+  // 노쇼 신고 목록 조회
+  getNoshowReports: async (params?: NoshowReportListParams): Promise<PaginatedResponse<NoshowReport>> => {
+    const response = await apiClient.get('/admin/noshow-reports', { params });
+    return response.data.data;
+  },
 };
+
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  senderNickname: string;
+  senderProfileImageUrl: string | null;
+  messageType: string;
+  content: string | null;
+  imageUrl: string | null;
+  extraData: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface NoshowReport {
+  id: string;
+  reporterId: string;
+  reporterNickname: string;
+  targetId: string;
+  targetNickname: string;
+  targetProfileImageUrl: string | null;
+  description: string | null;
+  imageUrls: string[];
+  status: string;
+  resolvedBy: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+  match: {
+    id: string;
+    sportType: string;
+    status: string;
+    chatRoomId: string;
+    requesterNickname: string;
+    opponentNickname: string;
+    scheduledDate: string | null;
+    createdAt: string;
+  } | null;
+}
+
+export interface NoshowReportListParams {
+  status?: string;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}

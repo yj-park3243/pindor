@@ -3,6 +3,27 @@ import type { PaginatedResponse } from '@/types/common';
 
 export type DisputeStatus = 'PENDING' | 'IN_PROGRESS' | 'RESOLVED';
 
+export interface DisputeMatchSide {
+  profileId: string;
+  userId: string;
+  nickname: string;
+  claimedResult: 'WIN' | 'LOSS' | 'DRAW' | null;
+  score: number | null;
+}
+
+export interface DisputeMatchInfo {
+  id: string;
+  sportType: string;
+  status: string;
+  requester: DisputeMatchSide;
+  opponent: DisputeMatchSide;
+  game: {
+    id: string;
+    resultStatus: string;
+    winnerProfileId: string | null;
+  } | null;
+}
+
 export interface Dispute {
   id: string;
   matchId: string;
@@ -21,6 +42,7 @@ export interface Dispute {
     nickname: string;
     email: string;
   };
+  match?: DisputeMatchInfo | null;
 }
 
 export interface DisputeListParams {
@@ -29,9 +51,17 @@ export interface DisputeListParams {
   pageSize?: number;
 }
 
+export interface DisputeResolution {
+  action: 'KEEP_ORIGINAL' | 'MODIFY_RESULT' | 'VOID_GAME';
+  winnerProfileId?: string;
+  requesterScore?: number;
+  opponentScore?: number;
+}
+
 export interface DisputeUpdateRequest {
   status: 'IN_PROGRESS' | 'RESOLVED';
   adminReply?: string;
+  resolution?: DisputeResolution;
 }
 
 export const disputesApi = {

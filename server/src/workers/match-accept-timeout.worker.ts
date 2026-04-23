@@ -112,8 +112,8 @@ async function handleAcceptReminder(
     JSON.stringify({
       userId,
       type: 'MATCH_ACCEPT_REMINDER',
-      title: '매칭 수락 알림',
-      body: `매칭 수락 시간이 ${label} 남았습니다!`,
+      title: `매칭 수락 ${label} 남음`,
+      body: '지금 수락하지 않으면 매칭이 취소됩니다.',
       data: { matchId, deepLink: `/matches/${matchId}/accept` },
     }),
   );
@@ -238,11 +238,10 @@ async function handleDelayedMatch(
       },
     );
 
-    // 매칭 수락 리마인더 job 등록 (5분전, 3분전, 1분전)
-    // 수락 만료가 10분이므로 생성 후 5분, 7분, 9분에 발송
+    // 매칭 수락 리마인더 job 등록 (5분전, 1분전)
+    // 수락 만료가 10분이므로 생성 후 5분, 9분에 발송
     const reminders = [
       { delay: 5 * 60 * 1000, label: '5분' },
-      { delay: 7 * 60 * 1000, label: '3분' },
       { delay: 9 * 60 * 1000, label: '1분' },
     ];
     for (const { delay, label } of reminders) {
@@ -280,12 +279,10 @@ async function handleDelayedMatch(
         userId: requesterUserId,
         type: 'MATCH_PENDING_ACCEPT',
         title: '매칭 상대를 찾았습니다!',
-        body: `상대: ${(opponentProfile.user as any).nickname}${(opponentProfile.user as any).gender ? `/${(opponentProfile.user as any).gender}` : ''}${opponentAge !== null ? `/${opponentAge}세` : ''}. 수락하시겠습니까?`,
+        body: `상대: ${(opponentProfile.user as any).nickname}. 수락하시겠습니까?`,
         data: {
           matchId: savedMatch.id,
           opponentNickname: (opponentProfile.user as any).nickname,
-          opponentGender: (opponentProfile.user as any).gender ?? '',
-          opponentAge: opponentAge !== null ? String(opponentAge) : '',
           deepLink: `/matches/${savedMatch.id}/accept`,
         },
       }),
@@ -297,12 +294,10 @@ async function handleDelayedMatch(
         userId: opponentUserId,
         type: 'MATCH_PENDING_ACCEPT',
         title: '매칭 상대를 찾았습니다!',
-        body: `상대: ${(requesterProfile.user as any).nickname}${(requesterProfile.user as any).gender ? `/${(requesterProfile.user as any).gender}` : ''}${requesterAge !== null ? `/${requesterAge}세` : ''}. 수락하시겠습니까?`,
+        body: `상대: ${(requesterProfile.user as any).nickname}. 수락하시겠습니까?`,
         data: {
           matchId: savedMatch.id,
           opponentNickname: (requesterProfile.user as any).nickname,
-          opponentGender: (requesterProfile.user as any).gender ?? '',
-          opponentAge: requesterAge !== null ? String(requesterAge) : '',
           deepLink: `/matches/${savedMatch.id}/accept`,
         },
       }),
