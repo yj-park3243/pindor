@@ -253,6 +253,83 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                   ),
 
+                  // ── 구분선 ──
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(child: Divider(color: const Color(0xFF2A2A2A), thickness: 1)),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 12),
+                        child: Text(
+                          '또는',
+                          style: TextStyle(color: AppTheme.textDisabled, fontSize: 12),
+                        ),
+                      ),
+                      Expanded(child: Divider(color: const Color(0xFF2A2A2A), thickness: 1)),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // 이메일로 로그인 버튼
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: OutlinedButton(
+                      onPressed: _isLoading
+                          ? null
+                          : () => context.push(AppRoutes.emailLogin),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.textSecondary,
+                        side: const BorderSide(color: Color(0xFF333333), width: 1),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.email_outlined, size: 18, color: AppTheme.textSecondary),
+                          SizedBox(width: 8),
+                          Text(
+                            '이메일로 로그인',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // 이메일 가입 버튼
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: TextButton(
+                      onPressed: _isLoading
+                          ? null
+                          : () => context.push(AppRoutes.emailSignup),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppTheme.textDisabled,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text(
+                        '이메일로 가입',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          decoration: TextDecoration.underline,
+                          decorationColor: AppTheme.textDisabled,
+                        ),
+                      ),
+                    ),
+                  ),
+
                 ],
               ),
 

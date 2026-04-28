@@ -24,8 +24,12 @@ export class PinsService {
   // 핀 데이터 버전 조회
   // ─────────────────────────────────────
 
+  // 스키마 변경 시 이 값을 올려서 클라이언트 캐시를 강제 무효화
+  // (v2: searchKeywords 필드 추가)
+  private static readonly SCHEMA_VERSION = 'v2';
+
   async getPinVersion(): Promise<string> {
-    // 핀 테이블의 최신 updated_at을 버전으로 사용
+    // 핀 테이블의 최신 created_at + 스키마 버전을 버전으로 사용
     const result = await AppDataSource.query<Array<{ version: string }>>(
       `SELECT COALESCE(
         TO_CHAR(MAX(created_at), 'YYYYMMDDHH24MISS'),
@@ -34,7 +38,7 @@ export class PinsService {
        FROM pins
        WHERE is_active = TRUE AND level = 'DONG'`
     );
-    return result[0]?.version ?? '0';
+    return `${result[0]?.version ?? '0'}-${PinsService.SCHEMA_VERSION}`;
   }
 
   // ─────────────────────────────────────
@@ -112,15 +116,17 @@ export class PinsService {
     const pins = await AppDataSource.query<Array<{
       id: string; name: string; slug: string; level: string;
       centerLat: number; centerLng: number; userCount: number;
+      searchKeywords: string[] | null;
     }>>(
       `SELECT p.id, p.name, p.slug, p.level,
               ST_Y(p.center::geometry) AS "centerLat",
               ST_X(p.center::geometry) AS "centerLng",
-              COUNT(pa.user_id)::int AS "userCount"
+              COUNT(pa.user_id)::int AS "userCount",
+              p.search_keywords AS "searchKeywords"
        FROM pins p
        LEFT JOIN pin_activities pa ON pa.pin_id = p.id
        WHERE p.is_active = TRUE AND p.level = 'DONG'
-       GROUP BY p.id, p.name, p.slug, p.level, p.center
+       GROUP BY p.id, p.name, p.slug, p.level, p.center, p.search_keywords
        ORDER BY p.name ASC`
     );
 
@@ -131,6 +137,7 @@ export class PinsService {
       level: pin.level,
       center: { lat: pin.centerLat, lng: pin.centerLng },
       userCount: pin.userCount,
+      searchKeywords: pin.searchKeywords ?? [],
     }));
   }
 
@@ -194,12 +201,18 @@ export class PinsService {
       [pinId],
     );
 
+    // 활동 인구는 pin_activities 실시간 COUNT 사용 (pins.user_count 컬럼은 비동기 갱신이라 누락 가능)
+    const [{ liveUserCount }] = await AppDataSource.query<Array<{ liveUserCount: string }>>(
+      `SELECT COUNT(*)::int AS "liveUserCount" FROM pin_activities WHERE pin_id = $1::uuid`,
+      [pinId],
+    );
+
     return {
       id: pin.id,
       name: pin.name,
       slug: pin.slug,
       level: pin.level,
-      userCount: pin.userCount,
+      userCount: parseInt(String(liveUserCount), 10) || 0,
       center: center ? { lat: center.lat, lng: center.lng } : null,
       postCount,
       rankingCount: parseInt(rankingCount, 10),

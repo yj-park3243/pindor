@@ -139,6 +139,7 @@ class _PhoneVerificationScreenState
       final nickname = params['nickname'] ?? '';
       final nextRoute = params['nextRoute'] ?? 'profile-setup';
       final isNewUser = params['isNewUser'] == 'true';
+      final merged = params['merged'] == 'true';
 
       if (accessToken.isEmpty || userId.isEmpty) {
         _showError('인증 결과를 받지 못했습니다.');
@@ -159,7 +160,7 @@ class _PhoneVerificationScreenState
 
       if (!mounted) return;
 
-      if (nextRoute == 'home') {
+      if (merged || nextRoute == 'home') {
         AppToast.info('기존 계정으로 로그인되었습니다.');
         context.go(AppRoutes.home);
       } else {
@@ -202,20 +203,25 @@ class _PhoneVerificationScreenState
 
   @override
   Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          AppToast.info('본인인증을 완료해야 이용 가능합니다.');
+        }
+      },
+      child: _buildScaffold(context),
+    );
+  }
+
+  Widget _buildScaffold(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        title: const Text('본인인증'),
+        backgroundColor: const Color(0xFF0A0A0A),
         elevation: 0,
-        title: const Text(
-          '본인인증',
-          style: TextStyle(
-            color: Colors.black,
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        centerTitle: true,
+        automaticallyImplyLeading: false, // 뒤로가기 버튼 숨김
       ),
       body: Stack(
         children: [
@@ -280,4 +286,5 @@ class _PhoneVerificationScreenState
     );
   }
 }
+
 

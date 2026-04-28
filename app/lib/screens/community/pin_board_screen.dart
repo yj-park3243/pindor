@@ -85,7 +85,10 @@ class _PinBoardScreenState extends ConsumerState<PinBoardScreen> {
     final postState = ref.watch(postListProvider(key));
 
     return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
+        backgroundColor: const Color(0xFF0A0A0A),
+        elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () {
@@ -294,7 +297,10 @@ class _PostListTile extends StatelessWidget {
           children: [
             Row(
               children: [
-                _CategoryChip(category: post.category),
+                if (post.category != 'GENERAL') ...[
+                  _CategoryChip(category: post.category),
+                  const SizedBox(width: 4),
+                ],
                 const Spacer(),
                 Text(
                   timeago.format(post.createdAt, locale: 'ko'),

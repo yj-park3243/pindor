@@ -5,32 +5,28 @@ class AppToast {
   static final GlobalKey<NavigatorState> navigatorKey =
       GlobalKey<NavigatorState>();
 
-  static void error(String message, {bool bottom = false}) {
+  static void error(String message) {
     _show(message,
         icon: Icons.error_outline_rounded,
-        color: const Color(0xFFEF4444),
-        bottom: bottom);
+        color: const Color(0xFFEF4444));
   }
 
-  static void success(String message, {bool bottom = false}) {
+  static void success(String message) {
     _show(message,
         icon: Icons.check_circle_rounded,
-        color: const Color(0xFF22C55E),
-        bottom: bottom);
+        color: const Color(0xFF22C55E));
   }
 
-  static void info(String message, {bool bottom = false}) {
+  static void info(String message) {
     _show(message,
         icon: Icons.info_outline_rounded,
-        color: const Color(0xFF3B82F6),
-        bottom: bottom);
+        color: const Color(0xFF3B82F6));
   }
 
-  static void warning(String message, {bool bottom = false}) {
+  static void warning(String message) {
     _show(message,
         icon: Icons.warning_amber_rounded,
-        color: const Color(0xFFF59E0B),
-        bottom: bottom);
+        color: const Color(0xFFF59E0B));
   }
 
   static OverlayEntry? _currentEntry;
@@ -40,7 +36,6 @@ class AppToast {
     required IconData icon,
     required Color color,
     Duration duration = const Duration(seconds: 3),
-    bool bottom = false,
   }) {
     final overlay = navigatorKey.currentState?.overlay;
     if (overlay == null) return;
@@ -52,7 +47,6 @@ class AppToast {
     entry = OverlayEntry(
       builder: (_) => _ToastOverlay(
         duration: duration,
-        bottom: bottom,
         onDismissed: () {
           entry.remove();
           if (_currentEntry == entry) _currentEntry = null;
@@ -140,9 +134,8 @@ class _ToastOverlay extends StatefulWidget {
   final Widget child;
   final Duration duration;
   final VoidCallback onDismissed;
-  final bool bottom;
   const _ToastOverlay(
-      {required this.child, required this.duration, required this.onDismissed, this.bottom = false});
+      {required this.child, required this.duration, required this.onDismissed});
 
   @override
   State<_ToastOverlay> createState() => _ToastOverlayState();
@@ -166,7 +159,7 @@ class _ToastOverlayState extends State<_ToastOverlay>
     _fadeAnimation =
         CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic);
     _slideAnimation =
-        Tween<Offset>(begin: Offset(0, widget.bottom ? 1.0 : -1.0), end: Offset.zero).animate(
+        Tween<Offset>(begin: const Offset(0, -1.0), end: Offset.zero).animate(
             CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
     _showAndHide();
   }
@@ -201,15 +194,13 @@ class _ToastOverlayState extends State<_ToastOverlay>
   @override
   Widget build(BuildContext context) {
     final topPadding = MediaQuery.of(context).padding.top + 8;
-    final bottomPadding = MediaQuery.of(context).padding.bottom + 16;
     return Positioned(
-      top: widget.bottom ? null : topPadding,
-      bottom: widget.bottom ? bottomPadding : null,
+      top: topPadding,
       left: 16,
       right: 16,
       child: Dismissible(
         key: UniqueKey(),
-        direction: widget.bottom ? DismissDirection.down : DismissDirection.up,
+        direction: DismissDirection.up,
         onDismissed: (_) => _dismiss(),
         child: GestureDetector(
           onTap: _onTap,

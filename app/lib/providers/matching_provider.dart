@@ -9,27 +9,101 @@ import '../core/network/socket_service.dart';
 import '../core/storage/secure_storage.dart';
 
 /// 활성 매칭/요청이 있으면 소켓 연결, 없으면 끊기
+///
+/// invalidateSelf 직후 캐시(loading/null)를 읽지 않도록 fresh fetch 결과를 사용한다.
+/// 이미 추적 중인 소켓 룸(`hasActiveRooms`)이 있으면 항상 연결 유지.
+///
+/// 탭 연타 등으로 짧은 시간에 여러 번 호출되면 fetch 폭주(매칭/요청 목록 API)로
+/// rate-limit 에 걸릴 수 있으므로 디바운스로 묶는다.
+DateTime? _lastSyncRunAt;
+Future<void>? _ongoingSync;
+const _syncDebounceMs = 800;
+
 Future<void> syncSocketConnection(dynamic ref) async {
-  final matches = (ref as dynamic).read(matchListProvider(null)).valueOrNull as List<Match>? ?? [];
-  final requests = (ref as dynamic).read(matchRequestProvider).valueOrNull as MatchRequestListState?;
+  // 진행 중인 sync 가 있으면 그걸 그대로 반환
+  if (_ongoingSync != null) return _ongoingSync;
+  // 직전 실행으로부터 디바운스 윈도우 내면 무시
+  final last = _lastSyncRunAt;
+  if (last != null &&
+      DateTime.now().difference(last).inMilliseconds < _syncDebounceMs) {
+    return;
+  }
+  final fut = _runSyncSocketConnection(ref);
+  _ongoingSync = fut;
+  try {
+    await fut;
+  } finally {
+    _ongoingSync = null;
+    _lastSyncRunAt = DateTime.now();
+  }
+}
 
-  final hasActiveMatch = matches.any((m) =>
-      m.isPendingAccept || m.isChat || m.isConfirmed);
-  final hasWaitingRequest = requests?.sent.any((r) => r.isWaiting) ?? false;
+Future<void> _runSyncSocketConnection(dynamic ref) async {
+  final socket = SocketService.instance;
 
-  if (hasActiveMatch || hasWaitingRequest) {
-    if (!SocketService.instance.isConnected) {
+  // 추적 중인 룸이 있으면 즉시 연결 (가장 강한 신호)
+  if (socket.hasActiveRooms && !socket.isConnected) {
+    final token = await SecureStorage.instance.getAccessToken();
+    if (token != null) {
+      debugPrint('[Socket] 활성 룸 있음 — 즉시 연결');
+      socket.connect(token);
+    }
+    return;
+  }
+
+  bool hasActiveMatch = false;
+  bool hasWaitingRequest = false;
+
+  try {
+    final matches = await (ref as dynamic).read(matchListProvider(null).future)
+        as List<Match>;
+    hasActiveMatch = matches.any((m) =>
+        m.isPendingAccept || m.isChat || m.isConfirmed);
+  } catch (_) {
+    // 매칭 목록 로드 실패 — 이전에 화면에 노출되던 값으로 폴백
+    // dynamic.valueOrNull 직접 호출 시 extension getter 가 잡히지 않아
+    // NoSuchMethodError 가 발생한다 → 정적 타입으로 캐스팅 후 사용한다.
+    final asyncMatches = (ref as dynamic).read(matchListProvider(null))
+        as AsyncValue<List<Match>>;
+    final cached = asyncMatches.valueOrNull ?? const <Match>[];
+    hasActiveMatch = cached.any((m) =>
+        m.isPendingAccept || m.isChat || m.isConfirmed);
+  }
+
+  try {
+    final requests = await (ref as dynamic).read(matchRequestProvider.future)
+        as MatchRequestListState;
+    hasWaitingRequest = requests.sent.any((r) => r.isWaiting);
+  } catch (_) {
+    final asyncRequests = (ref as dynamic).read(matchRequestProvider)
+        as AsyncValue<MatchRequestListState>;
+    final cached = asyncRequests.valueOrNull;
+    hasWaitingRequest = cached?.sent.any((r) => r.isWaiting) ?? false;
+  }
+
+  if (hasActiveMatch || hasWaitingRequest || socket.hasActiveRooms) {
+    if (!socket.isConnected) {
       final token = await SecureStorage.instance.getAccessToken();
       if (token != null) {
         debugPrint('[Socket] 활성 매칭 있음 — 연결');
-        SocketService.instance.connect(token);
+        socket.connect(token);
       }
     }
   } else {
-    if (SocketService.instance.isConnected) {
+    if (socket.isConnected) {
       debugPrint('[Socket] 활성 매칭 없음 — 연결 해제');
-      SocketService.instance.disconnect();
+      socket.disconnect();
     }
+  }
+}
+
+/// 즉시 소켓 연결 (룸 등록 직후 등 동기적으로 연결을 보장하고 싶을 때)
+Future<void> ensureSocketConnected() async {
+  final socket = SocketService.instance;
+  if (socket.isConnected) return;
+  final token = await SecureStorage.instance.getAccessToken();
+  if (token != null) {
+    socket.connect(token);
   }
 }
 
@@ -75,7 +149,13 @@ final matchListProvider = FutureProvider.autoDispose
   if (forceRefresh) {
     // 빌드 중 다른 provider 수정 불가 → microtask로 지연 리셋
     Future.microtask(() => ref.read(matchListForceRefreshProvider.notifier).state = false);
-    return repo.getMyMatches(status: status);
+    try {
+      return await repo.getMyMatches(status: status);
+    } catch (e) {
+      // 강제 갱신 실패 시에도 로컬 캐시가 있으면 그걸로 폴백
+      debugPrint('[MatchProvider] force refresh failed — fallback to local: $e');
+      return repo.getMyMatchesLocal(status: status);
+    }
   }
 
   final hasCache = await repo.hasMatchesCache();
@@ -92,7 +172,17 @@ final matchListProvider = FutureProvider.autoDispose
     return repo.getMyMatchesLocal(status: status);
   }
 
-  return repo.getMyMatches(status: status);
+  // 첫 fetch — 실패 시 이전 build 의 데이터를 유지하여 화면이 비지 않도록 한다.
+  try {
+    return await repo.getMyMatches(status: status);
+  } catch (e) {
+    final previous = ref.state.valueOrNull;
+    if (previous != null) {
+      debugPrint('[MatchProvider] fetch 실패 — 이전 데이터 유지: $e');
+      return previous;
+    }
+    rethrow;
+  }
 });
 
 /// 매칭 상세 프로바이더 (로컬 우선, 서버 404 시 캐시 삭제)
@@ -125,7 +215,19 @@ class MatchRequestNotifier
     extends AutoDisposeAsyncNotifier<MatchRequestListState> {
   @override
   Future<MatchRequestListState> build() async {
-    return _fetchRequests();
+    try {
+      return await _fetchRequests();
+    } catch (e) {
+      // 새로고침 실패(네트워크/rate-limit 등) 시, Riverpod 가 invalidate 직전 상태를
+      // copyWithPrevious 로 끌고 와줘서 state.valueOrNull 에 직전 데이터가 남아있다.
+      // 이 값을 그대로 반환하여 화면에 보이던 매칭 요청 목록이 사라지지 않게 한다.
+      final previous = state.valueOrNull;
+      if (previous != null) {
+        debugPrint('[MatchRequestNotifier] refresh 실패 — 이전 데이터 유지: $e');
+        return previous;
+      }
+      rethrow;
+    }
   }
 
   Future<MatchRequestListState> _fetchRequests() async {
@@ -154,7 +256,9 @@ class MatchRequestNotifier
 
     // WAITING 상태인 경우 소켓 룸에 입장하여 실시간 매칭 성사 알림 수신
     if (request.status == 'WAITING') {
+      // 룸 등록(연결 전이라도 추적 set 에 등록됨) → 소켓 연결 보장
       SocketService.instance.joinMatchRequest(request.id);
+      await ensureSocketConnected();
     }
 
     return request;

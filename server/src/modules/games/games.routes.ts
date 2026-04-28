@@ -11,6 +11,7 @@ import {
   type ListGamesQuery,
 } from './games.schema.js';
 import { AppDataSource } from '../../config/database.js';
+import { requireVerified } from '../../shared/middleware/require-verified.middleware.js';
 
 export async function gamesRoutes(fastify: FastifyInstance): Promise<void> {
   const gamesService = new GamesService(AppDataSource);
@@ -19,7 +20,7 @@ export async function gamesRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/games/:gameId/result',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Games'],
         summary: '경기 결과 입력',
@@ -48,7 +49,7 @@ export async function gamesRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/games/:gameId/confirm',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Games'],
         summary: '결과 인증 동의/거절',
@@ -80,7 +81,7 @@ export async function gamesRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/games/:gameId/dispute',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Games'],
         summary: '결과 이의 신청',
@@ -112,7 +113,7 @@ export async function gamesRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/games/:gameId/proofs',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Games'],
         summary: '증빙 사진 업로드',
@@ -143,7 +144,7 @@ export async function gamesRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/games/:id',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Games'],
         summary: '경기 상세 조회',
@@ -167,7 +168,7 @@ export async function gamesRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/games',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Games'],
         summary: '내 경기 목록',

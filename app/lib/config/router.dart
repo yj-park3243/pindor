@@ -7,6 +7,9 @@ import '../widgets/common/app_toast.dart';
 import '../screens/auth/splash_screen.dart';
 import '../screens/auth/onboarding_screen.dart';
 import '../screens/auth/login_screen.dart';
+import '../screens/auth/email_login_screen.dart';
+import '../screens/auth/email_signup_screen.dart';
+import '../screens/auth/email_password_reset_screen.dart';
 import '../screens/auth/phone_verification_screen.dart';
 import '../screens/auth/profile_setup_screen.dart';
 import '../screens/auth/font_size_setup_screen.dart';
@@ -71,6 +74,9 @@ class AppRoutes {
   static const String splash = '/';
   static const String onboarding = '/onboarding';
   static const String login = '/login';
+  static const String emailLogin = '/auth/email/login';
+  static const String emailSignup = '/auth/email/signup';
+  static const String emailPasswordReset = '/auth/email/reset';
   static const String phoneVerification = '/phone-verification';
   static const String profileSetup = '/setup/profile';
   static const String fontSizeSetup = '/setup/font-size';
@@ -154,11 +160,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       // 로딩 중은 리다이렉트 없음
       if (isLoading) return null;
 
-      // 인증 필요 없는 경로들
+      // 인증 필요 없는 경로들 (로그인 없이 접근 가능)
       final publicRoutes = [
         AppRoutes.splash,
         AppRoutes.onboarding,
         AppRoutes.login,
+        AppRoutes.emailLogin,
+        AppRoutes.emailSignup,
+        AppRoutes.emailPasswordReset,
         AppRoutes.phoneVerification,
         AppRoutes.profileSetup,
         AppRoutes.fontSizeSetup,
@@ -168,15 +177,33 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       final isPublicRoute = publicRoutes.any((r) => location.startsWith(r));
 
-      // 비인증 사용자가 보호된 경로 접근 시
+      // 비인증 사용자가 보호된 경로 접근 시 → 로그인
       if (!isAuthenticated && !isPublicRoute) {
         return AppRoutes.login;
       }
 
-      // 신규 유저 가입 단계 처리
-      if (isAuthenticated && isNewUser) {
-        final setupRoutes = [
+      // 인증된 사용자의 본인인증 강제
+      if (isAuthenticated && !isVerified) {
+        // 본인인증 화면 자체 / 로그인 플로우(email 화면 포함)는 예외
+        final verificationFlowRoutes = [
           AppRoutes.phoneVerification,
+          AppRoutes.splash,
+          AppRoutes.login,
+          AppRoutes.emailLogin,
+          AppRoutes.emailSignup,
+          AppRoutes.emailPasswordReset,
+        ];
+        final isOnVerificationFlow =
+            verificationFlowRoutes.any((r) => location.startsWith(r));
+        if (!isOnVerificationFlow) {
+          return AppRoutes.phoneVerification;
+        }
+        return null;
+      }
+
+      // 인증된 + 본인인증 완료 + 신규 유저 가입 단계 처리
+      if (isAuthenticated && isVerified && isNewUser) {
+        final setupRoutes = [
           AppRoutes.profileSetup,
           AppRoutes.fontSizeSetup,
           AppRoutes.sportProfileSetup,
@@ -184,22 +211,20 @@ final routerProvider = Provider<GoRouter>((ref) {
         ];
         final isOnSetupRoute = setupRoutes.any((r) => location.startsWith(r));
 
-        // 본인인증 미완료 → 본인인증 화면으로
-        if (!isVerified && location != AppRoutes.phoneVerification) {
-          return AppRoutes.phoneVerification;
-        }
-
-        // 본인인증 완료 + 가입 단계가 아닌 곳에 있으면 → 프로필 설정으로
-        if (isVerified && !isOnSetupRoute && location != AppRoutes.login) {
+        if (!isOnSetupRoute && location != AppRoutes.login) {
           return AppRoutes.profileSetup;
         }
 
-        return null; // 가입 단계 중이면 그대로 유지
+        return null;
       }
 
-      // 인증된 사용자가 로그인/스플래시 화면 접근 시
+      // 인증된 사용자가 로그인/스플래시/이메일 화면 접근 시 → 홈
       if (isAuthenticated &&
-          (location == AppRoutes.login || location == AppRoutes.splash)) {
+          isVerified &&
+          (location == AppRoutes.login ||
+              location == AppRoutes.splash ||
+              location == AppRoutes.emailLogin ||
+              location == AppRoutes.emailSignup)) {
         return AppRoutes.home;
       }
 
@@ -218,6 +243,18 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.login,
         builder: (context, state) => const LoginScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.emailLogin,
+        builder: (context, state) => const EmailLoginScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.emailSignup,
+        builder: (context, state) => const EmailSignupScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.emailPasswordReset,
+        builder: (context, state) => const EmailPasswordResetScreen(),
       ),
       GoRoute(
         path: AppRoutes.phoneVerification,
@@ -295,7 +332,9 @@ final routerProvider = Provider<GoRouter>((ref) {
           // 랭킹/지도 탭
           GoRoute(
             path: AppRoutes.map,
-            builder: (context, state) => const MapScreen(),
+            builder: (context, state) => MapScreen(
+              focusPinId: state.uri.queryParameters['focusPinId'],
+            ),
             routes: [
               GoRoute(
                 path: 'ranking/:pinId',
@@ -472,6 +511,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: 'posts/create',
             builder: (context, state) => CreatePostScreen(
               pinId: state.pathParameters['pinId']!,
+              sportType: state.uri.queryParameters['sportType'] ?? 'GOLF',
             ),
           ),
           GoRoute(

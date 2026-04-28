@@ -28,8 +28,11 @@ class _TeamMatchListScreenState extends ConsumerState<TeamMatchListScreen> {
     final state = ref.watch(teamMatchesProvider(widget.teamId));
 
     return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         title: const Text('팀 매칭'),
+        backgroundColor: const Color(0xFF0A0A0A),
+        elevation: 0,
       ),
       body: Column(
         children: [

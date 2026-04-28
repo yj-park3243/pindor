@@ -99,8 +99,11 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     final userAsync = ref.watch(userNotifierProvider);
 
     return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         title: const Text('프로필 수정'),
+        backgroundColor: const Color(0xFF0A0A0A),
+        elevation: 0,
         actions: [
           TextButton(
             onPressed: _isSaving ? null : _save,

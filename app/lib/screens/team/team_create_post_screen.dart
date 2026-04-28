@@ -69,8 +69,11 @@ class _TeamCreatePostScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         title: const Text('게시글 작성'),
+        backgroundColor: const Color(0xFF0A0A0A),
+        elevation: 0,
         actions: [
           TextButton(
             onPressed: _isLoading ? null : _submit,

@@ -9,34 +9,46 @@ import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/empty_state.dart';
 
 /// 알림 목록 화면 (PRD SCREEN-063)
-class NotificationListScreen extends ConsumerWidget {
+class NotificationListScreen extends ConsumerStatefulWidget {
   const NotificationListScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<NotificationListScreen> createState() =>
+      _NotificationListScreenState();
+}
+
+class _NotificationListScreenState
+    extends ConsumerState<NotificationListScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final notifier = ref.read(notificationListProvider.notifier);
+      final state = ref.read(notificationListProvider);
+      final hasUnread = state.maybeWhen(
+        data: (list) => list.any((n) => !n.isRead),
+        orElse: () => true,
+      );
+      if (hasUnread) {
+        await notifier.markAllAsRead();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final notificationsAsync = ref.watch(notificationListProvider);
 
     return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         title: const Text('알림'),
+        backgroundColor: const Color(0xFF0A0A0A),
+        elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.go('/home'),
         ),
-        actions: [
-          notificationsAsync.whenOrNull(
-            data: (notifications) {
-              final hasUnread = notifications.any((n) => !n.isRead);
-              if (!hasUnread) return null;
-              return TextButton(
-                onPressed: () => ref
-                    .read(notificationListProvider.notifier)
-                    .markAllAsRead(),
-                child: const Text('모두 읽음'),
-              );
-            },
-          ) ?? const SizedBox.shrink(),
-        ],
       ),
       body: notificationsAsync.when(
         loading: () => const FullScreenLoading(),
@@ -83,12 +95,7 @@ class NotificationListScreen extends ConsumerWidget {
 
   void _handleNotificationTap(
       BuildContext context, WidgetRef ref, AppNotification notification) {
-    // 읽음 처리
-    if (!notification.isRead) {
-      ref.read(notificationListProvider.notifier).markAsRead(notification.id);
-    }
-
-    // 딥링크 처리
+    // 딥링크 처리 (읽음 처리는 화면 진입 시 일괄 처리됨)
     final deepLink = notification.deepLink;
     if (deepLink != null && context.mounted) {
       context.push(deepLink);
@@ -214,6 +221,16 @@ class _NotificationTile extends StatelessWidget {
         return Icons.diamond_outlined;
       case 'COMMUNITY_REPLY':
         return Icons.forum_outlined;
+      case 'NOSHOW_REPORT_RECEIVED':
+        return Icons.report_outlined;
+      case 'NOSHOW_REPORT_APPROVED':
+        return Icons.check_circle_outline;
+      case 'NOSHOW_REPORT_REJECTED':
+        return Icons.cancel_outlined;
+      case 'NOSHOW_REPORT_INSUFFICIENT':
+        return Icons.find_in_page_outlined;
+      case 'NOSHOW_BAN_PERMANENT':
+        return Icons.block_outlined;
       default:
         return Icons.notifications_none;
     }
@@ -239,6 +256,16 @@ class _NotificationTile extends StatelessWidget {
         return AppTheme.warningColor;
       case 'COMMUNITY_REPLY':
         return AppTheme.primaryColor;
+      case 'NOSHOW_REPORT_RECEIVED':
+        return AppTheme.warningColor;
+      case 'NOSHOW_REPORT_APPROVED':
+        return AppTheme.primaryColor;
+      case 'NOSHOW_REPORT_REJECTED':
+        return AppTheme.textSecondary;
+      case 'NOSHOW_REPORT_INSUFFICIENT':
+        return AppTheme.warningColor;
+      case 'NOSHOW_BAN_PERMANENT':
+        return AppTheme.errorColor;
       default:
         return AppTheme.textSecondary;
     }

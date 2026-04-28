@@ -174,6 +174,38 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
     },
   );
 
+  // ─── GET /notifications/settings ───
+  fastify.get(
+    '/notifications/settings',
+    {
+      onRequest: [fastify.authenticate],
+      schema: {
+        tags: ['Notifications'],
+        summary: '알림 설정 조회',
+        security: [{ bearerAuth: [] }],
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const userId = request.user.userId;
+      const settings = await notificationSettingsRepo.findOne({ where: { userId } });
+      return reply.send({
+        success: true,
+        data: settings ?? {
+          chatMessage: true,
+          matchFound: true,
+          matchRequest: true,
+          gameResult: true,
+          scoreChange: true,
+          communityReply: true,
+          doNotDisturbStart: null,
+          doNotDisturbEnd: null,
+          inactiveNudge: true,
+          rankDropAlert: true,
+        },
+      });
+    },
+  );
+
   // ─── PATCH /notifications/settings ───
   fastify.patch(
     '/notifications/settings',
@@ -199,6 +231,8 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
       if (dto.gameResult !== undefined) updateData.gameResult = dto.gameResult;
       if (dto.scoreChange !== undefined) updateData.scoreChange = dto.scoreChange;
       if (dto.communityReply !== undefined) updateData.communityReply = dto.communityReply;
+      if (dto.inactiveNudge !== undefined) (updateData as any).inactiveNudge = dto.inactiveNudge;
+      if (dto.rankDropAlert !== undefined) (updateData as any).rankDropAlert = dto.rankDropAlert;
 
       // doNotDisturbStart/End는 time 타입 (HH:MM 문자열) 그대로 저장
       if (dto.doNotDisturbStart !== undefined) {

@@ -2,6 +2,31 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { AppDataSource } from '../../config/database.js';
 import { AppErrorLog } from '../../entities/index.js';
 import { verifyAccessToken } from '../../shared/utils/jwt.js';
+import { sendAdminAlert, escapeHtml } from '../../shared/services/telegram.service.js';
+
+/**
+ * 텔레그램 알림에서 제외할 노이즈 패턴 (4xx, 인증 실패, 단순 네트워크 등)
+ * — 중요한 에러만 보내기 위함
+ */
+const TELEGRAM_NOISE_PATTERNS = [
+  /\b401\b/,
+  /\b403\b/,
+  /\b404\b/,
+  /\b409\b/,
+  /\b422\b/,
+  /AUTH_\d+/,
+  /no_refresh_token/i,
+  /Network is unreachable/i,
+  /Connection (closed|refused|reset)/i,
+  /SocketException/i,
+  /Failed host lookup/i,
+  /CERTIFICATE_VERIFY_FAILED/i,
+  /User (canceled|cancelled)/i,
+];
+
+function isNoise(message: string): boolean {
+  return TELEGRAM_NOISE_PATTERNS.some((re) => re.test(message));
+}
 
 type PostErrorLogBody = {
   errorMessage: string;
@@ -60,6 +85,19 @@ export async function errorLogRoutes(fastify: FastifyInstance): Promise<void> {
         });
 
         await repo.save(log);
+
+        // 중요 에러만 텔레그램 알림 (4xx/네트워크 오류 등은 노이즈로 제외)
+        if (!isNoise(errorMessage)) {
+          void sendAdminAlert(
+            `🛑 <b>앱 에러</b>\n` +
+              `• 화면: ${escapeHtml(screenName ?? '-')}\n` +
+              `• userId: ${userId ? `<code>${escapeHtml(userId)}</code>` : '-'}\n` +
+              `• message: ${escapeHtml(errorMessage.slice(0, 500))}` +
+              (stackTrace
+                ? `\n• stack:\n<pre>${escapeHtml(stackTrace.slice(0, 1500))}</pre>`
+                : ''),
+          );
+        }
 
         return reply.status(201).send({
           success: true,

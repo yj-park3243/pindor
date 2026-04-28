@@ -26,6 +26,8 @@ import {
   type ListTeamPostsQuery,
   type GetTeamMessagesQuery,
 } from './teams.schema.js';
+import { requireVerified } from '../../shared/middleware/require-verified.middleware.js';
+
 export async function teamsRoutes(fastify: FastifyInstance): Promise<void> {
   const teamsService = new TeamsService();
 
@@ -37,7 +39,7 @@ export async function teamsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/teams',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Teams'],
         summary: '팀 생성',
@@ -59,7 +61,7 @@ export async function teamsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/teams/nearby',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Teams'],
         summary: '주변 팀 조회 (PostGIS)',
@@ -90,7 +92,7 @@ export async function teamsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/teams/search',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Teams'],
         summary: '팀 검색',
@@ -124,7 +126,7 @@ export async function teamsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/teams/:id',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Teams'],
         summary: '팀 상세 조회',
@@ -148,7 +150,7 @@ export async function teamsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.patch(
     '/teams/:id',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Teams'],
         summary: '팀 정보 수정 (캡틴 전용)',
@@ -173,7 +175,7 @@ export async function teamsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.delete(
     '/teams/:id',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Teams'],
         summary: '팀 해산 (캡틴 전용)',
@@ -201,7 +203,7 @@ export async function teamsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/teams/:id/members',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Teams'],
         summary: '팀원 목록 조회',
@@ -225,7 +227,7 @@ export async function teamsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/teams/:id/members/join',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Teams'],
         summary: '팀 가입 신청',
@@ -249,7 +251,7 @@ export async function teamsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/teams/:id/members/:userId/kick',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Teams'],
         summary: '팀원 추방 (캡틴 전용)',
@@ -280,7 +282,7 @@ export async function teamsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.patch(
     '/teams/:id/members/:userId/role',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Teams'],
         summary: '팀원 역할 변경 (캡틴 전용) — 방장 양도, 부방장 임명/해임',
@@ -313,7 +315,7 @@ export async function teamsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.delete(
     '/teams/:id/members/me',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Teams'],
         summary: '팀 탈퇴',
@@ -341,7 +343,7 @@ export async function teamsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/team-matches/requests',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['TeamMatches'],
         summary: '팀 매칭 요청 생성 (캡틴/부캡틴 전용)',
@@ -367,7 +369,7 @@ export async function teamsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.delete(
     '/team-matches/requests/:id',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['TeamMatches'],
         summary: '팀 매칭 요청 취소',
@@ -391,7 +393,7 @@ export async function teamsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/team-matches',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['TeamMatches'],
         summary: '팀 매칭 목록 조회',
@@ -419,7 +421,7 @@ export async function teamsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/team-matches/:id',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['TeamMatches'],
         summary: '팀 매칭 상세 조회',
@@ -443,7 +445,7 @@ export async function teamsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.patch(
     '/team-matches/:id/confirm',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['TeamMatches'],
         summary: '팀 매칭 확정 (홈팀 캡틴/부캡틴 전용)',
@@ -470,7 +472,7 @@ export async function teamsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/team-matches/:id/result',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['TeamMatches'],
         summary: '팀 경기 결과 입력 (캡틴/부캡틴 전용)',
@@ -503,7 +505,7 @@ export async function teamsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/team-chat-rooms',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['TeamChat'],
         summary: '팀 채팅방 목록',
@@ -520,7 +522,7 @@ export async function teamsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/team-chat-rooms/:id/messages',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['TeamChat'],
         summary: '팀 채팅 메시지 목록',
@@ -564,7 +566,7 @@ export async function teamsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/teams/:id/posts',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['TeamPosts'],
         summary: '팀 게시글 목록',
@@ -604,7 +606,7 @@ export async function teamsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/teams/:id/posts',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['TeamPosts'],
         summary: '팀 게시글 작성',
@@ -633,7 +635,7 @@ export async function teamsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/teams/:id/posts/:postId',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['TeamPosts'],
         summary: '팀 게시글 상세 조회',
@@ -660,7 +662,7 @@ export async function teamsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.patch(
     '/teams/:id/posts/:postId',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['TeamPosts'],
         summary: '팀 게시글 수정 (작성자 전용)',
@@ -693,7 +695,7 @@ export async function teamsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.delete(
     '/teams/:id/posts/:postId',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['TeamPosts'],
         summary: '팀 게시글 삭제 (작성자 또는 캡틴 전용)',
@@ -724,7 +726,7 @@ export async function teamsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/teams/:id/posts/:postId/comments',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['TeamPosts'],
         summary: '팀 게시글 댓글 작성',

@@ -38,6 +38,14 @@ const TYPE_TO_SETTING: Record<NotificationType, string> = {
   TIER_CHANGED: 'scoreChange',
   RESULT_DEADLINE: 'gameResult',
   COMMUNITY_REPLY: 'communityReply',
+  CAMPAIGN: 'campaign', // 캠페인 알림 (inactive_nudge / rank_drop_alert — 워커에서 직접 체크)
+  ADMIN: 'matchFound', // 운영자 공지 — matchFound 채널로 강제 발송 (별도 토글 없음)
+  // 노쇼 신고 관련 — 사용자에게 매우 중요한 정보, matchFound 채널 사용
+  NOSHOW_REPORT_RECEIVED: 'matchFound',
+  NOSHOW_REPORT_APPROVED: 'matchFound',
+  NOSHOW_REPORT_REJECTED: 'matchFound',
+  NOSHOW_REPORT_INSUFFICIENT: 'matchFound',
+  NOSHOW_BAN_PERMANENT: 'matchFound',
 };
 
 export class NotificationService {

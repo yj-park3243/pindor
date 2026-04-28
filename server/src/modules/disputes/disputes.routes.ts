@@ -1,8 +1,9 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { AppDataSource } from '../../config/database.js';
-import { AdminRole, Dispute, Game, Match } from '../../entities/index.js';
+import { AdminRole, Dispute, Game, Match, User } from '../../entities/index.js';
 import { requireAdmin } from '../admin/admin.middleware.js';
+import { sendAdminAlert, escapeHtml } from '../../shared/services/telegram.service.js';
 
 // ─── 입력 스키마 ───
 
@@ -87,6 +88,19 @@ export async function disputesRoutes(fastify: FastifyInstance): Promise<void> {
       });
 
       await disputeRepo.save(dispute);
+
+      // 텔레그램 관리자 알림
+      try {
+        const userRepo = AppDataSource.getRepository(User);
+        const u = await userRepo.findOne({ where: { id: reporterId } });
+        void sendAdminAlert(
+          `⚖️ <b>이의제기 접수</b>\n` +
+            `• 닉네임: ${escapeHtml(u?.nickname ?? reporterId)}\n` +
+            `• 매칭 ID: <code>${escapeHtml(dto.matchId)}</code>\n` +
+            `• 제목: ${escapeHtml(dto.title)}\n` +
+            `• 내용: ${escapeHtml(dto.content.slice(0, 500))}`,
+        );
+      } catch (_) {}
 
       return reply.status(201).send({
         success: true,

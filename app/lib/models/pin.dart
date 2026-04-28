@@ -10,6 +10,8 @@ class Pin {
   final bool isActive;
   final int userCount;
   final int? activeMatchRequests;
+  /// 검색용 키워드 (예: 성남시청 → ['성남', '경기', '경기도'])
+  final List<String> searchKeywords;
   final DateTime createdAt;
 
   const Pin({
@@ -23,6 +25,7 @@ class Pin {
     this.isActive = true,
     required this.userCount,
     this.activeMatchRequests,
+    this.searchKeywords = const [],
     required this.createdAt,
   });
 
@@ -43,6 +46,10 @@ class Pin {
       isActive: json['isActive'] as bool? ?? true,
       userCount: json['userCount'] as int? ?? 0,
       activeMatchRequests: json['activeMatchRequests'] as int?,
+      searchKeywords: (json['searchKeywords'] as List<dynamic>?)
+              ?.whereType<String>()
+              .toList() ??
+          const [],
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'] as String)
           : DateTime.now(),
@@ -62,6 +69,7 @@ class Pin {
         'isActive': isActive,
         'userCount': userCount,
         'activeMatchRequests': activeMatchRequests,
+        'searchKeywords': searchKeywords,
         'createdAt': createdAt.toIso8601String(),
       };
 

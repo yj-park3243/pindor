@@ -22,6 +22,8 @@ class SecureStorage {
   static const String _refreshTokenKey = 'refresh_token';
   static const String _userIdKey = 'user_id';
   static const String _fcmTokenKey = 'fcm_token';
+  static const String _fcmTokenRegisteredAtKey = 'fcm_token_registered_at';
+  static const String _pendingFcmRegisterKey = 'pending_fcm_register';
 
   // ─── 액세스 토큰 ───
   Future<void> saveAccessToken(String token) async {
@@ -57,6 +59,34 @@ class SecureStorage {
 
   Future<String?> getFcmToken() async {
     return _storage.read(key: _fcmTokenKey);
+  }
+
+  /// FCM 토큰이 서버에 마지막으로 등록된 시각 (TTL 판단용)
+  Future<DateTime?> getFcmTokenRegisteredAt() async {
+    final raw = await _storage.read(key: _fcmTokenRegisteredAtKey);
+    if (raw == null) return null;
+    return DateTime.tryParse(raw);
+  }
+
+  Future<void> setFcmTokenRegisteredAt(DateTime at) async {
+    await _storage.write(
+      key: _fcmTokenRegisteredAtKey,
+      value: at.toIso8601String(),
+    );
+  }
+
+  /// 서버 등록 실패 후 재시도 대기 플래그
+  Future<bool> getPendingFcmRegister() async {
+    final raw = await _storage.read(key: _pendingFcmRegisterKey);
+    return raw == 'true';
+  }
+
+  Future<void> setPendingFcmRegister(bool pending) async {
+    if (pending) {
+      await _storage.write(key: _pendingFcmRegisterKey, value: 'true');
+    } else {
+      await _storage.delete(key: _pendingFcmRegisterKey);
+    }
   }
 
   // ─── 토큰 일괄 저장 ───

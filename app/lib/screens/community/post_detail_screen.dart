@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:like_button/like_button.dart';
 import 'package:timeago/timeago.dart' as timeago;
+import '../../config/sports.dart';
 import '../../config/theme.dart';
 import '../../core/network/api_client.dart';
 import '../../models/post.dart';
@@ -102,8 +103,11 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     final currentUser = ref.watch(currentUserProvider);
 
     return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         title: const Text('게시글'),
+        backgroundColor: const Color(0xFF0A0A0A),
+        elevation: 0,
         actions: [
           postAsync.whenOrNull(
             data: (post) {
@@ -328,9 +332,16 @@ class _PostContent extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 카테고리 + 제목
-        _buildCategoryChip(post.category),
-        const SizedBox(height: 8),
+        // 종목 + 카테고리 태그
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            _buildSportChip(post.sportType),
+            if (post.category != 'GENERAL') _buildCategoryChip(post.category),
+          ],
+        ),
+        const SizedBox(height: 10),
         Text(
           post.title,
           style: const TextStyle(
@@ -449,6 +460,29 @@ class _PostContent extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildSportChip(String sportType) {
+    final color = AppTheme.primaryColor;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(5),
+        border: Border.all(color: color.withOpacity(0.4), width: 0.5),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(sportIcon(sportType), size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            sportLabel(sportType),
+            style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
     );
   }
 
@@ -803,30 +837,32 @@ class _CommentInputBar extends StatelessWidget {
               ),
             ),
           Container(
+            color: const Color(0xFF0A0A0A),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E1E1E),
-              border: Border(
-                top: BorderSide(color: Colors.grey.shade200),
-              ),
-            ),
             child: Row(
               children: [
                 Expanded(
-                  child: TextField(
-                    controller: controller,
-                    decoration: const InputDecoration(
-                      hintText: '댓글을 작성하세요...',
-                      border: InputBorder.none,
-                      isDense: true,
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E1E1E),
+                      borderRadius: BorderRadius.circular(20),
                     ),
+                    child: TextField(
+                      controller: controller,
+                      decoration: const InputDecoration(
+                        hintText: '댓글을 작성하세요...',
+                        hintStyle: TextStyle(color: AppTheme.textDisabled),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
+                      ),
                     maxLines: null,
                     textInputAction: TextInputAction.send,
                     onSubmitted: (_) => onSend(),
+                    ),
                   ),
                 ),
                 isSending

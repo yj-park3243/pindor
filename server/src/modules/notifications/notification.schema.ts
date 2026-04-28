@@ -35,6 +35,9 @@ export const updateNotificationSettingsSchema = z.object({
     .regex(/^\d{2}:\d{2}$/, 'HH:MM 형식이어야 합니다.')
     .optional()
     .nullable(),
+  // 캠페인 알림 설정
+  inactiveNudge: z.boolean().optional(),
+  rankDropAlert: z.boolean().optional(),
 });
 
 export type ListNotificationsQuery = z.infer<typeof listNotificationsQuerySchema>;

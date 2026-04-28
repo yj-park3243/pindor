@@ -13,9 +13,10 @@ import {
 import { MatchRequestStatus, MessageType, RoomType } from '../entities/index.js';
 import { In } from 'typeorm';
 import { decayRD } from '../shared/utils/glicko2.js';
+import { sendAdminAlert, escapeHtml } from '../shared/services/telegram.service.js';
 
 // ─────────────────────────────────────
-// 대기 중인 매칭 요청 타입 (Glicko-2 필드 포함)
+// 대기 중인 매칭 요청 타입 (Glicko-2 + 매너 필드 포함)
 // ─────────────────────────────────────
 
 interface WaitingRequest {
@@ -37,6 +38,43 @@ interface WaitingRequest {
   lossStreak: number;
   recentOpponentIds: string[];
   winStreak: number;
+  // 매너 점수 필드
+  mannerTotal: number;
+  mannerCount: number;
+}
+
+// ─────────────────────────────────────
+// 매너 등급 시스템
+// ─────────────────────────────────────
+
+type MannerTier = 'GOOD' | 'NORMAL' | 'BAD';
+
+const MANNER_MIN_SAMPLES = parseInt(process.env.MANNER_MIN_SAMPLES || '5', 10);
+const MANNER_GOOD_THRESHOLD = parseFloat(process.env.MANNER_GOOD_THRESHOLD || '4.0');
+const MANNER_BAD_THRESHOLD = parseFloat(process.env.MANNER_BAD_THRESHOLD || '2.5');
+
+function getMannerTier(req: WaitingRequest): MannerTier {
+  if ((req.mannerCount ?? 0) < MANNER_MIN_SAMPLES) return 'NORMAL';
+  const avg = (req.mannerTotal ?? 0) / req.mannerCount;
+  if (avg >= MANNER_GOOD_THRESHOLD) return 'GOOD';
+  if (avg < MANNER_BAD_THRESHOLD) return 'BAD';
+  return 'NORMAL';
+}
+
+function mannerCostAdjustment(a: WaitingRequest, b: WaitingRequest): number {
+  const ta = getMannerTier(a);
+  const tb = getMannerTier(b);
+  const pair = [ta, tb].sort().join('-');
+  // 정렬된 조합: 'BAD-BAD' | 'BAD-GOOD' | 'BAD-NORMAL' | 'GOOD-GOOD' | 'GOOD-NORMAL' | 'NORMAL-NORMAL'
+  switch (pair) {
+    case 'GOOD-GOOD':   return -50;
+    case 'BAD-GOOD':    return +200;
+    case 'BAD-NORMAL':  return +50;
+    case 'BAD-BAD':     return -100;
+    case 'GOOD-NORMAL':
+    case 'NORMAL-NORMAL':
+    default:            return 0;
+  }
 }
 
 // ─────────────────────────────────────
@@ -44,13 +82,25 @@ interface WaitingRequest {
 // 최소 윈도우 30분 보장 (매우 짧은 expiresAt 방어)
 // ─────────────────────────────────────
 
+// MMR 범위 확장 테스트용: env로 최소 윈도우/팽창 가속 가능
+// MATCH_WAIT_WINDOW_MIN: 분 단위 최소 윈도우 (기본 30분, 테스트 시 1~5 분으로 단축)
+// MATCH_WAIT_RATIO_BOOST: waitRatio 배수 (기본 1.0, 테스트 시 5.0 등으로 가속)
+const TEST_MIN_WINDOW_MS = (() => {
+  const v = parseFloat(process.env.MATCH_WAIT_WINDOW_MIN || '30');
+  return (Number.isFinite(v) && v > 0 ? v : 30) * 60 * 1000;
+})();
+const TEST_WAIT_RATIO_BOOST = (() => {
+  const v = parseFloat(process.env.MATCH_WAIT_RATIO_BOOST || '1');
+  return Number.isFinite(v) && v > 0 ? v : 1;
+})();
+
 function getWaitRatio(req: WaitingRequest): number {
   const now = Date.now();
   const created = new Date(req.createdAt).getTime();
   const expires = new Date(req.expiresAt).getTime();
-  const MIN_WINDOW_MS = 30 * 60 * 1000; // 30분 최소
-  const totalWindow = Math.max(expires - created, MIN_WINDOW_MS);
-  return Math.min(1.0, Math.max(0.0, (now - created) / totalWindow));
+  const totalWindow = Math.max(expires - created, TEST_MIN_WINDOW_MS);
+  const raw = (now - created) / totalWindow;
+  return Math.min(1.0, Math.max(0.0, raw * TEST_WAIT_RATIO_BOOST));
 }
 
 // ─────────────────────────────────────
@@ -106,7 +156,7 @@ function findOptimalPairs(
   if (requests.length < 2) return [];
 
   const n = requests.length;
-  const pairs: { i: number; j: number; cost: number; ratingDiff: number; effectiveRange: number }[] = [];
+  const pairs: { i: number; j: number; cost: number; ratingDiff: number; effectiveRange: number; mannerAdj: number }[] = [];
 
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
@@ -142,6 +192,10 @@ function findOptimalPairs(
       const waitDiscount = 1.0 - 0.7 * avgWaitRatio;
       let cost = ratingDiff * waitDiscount;
 
+      // 매너 cost 보정 (같은 핀 0.5 배수 적용 전에 합산)
+      const mannerAdj = mannerCostAdjustment(requests[i], requests[j]);
+      cost += mannerAdj;
+
       // 최근 상대 패널티: 24시간 내 동일 상대 재매칭 → +9999 비용
       if (isRecentOpponent(requests[i], requests[j])) {
         cost += 9999;
@@ -152,7 +206,7 @@ function findOptimalPairs(
         cost *= 0.5;
       }
 
-      pairs.push({ i, j, cost, ratingDiff, effectiveRange });
+      pairs.push({ i, j, cost, ratingDiff, effectiveRange, mannerAdj });
     }
   }
 
@@ -182,7 +236,8 @@ function findOptimalPairs(
     console.info(
       `[MatchQueue] Matched: ratingDiff=${pair.ratingDiff} effectiveRange=${pair.effectiveRange.toFixed(1)} ` +
       `waitRatioA=${getWaitRatio(reqA).toFixed(2)} waitRatioB=${getWaitRatio(reqB).toFixed(2)} ` +
-      `rdA=${reqA.glickoRd} rdB=${reqB.glickoRd}`,
+      `rdA=${reqA.glickoRd} rdB=${reqB.glickoRd} ` +
+      `mannerTierA=${getMannerTier(reqA)} mannerTierB=${getMannerTier(reqB)} mannerAdj=${pair.mannerAdj}`,
     );
   }
 
@@ -219,7 +274,8 @@ export async function processMatchingQueue(): Promise<boolean> {
     console.info('[MatchingQueueWorker] AppDataSource initialized');
   }
 
-  // 1) 모든 WAITING 상태의 매칭 요청 + Glicko-2 필드 포함 스포츠 프로필 JOIN으로 조회
+  // 1) 모든 WAITING 상태의 매칭 요청 + Glicko-2 + 매너 필드 포함 스포츠 프로필 JOIN으로 조회
+  //    match_request_ban_until > NOW() 인 요청은 임시 차단 중이므로 제외
   const waitingRequests = await AppDataSource.query<WaitingRequest[]>(
     `SELECT
       mr.id,
@@ -239,11 +295,14 @@ export async function processMatchingQueue(): Promise<boolean> {
       sp.is_placement AS "isPlacement",
       sp.loss_streak AS "lossStreak",
       sp.recent_opponent_ids AS "recentOpponentIds",
-      sp.win_streak AS "winStreak"
+      sp.win_streak AS "winStreak",
+      COALESCE(sp.manner_total, 0) AS "mannerTotal",
+      COALESCE(sp.manner_count, 0) AS "mannerCount"
     FROM match_requests mr
     JOIN sports_profiles sp ON sp.id = mr.sports_profile_id
     WHERE mr.status = 'WAITING'
       AND mr.expires_at > NOW()
+      AND (sp.match_request_ban_until IS NULL OR sp.match_request_ban_until <= NOW())
     ORDER BY mr.created_at ASC`,
   );
 
@@ -477,6 +536,22 @@ export async function processMatchingQueue(): Promise<boolean> {
               }),
             ),
           ]);
+
+          // 텔레그램 관리자 알림 — 매칭 잡힘 (워커 경로)
+          try {
+            const nicks = await AppDataSource.query<Array<{ id: string; nickname: string }>>(
+              `SELECT id, nickname FROM users WHERE id = ANY($1::uuid[])`,
+              [[pairA.requesterId, pairB.requesterId]],
+            );
+            const nickMap = new Map(nicks.map((n) => [n.id, n.nickname]));
+            void sendAdminAlert(
+              `🤝 <b>매칭 잡힘</b>\n` +
+                `• ${escapeHtml(nickMap.get(pairA.requesterId) ?? pairA.requesterId)} vs ${escapeHtml(nickMap.get(pairB.requesterId) ?? pairB.requesterId)}\n` +
+                `• matchId: <code>${escapeHtml(createdMatchId)}</code>`,
+            );
+          } catch (_) {
+            /* 알림 실패는 무시 */
+          }
         }
       } catch (err) {
         // 하나의 페어 매칭 실패가 전체 사이클을 중단시키지 않도록 에러 처리

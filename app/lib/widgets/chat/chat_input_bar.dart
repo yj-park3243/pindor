@@ -64,12 +64,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
             ? 10
             : MediaQuery.of(context).padding.bottom + 10,
       ),
-      decoration: const BoxDecoration(
-        color: Color(0xFF1E1E1E),
-        border: Border(
-          top: BorderSide(color: Color(0xFF2A2A2A), width: 1),
-        ),
-      ),
+      color: const Color(0xFF0A0A0A),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [

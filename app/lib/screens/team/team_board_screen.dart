@@ -17,8 +17,11 @@ class TeamBoardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         title: const Text('팀 게시판'),
+        backgroundColor: const Color(0xFF0A0A0A),
+        elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.add),

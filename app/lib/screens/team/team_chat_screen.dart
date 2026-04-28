@@ -75,8 +75,11 @@ class _TeamChatScreenState extends ConsumerState<TeamChatScreen> {
     final currentUser = ref.watch(currentUserProvider);
 
     return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         title: const Text('팀 채팅'),
+        backgroundColor: const Color(0xFF0A0A0A),
+        elevation: 0,
         actions: [
           PullDownButton(
             itemBuilder: (context) => [

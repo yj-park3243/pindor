@@ -112,7 +112,6 @@ class _PinDetailSheetState extends ConsumerState<PinDetailSheet> {
               return GestureDetector(
                 onTap: () {
                   setState(() => _selectedSport = sport.value);
-                  ref.read(sportPreferenceProvider.notifier).select(sport.value);
                 },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 180),

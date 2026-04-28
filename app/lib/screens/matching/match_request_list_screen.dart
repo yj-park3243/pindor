@@ -29,6 +29,8 @@ class _MatchRequestListScreenState
     return Scaffold(
       appBar: AppBar(
         title: const Text('매칭 요청'),
+        backgroundColor: const Color(0xFF0A0A0A),
+        elevation: 0,
       ),
       body: Column(
         children: [

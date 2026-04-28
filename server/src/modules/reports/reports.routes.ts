@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { AppDataSource } from '../../config/database.js';
 import { Report, Inquiry, UserSanction, User } from '../../entities/index.js';
 import { ReportTargetType, UserStatus } from '../../entities/enums.js';
+import { sendAdminAlert, escapeHtml } from '../../shared/services/telegram.service.js';
 
 // ─── 입력 스키마 ───
 
@@ -93,6 +94,18 @@ export async function reportsRoutes(fastify: FastifyInstance): Promise<void> {
         }
       }
 
+      // 텔레그램 관리자 알림
+      try {
+        const reporter = await userRepo.findOne({ where: { id: reporterId } });
+        void sendAdminAlert(
+          `🚨 <b>신고 접수</b>\n` +
+            `• 신고자: ${escapeHtml(reporter?.nickname ?? reporterId)}\n` +
+            `• 대상: ${escapeHtml(dto.targetType)} <code>${escapeHtml(dto.targetId)}</code>\n` +
+            `• 사유: ${escapeHtml(dto.reason)}\n` +
+            (dto.description ? `• 내용: ${escapeHtml(dto.description)}` : ''),
+        );
+      } catch (_) {}
+
       return reply.status(201).send({
         success: true,
         data: { id: report.id, message: '신고가 접수되었습니다.' },
@@ -130,6 +143,18 @@ export async function reportsRoutes(fastify: FastifyInstance): Promise<void> {
         resolvedAt: null,
       });
       await inquiryRepo.save(inquiry);
+
+      // 텔레그램 관리자 알림
+      try {
+        const u = await userRepo.findOne({ where: { id: userId } });
+        void sendAdminAlert(
+          `📩 <b>문의 접수</b>\n` +
+            `• 닉네임: ${escapeHtml(u?.nickname ?? userId)}\n` +
+            `• 카테고리: ${escapeHtml(dto.category)}\n` +
+            `• 제목: ${escapeHtml(dto.title)}\n` +
+            `• 내용: ${escapeHtml(dto.content.slice(0, 500))}`,
+        );
+      } catch (_) {}
 
       return reply.status(201).send({
         success: true,

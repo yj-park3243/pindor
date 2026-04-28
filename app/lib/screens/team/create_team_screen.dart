@@ -75,7 +75,12 @@ class _CreateTeamScreenState extends ConsumerState<CreateTeamScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('팀 만들기')),
+      backgroundColor: const Color(0xFF0A0A0A),
+      appBar: AppBar(
+        title: const Text('팀 만들기'),
+        backgroundColor: const Color(0xFF0A0A0A),
+        elevation: 0,
+      ),
       body: Form(
         key: _formKey,
         child: ListView(

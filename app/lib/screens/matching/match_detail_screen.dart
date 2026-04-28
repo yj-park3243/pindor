@@ -14,6 +14,7 @@ import '../../repositories/upload_repository.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/error_view.dart';
 import '../../widgets/common/app_toast.dart';
+import '../../widgets/common/safe_bottom_sheet.dart';
 import '../../core/network/api_client.dart';
 import 'package:pull_down_button/pull_down_button.dart';
 import 'package:bottom_picker/bottom_picker.dart';
@@ -34,7 +35,7 @@ import '../../repositories/block_repository.dart';
 /// 노쇼 신고 확인 바텀시트 (사진 필수)
 void _showNoshowConfirmDialog(
     BuildContext context, WidgetRef ref, String matchId) {
-  showModalBottomSheet(
+  showAppBottomSheet(
     context: context,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
@@ -77,7 +78,7 @@ class _NoshowReportSheetState extends ConsumerState<_NoshowReportSheet> {
   }
 
   void _showImageSourcePicker() {
-    showCupertinoModalPopup(
+    showAppCupertinoModalPopup(
       context: context,
       builder: (ctx) => CupertinoActionSheet(
         actions: [
@@ -122,7 +123,7 @@ class _NoshowReportSheetState extends ConsumerState<_NoshowReportSheet> {
           .reportNoshow(widget.matchId, imageUrls: imageUrls);
       if (mounted) {
         Navigator.pop(context);
-        AppToast.success('노쇼 신고가 접수되었습니다.');
+        AppToast.success('노쇼 신고가 접수되었습니다. 관리자 검토 후 알려드릴게요.');
         ref.invalidate(matchListProvider(null));
         context.go('/matches');
       }
@@ -296,28 +297,14 @@ class _NoshowReportSheetState extends ConsumerState<_NoshowReportSheet> {
 /// 유저 차단 확인 바텀시트
 void _showBlockConfirmDialog(
     BuildContext context, WidgetRef ref, String opponentId, String opponentNickname) {
-  showModalBottomSheet(
+  showAppCardSheet(
     context: context,
-    backgroundColor: Colors.transparent,
-    builder: (ctx) => Container(
-      decoration: const BoxDecoration(
-        color: AppTheme.cardDark,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      padding: EdgeInsets.fromLTRB(
-          24, 20, 24, MediaQuery.of(ctx).padding.bottom + 20),
+    backgroundColor: AppTheme.cardDark,
+    builder: (ctx) => Padding(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 36,
-            height: 4,
-            decoration: BoxDecoration(
-              color: AppTheme.borderColor,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(height: 20),
           Container(
             width: 56,
             height: 56,
@@ -409,24 +396,14 @@ void _showBlockConfirmDialog(
 /// 경기 포기 확인 바텀시트
 void _showForfeitConfirmDialog(
     BuildContext context, WidgetRef ref, String matchId) {
-  showModalBottomSheet(
+  showAppCardSheet(
     context: context,
-    backgroundColor: Colors.transparent,
-    builder: (ctx) => Container(
-      decoration: const BoxDecoration(
-        color: AppTheme.cardDark,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      padding: EdgeInsets.fromLTRB(
-          24, 20, 24, MediaQuery.of(ctx).padding.bottom + 20),
+    backgroundColor: AppTheme.cardDark,
+    builder: (ctx) => Padding(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 36, height: 4,
-            decoration: BoxDecoration(color: AppTheme.borderColor, borderRadius: BorderRadius.circular(2)),
-          ),
-          const SizedBox(height: 20),
           Container(
             width: 56, height: 56,
             decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), shape: BoxShape.circle),
@@ -523,7 +500,7 @@ class MatchDetailScreen extends ConsumerWidget {
         backgroundColor: AppTheme.backgroundDark,
         appBar: AppBar(
           title: const Text('매칭 상세'),
-          backgroundColor: AppTheme.backgroundDark,
+          backgroundColor: const Color(0xFF0A0A0A),
           elevation: 0,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
@@ -542,6 +519,31 @@ class MatchDetailScreen extends ConsumerWidget {
         ),
       ),
       data: (match) {
+        // PENDING_ACCEPT 매칭에 잘못 진입한 경우 — 수락 페이지로 보낸다
+        // (매칭 목록으로 보내면 _redirectedAcceptIds 가드와 함께 무한 redirect 루프 발생)
+        if (match.status == 'PENDING_ACCEPT') {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!context.mounted) return;
+            // 양측 모두 미응답이면 수락 페이지, 내가 수락 후 상대 대기면 목록
+            final myAccepted =
+                match.acceptances?.any((a) => a.accepted == true) ?? false;
+            if (myAccepted) {
+              AppToast.info('상대 응답을 기다리고 있습니다.');
+              if (context.canPop()) {
+                context.pop();
+              } else {
+                context.go('/matches');
+              }
+            } else {
+              context.go('/matches/${match.id}/accept');
+            }
+          });
+          return const Scaffold(
+            backgroundColor: AppTheme.backgroundDark,
+            body: FullScreenLoading(),
+          );
+        }
+
         final shouldLock = false;
         // 노쇼 신고 가능 상태: CHAT 또는 CONFIRMED
         final shouldShowNoshow = match.isChat || match.isConfirmed;
@@ -552,7 +554,7 @@ class MatchDetailScreen extends ConsumerWidget {
             backgroundColor: AppTheme.backgroundDark,
             appBar: AppBar(
               title: const Text('매칭 상세'),
-              backgroundColor: AppTheme.backgroundDark,
+              backgroundColor: const Color(0xFF0A0A0A),
               elevation: 0,
               leading: shouldLock
                   ? null
@@ -599,6 +601,7 @@ class MatchDetailScreen extends ConsumerWidget {
                         context,
                         targetType: 'MATCH',
                         targetId: matchId,
+                        insetForBottomNav: true,
                       ),
                     ),
                   ],
@@ -755,6 +758,7 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
                                 matchId: match.id,
                                 opponentNickname: match.opponent.nickname,
                                 initialVerificationCode: receivedCode,
+                                insetForBottomNav: true,
                                 onSubmitted: () {
                                   setState(() => _resultSubmitted = true);
                                 },
@@ -841,7 +845,7 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
 
 
   void _showOpponentProfile(BuildContext context, MatchOpponent opponent) {
-    showModalBottomSheet(
+    showAppBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -850,28 +854,14 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
   }
 
   Future<void> _cancelMatch(BuildContext context) async {
-    final confirmed = await showModalBottomSheet<bool>(
+    final confirmed = await showAppCardSheet<bool>(
       context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: const BoxDecoration(
-          color: AppTheme.cardDark,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: EdgeInsets.fromLTRB(
-            24, 20, 24, MediaQuery.of(ctx).padding.bottom + 20),
+      backgroundColor: AppTheme.cardDark,
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppTheme.borderColor,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 20),
             Container(
               width: 56,
               height: 56,
@@ -1325,6 +1315,41 @@ class _MatchupCard extends ConsumerWidget {
                         overflow: TextOverflow.ellipsis,
                         maxLines: 1,
                       ),
+                      // 친선 매치: 상대 성별/나이 노출
+                      if (match.isCasual && (opponent.gender != null || opponent.age != null)) ...[
+                        const SizedBox(height: 4),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (opponent.gender != null) ...[
+                              Icon(
+                                opponent.gender == 'FEMALE'
+                                    ? Icons.female_rounded
+                                    : (opponent.gender == 'MALE'
+                                        ? Icons.male_rounded
+                                        : Icons.transgender_rounded),
+                                size: 12,
+                                color: opponent.gender == 'FEMALE'
+                                    ? Colors.pinkAccent
+                                    : (opponent.gender == 'MALE'
+                                        ? Colors.lightBlueAccent
+                                        : AppTheme.textSecondary),
+                              ),
+                              Text(
+                                opponent.gender == 'FEMALE'
+                                    ? '여'
+                                    : (opponent.gender == 'MALE' ? '남' : '기타'),
+                                style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                              ),
+                            ],
+                            if (opponent.gender != null && opponent.age != null)
+                              const Text(' · ', style: TextStyle(fontSize: 11, color: AppTheme.textDisabled)),
+                            if (opponent.age != null)
+                              Text('${opponent.age}세',
+                                  style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                          ],
+                        ),
+                      ],
                       _buildResultTag(match.gameResult, false),
                       if (!opponent.isPlacement) ...[
                         const SizedBox(height: 6),

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../config/theme.dart';
 import '../../repositories/support_repository.dart';
 import '../common/app_toast.dart';
+import '../common/safe_bottom_sheet.dart';
 import '../../core/network/api_client.dart';
 
 /// 신고 사유 목록
@@ -193,11 +194,13 @@ void showReportBottomSheet(
   BuildContext context, {
   required String targetType,
   required String targetId,
+  bool insetForBottomNav = false,
 }) {
-  showModalBottomSheet(
+  showAppBottomSheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
+    insetForBottomNav: insetForBottomNav,
     builder: (_) => ReportBottomSheet(
       targetType: targetType,
       targetId: targetId,

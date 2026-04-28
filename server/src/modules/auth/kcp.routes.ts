@@ -58,7 +58,7 @@ export async function kcpRoutes(fastify: FastifyInstance): Promise<void> {
         const result = await kcpService.verifyCert(userId, kcpData);
 
         // 3. 앱 WebView로 결과 전달 (커스텀 스킴 리다이렉트)
-        const appUrl = `spots://kcp-cert?status=success&userId=${result.user.id}&nickname=${encodeURIComponent(result.user.nickname ?? '')}&accessToken=${encodeURIComponent(result.accessToken)}&refreshToken=${encodeURIComponent(result.refreshToken)}&nextRoute=${result.nextRoute}&isNewUser=${result.user.isNewUser}`;
+        const appUrl = `spots://kcp-cert?status=success&userId=${result.user.id}&nickname=${encodeURIComponent(result.user.nickname ?? '')}&accessToken=${encodeURIComponent(result.accessToken)}&refreshToken=${encodeURIComponent(result.refreshToken)}&nextRoute=${result.nextRoute}&isNewUser=${result.user.isNewUser}&merged=${result.merged === true ? 'true' : 'false'}`;
 
         // HTML로 리다이렉트 (WebView에서 커스텀 스킴 감지)
         const redirectHtml = `<!DOCTYPE html>

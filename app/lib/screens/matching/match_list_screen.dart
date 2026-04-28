@@ -15,6 +15,7 @@ import '../../repositories/matching_repository.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/error_view.dart';
 import '../../widgets/common/app_toast.dart';
+import '../../widgets/common/safe_bottom_sheet.dart';
 import '../../core/network/api_client.dart';
 import '../../widgets/common/user_avatar.dart';
 import '../../widgets/common/score_display.dart';
@@ -36,7 +37,9 @@ class MatchListScreen extends ConsumerStatefulWidget {
 }
 
 class _MatchListScreenState extends ConsumerState<MatchListScreen> {
-  bool _redirectedToAccept = false; // 무한 루프 방지 가드
+  // 같은 매칭 ID로 accept 페이지에 보낸 적 있으면 다시 자동 redirect 안 함
+  // (accept 페이지가 stale로 인해 매칭 목록으로 돌려보낼 때 무한 루프 방지)
+  final Set<String> _redirectedAcceptIds = {};
   final Set<String> _joinedMatchRooms = {};
 
   // 검색 필터
@@ -104,20 +107,19 @@ class _MatchListScreenState extends ConsumerState<MatchListScreen> {
             })
             .toList() ??
         [];
-    final hasPending = pendingMatches.isNotEmpty;
-
-    // PENDING_ACCEPT 매칭이 있으면 MatchAcceptScreen으로 이동 (무한 루프 방지)
-    if (hasPending && !_redirectedToAccept) {
-      _redirectedToAccept = true;
+    // 자동 redirect — 한 매칭 ID당 1회만 시도. 돌려보내진 적 있는 ID는 무시 (무한 루프 방지)
+    final firstPending = pendingMatches.firstWhere(
+      (m) => !_redirectedAcceptIds.contains(m.id),
+      orElse: () => Match.empty(),
+    );
+    final hasPendingToRedirect = firstPending.id.isNotEmpty;
+    if (hasPendingToRedirect) {
+      _redirectedAcceptIds.add(firstPending.id);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          context.go('/matches/${pendingMatches.first.id}/accept');
+          context.go('/matches/${firstPending.id}/accept');
         }
       });
-    }
-    // 새로운 PENDING_ACCEPT 감지 시 가드 리셋
-    if (!hasPending) {
-      _redirectedToAccept = false;
     }
 
     final requestsAsync = ref.watch(matchRequestProvider);
@@ -129,9 +131,22 @@ class _MatchListScreenState extends ConsumerState<MatchListScreen> {
       backgroundColor: AppTheme.backgroundDark,
       appBar: AppBar(
         title: const Text('매칭'),
-        backgroundColor: AppTheme.backgroundDark,
+        backgroundColor: const Color(0xFF0A0A0A),
         elevation: 0,
         actions: [
+          // 매칭 데이터 꼬임 복구 — 로컬 캐시 정리 + 자동 redirect 가드 리셋 + 서버 강제 재조회
+          IconButton(
+            icon: const Icon(Icons.refresh, color: AppTheme.textSecondary),
+            tooltip: '매칭 데이터 새로고침',
+            onPressed: () async {
+              setState(() => _redirectedAcceptIds.clear());
+              ref.read(matchingRepositoryProvider).clearLocalCache();
+              ref.read(matchListForceRefreshProvider.notifier).state = true;
+              ref.invalidate(matchListProvider(null));
+              ref.invalidate(matchRequestProvider);
+              AppToast.info('매칭 데이터를 새로고침했습니다.');
+            },
+          ),
           IconButton(
             icon: Icon(
               _showFilters ? Icons.search_off : Icons.search,
@@ -301,7 +316,13 @@ class _MatchListScreenState extends ConsumerState<MatchListScreen> {
                   final match = activeMatches[index];
                   return _MatchListTile(
                     match: match,
-                    onTap: () => context.go('${AppRoutes.matchList}/${match.id}'),
+                    onTap: () {
+                      if (match.status == 'PENDING_ACCEPT') {
+                        AppToast.info('상대 응답을 기다리고 있습니다.');
+                        return;
+                      }
+                      context.go('${AppRoutes.matchList}/${match.id}');
+                    },
                   );
                 }
                 // 2) 대기 요청
@@ -667,15 +688,33 @@ class _WaitingRequestCard extends ConsumerWidget {
                 // 1줄: 핀 + 종목 + 랭크/친선
                 Row(
                   children: [
-                    const Icon(Icons.location_on_rounded,
-                        size: 18, color: AppTheme.primaryColor),
-                    const SizedBox(width: 4),
-                    Text(
-                      pinLabel,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.textPrimary,
+                    InkWell(
+                      onTap: request.pinId != null
+                          ? () => context.go('/map?focusPinId=${request.pinId}')
+                          : null,
+                      borderRadius: BorderRadius.circular(6),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.location_on_rounded,
+                                size: 18, color: AppTheme.primaryColor),
+                            const SizedBox(width: 4),
+                            Text(
+                              pinLabel,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.textPrimary,
+                                decoration: request.pinId != null
+                                    ? TextDecoration.underline
+                                    : TextDecoration.none,
+                                decorationColor: AppTheme.textSecondary,
+                                decorationThickness: 1,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -960,6 +999,24 @@ class _PendingMatchCardState extends ConsumerState<_PendingMatchCard> {
         }
       },
     );
+
+    // 매칭이 종료된 경우 카드 자체를 숨김 (stale "상대 응답 기다림" 표시 방지)
+    // — widget.match는 SWR 캐시 stale 가능성 → acceptState도 함께 검사
+    final endedFromMatch = widget.match.isCancelled || widget.match.isCompleted;
+    final endedFromAccept = acceptState.acceptStatus == 'CANCELLED' ||
+        acceptState.acceptStatus == 'REJECTED' ||
+        acceptState.acceptStatus == 'EXPIRED';
+    if (endedFromMatch || endedFromAccept) {
+      // 한 번이라도 종료 신호가 오면 즉시 카드 제거 + 목록 강제 갱신
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ref.read(matchingRepositoryProvider).clearLocalCache();
+          ref.read(matchListForceRefreshProvider.notifier).state = true;
+          ref.invalidate(matchListProvider(null));
+        }
+      });
+      return const SizedBox.shrink();
+    }
 
     final opponent = widget.match.opponent;
     final encounterText = widget.match.encounterCount > 0
@@ -1723,41 +1780,21 @@ class _GameResultChip extends StatelessWidget {
         color = const Color(0xFF9CA3AF);
     }
 
-    final hasScore = scoreChange != null && scoreChange != 0 && !isCasual;
-    final sign = (scoreChange ?? 0) > 0 ? '+' : '';
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.15),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
+    // 점수 변동(+18 등)은 노출하지 않음 — MMR/내부 점수와의 불일치 방지
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
         ),
-        if (hasScore) ...[
-          const SizedBox(width: 4),
-          Text(
-            '$sign$scoreChange',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: (scoreChange ?? 0) > 0
-                  ? AppTheme.secondaryColor
-                  : AppTheme.errorColor,
-            ),
-          ),
-        ],
-      ],
+      ),
     );
   }
 }
@@ -1826,29 +1863,14 @@ Future<bool?> _showConfirmSheet({
   required String subtitle,
   required String confirmLabel,
 }) {
-  return showModalBottomSheet<bool>(
+  return showAppCardSheet<bool>(
     context: context,
-    backgroundColor: Colors.transparent,
-    builder: (ctx) => Container(
-      decoration: const BoxDecoration(
-        color: AppTheme.cardDark,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      padding: EdgeInsets.fromLTRB(
-          24, 20, 24, MediaQuery.of(ctx).padding.bottom + 20),
+    backgroundColor: AppTheme.cardDark,
+    builder: (ctx) => Padding(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // 핸들
-          Container(
-            width: 36,
-            height: 4,
-            decoration: BoxDecoration(
-              color: AppTheme.borderColor,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(height: 20),
           // 아이콘
           Container(
             width: 56,

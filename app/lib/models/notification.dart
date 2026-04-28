@@ -129,6 +129,9 @@ class NotificationSettings {
   final bool communityReply;
   final String? doNotDisturbStart; // "23:00"
   final String? doNotDisturbEnd; // "08:00"
+  // 캠페인 알림
+  final bool inactiveNudge;    // 휴면 알림 받기
+  final bool rankDropAlert;    // 랭킹 하락 알림 받기
 
   const NotificationSettings({
     this.chatMessage = true,
@@ -139,6 +142,8 @@ class NotificationSettings {
     this.communityReply = true,
     this.doNotDisturbStart,
     this.doNotDisturbEnd,
+    this.inactiveNudge = true,
+    this.rankDropAlert = true,
   });
 
   factory NotificationSettings.fromJson(Map<String, dynamic> json) {
@@ -151,6 +156,8 @@ class NotificationSettings {
       communityReply: json['communityReply'] as bool? ?? true,
       doNotDisturbStart: json['doNotDisturbStart'] as String?,
       doNotDisturbEnd: json['doNotDisturbEnd'] as String?,
+      inactiveNudge: json['inactiveNudge'] as bool? ?? true,
+      rankDropAlert: json['rankDropAlert'] as bool? ?? true,
     );
   }
 
@@ -163,6 +170,8 @@ class NotificationSettings {
         'communityReply': communityReply,
         'doNotDisturbStart': doNotDisturbStart,
         'doNotDisturbEnd': doNotDisturbEnd,
+        'inactiveNudge': inactiveNudge,
+        'rankDropAlert': rankDropAlert,
       };
 
   NotificationSettings copyWith({
@@ -174,6 +183,8 @@ class NotificationSettings {
     bool? communityReply,
     String? doNotDisturbStart,
     String? doNotDisturbEnd,
+    bool? inactiveNudge,
+    bool? rankDropAlert,
   }) {
     return NotificationSettings(
       chatMessage: chatMessage ?? this.chatMessage,
@@ -184,6 +195,8 @@ class NotificationSettings {
       communityReply: communityReply ?? this.communityReply,
       doNotDisturbStart: doNotDisturbStart ?? this.doNotDisturbStart,
       doNotDisturbEnd: doNotDisturbEnd ?? this.doNotDisturbEnd,
+      inactiveNudge: inactiveNudge ?? this.inactiveNudge,
+      rankDropAlert: rankDropAlert ?? this.rankDropAlert,
     );
   }
 }

@@ -62,22 +62,20 @@ export const matchExpiryWorker = new Worker<MatchExpiryJobData>(
 export async function processExpiredMatchRequests(): Promise<void> {
   const matchRequestRepo = AppDataSource.getRepository(MatchRequest);
 
-  const expiredRequests = await matchRequestRepo.find({
-    where: {
-      status: MatchRequestStatus.WAITING,
-    },
-    take: 100,
-  });
+  // DB 쿼리 레벨에서 만료 조건 필터링 + 정렬 적용
+  const expiredRequests = await matchRequestRepo
+    .createQueryBuilder('mr')
+    .where('mr.status = :status', { status: MatchRequestStatus.WAITING })
+    .andWhere('mr.expires_at <= NOW()')
+    .orderBy('mr.expires_at', 'ASC')
+    .take(100)
+    .getMany();
 
-  // 만료 시간이 지난 것만 필터링
-  const now = new Date();
-  const actuallyExpired = expiredRequests.filter((req) => req.expiresAt <= now);
+  if (expiredRequests.length === 0) return;
 
-  if (actuallyExpired.length === 0) return;
+  console.info(`[MatchExpiryBatch] Processing ${expiredRequests.length} expired requests`);
 
-  console.info(`[MatchExpiryBatch] Processing ${actuallyExpired.length} expired requests`);
-
-  const jobs = actuallyExpired.map((req) => ({
+  const jobs = expiredRequests.map((req) => ({
     name: 'expire-match',
     data: { matchRequestId: req.id },
   }));

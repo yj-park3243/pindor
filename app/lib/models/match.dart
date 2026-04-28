@@ -26,6 +26,18 @@ class Match {
   final int? myScoreChange; // 내 점수 변동 (+28, -15 등)
   final String? myVerificationCode; // 나의 4자리 인증번호
 
+  /// 빈 매칭 — firstWhere의 fallback용 sentinel.
+  /// id가 빈 문자열이면 "없음"으로 판단.
+  factory Match.empty() => Match(
+        id: '',
+        matchRequestId: '',
+        sportType: 'GOLF',
+        opponent: MatchOpponent.fromJson(const {}),
+        status: 'CANCELLED',
+        chatRoomId: '',
+        createdAt: DateTime.fromMillisecondsSinceEpoch(0),
+      );
+
   const Match({
     required this.id,
     required this.matchRequestId,
@@ -199,6 +211,10 @@ class MatchOpponent {
   final int? placementGamesRemaining; // 배치 게임 남은 횟수
   /// 유저에게 표시되는 점수. null이면 currentScore로 폴백.
   final int? displayScore;
+  /// 친선 매치에서만 노출되는 상대 성별 (MALE | FEMALE | OTHER)
+  final String? gender;
+  /// 친선 매치에서만 노출되는 상대 나이
+  final int? age;
 
   const MatchOpponent({
     required this.id,
@@ -215,6 +231,8 @@ class MatchOpponent {
     this.isPlacement = false,
     this.placementGamesRemaining,
     this.displayScore,
+    this.gender,
+    this.age,
   });
 
   factory MatchOpponent.fromJson(Map<String, dynamic> json) {
@@ -235,6 +253,8 @@ class MatchOpponent {
       matchMessage: json['matchMessage'] as String?,
       isPlacement: json['isPlacement'] as bool? ?? false,
       placementGamesRemaining: json['placementGamesRemaining'] as int?,
+      gender: json['gender'] as String?,
+      age: json['age'] as int?,
     );
   }
 

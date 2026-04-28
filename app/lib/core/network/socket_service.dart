@@ -102,6 +102,19 @@ class SocketService {
         _isConnected = true;
         _connectionStateController.add(true);
         debugPrint('[Socket] 연결됨');
+        // 연결 직후 추적 중인 룸들 자동 입장 (createRequest 등에서 미리 등록한 룸 포함)
+        if (_activeRoomId != null) {
+          _socket?.emit('JOIN_ROOM', {'roomId': _activeRoomId});
+          debugPrint('[Socket] 연결 후 채팅방 자동 입장: $_activeRoomId');
+        }
+        for (final requestId in _activeMatchRequestRooms) {
+          _socket?.emit('JOIN_MATCH_REQUEST', {'requestId': requestId});
+          debugPrint('[Socket] 연결 후 매칭 요청 룸 자동 입장: $requestId');
+        }
+        for (final matchId in _activeMatchRooms) {
+          _socket?.emit('JOIN_MATCH', {'matchId': matchId});
+          debugPrint('[Socket] 연결 후 매칭 룸 자동 입장: $matchId');
+        }
       })
       ..onDisconnect((_) {
         _isConnected = false;
@@ -176,18 +189,18 @@ class SocketService {
 
   /// 채팅방 입장
   void joinRoom(String roomId) {
-    if (!_isConnected) return;
     _activeRoomId = roomId;
+    if (!_isConnected) return;
     _socket!.emit('JOIN_ROOM', {'roomId': roomId});
     debugPrint('[Socket] 채팅방 입장: $roomId');
   }
 
   /// 채팅방 퇴장
   void leaveRoom(String roomId) {
-    if (!_isConnected) return;
     if (_activeRoomId == roomId) {
       _activeRoomId = null;
     }
+    if (!_isConnected) return;
     _socket!.emit('LEAVE_ROOM', {'roomId': roomId});
     debugPrint('[Socket] 채팅방 퇴장: $roomId');
   }
@@ -222,36 +235,44 @@ class SocketService {
   }
 
   /// 매칭 요청 룸 입장 (매칭 성사 알림 수신용)
+  /// 연결 전이라도 추적 set 에 등록하여, 연결 직후 자동 입장된다.
   void joinMatchRequest(String requestId) {
-    if (!_isConnected) return;
     _activeMatchRequestRooms.add(requestId);
+    if (!_isConnected) return;
     _socket!.emit('JOIN_MATCH_REQUEST', {'requestId': requestId});
     debugPrint('[Socket] 매칭 요청 룸 입장: $requestId');
   }
 
   /// 매칭 요청 룸 퇴장
   void leaveMatchRequest(String requestId) {
-    if (!_isConnected) return;
     _activeMatchRequestRooms.remove(requestId);
+    if (!_isConnected) return;
     _socket!.emit('LEAVE_MATCH_REQUEST', {'requestId': requestId});
     debugPrint('[Socket] 매칭 요청 룸 퇴장: $requestId');
   }
 
   /// 매칭 룸 입장 (매칭 상태 변경 알림 수신용)
+  /// 연결 전이라도 추적 set 에 등록하여, 연결 직후 자동 입장된다.
   void joinMatch(String matchId) {
-    if (!_isConnected) return;
     _activeMatchRooms.add(matchId);
+    if (!_isConnected) return;
     _socket!.emit('JOIN_MATCH', {'matchId': matchId});
     debugPrint('[Socket] 매칭 룸 입장: $matchId');
   }
 
   /// 매칭 룸 퇴장
   void leaveMatch(String matchId) {
-    if (!_isConnected) return;
     _activeMatchRooms.remove(matchId);
+    if (!_isConnected) return;
     _socket!.emit('LEAVE_MATCH', {'matchId': matchId});
     debugPrint('[Socket] 매칭 룸 퇴장: $matchId');
   }
+
+  /// 추적 중인 룸이 하나라도 있는지 (소켓 연결 유지 판단용)
+  bool get hasActiveRooms =>
+      _activeRoomId != null ||
+      _activeMatchRequestRooms.isNotEmpty ||
+      _activeMatchRooms.isNotEmpty;
 
   /// 연결 해제 (로그아웃 시 호출)
   void disconnect() {

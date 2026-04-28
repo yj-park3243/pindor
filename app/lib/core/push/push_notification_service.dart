@@ -121,11 +121,28 @@ class PushNotificationService {
     }
   }
 
+  /// 캐시된 토큰을 신뢰할 수 있는 TTL — 서버에서 isActive=false 됐어도
+  /// 이 기간 안에는 강제 재등록으로 자동 복구된다.
+  static const Duration _registerTtl = Duration(days: 7);
+
   /// FCM 토큰을 서버에 등록 (최대 3회 재시도, exponential backoff)
-  Future<void> _registerToken(String token) async {
-    // 이전 토큰과 동일하면 스킵
-    final savedToken = await _storage.getFcmToken();
-    if (savedToken == token) return;
+  ///
+  /// [force] 가 true 면 토큰/TTL 캐시 비교를 건너뛰고 무조건 서버에 등록한다.
+  /// 실패 시 [SecureStorage.pendingFcmRegister] 플래그를 세워 다음 resume 시 재시도된다.
+  Future<void> _registerToken(String token, {bool force = false}) async {
+    if (!force) {
+      final savedToken = await _storage.getFcmToken();
+      final registeredAt = await _storage.getFcmTokenRegisteredAt();
+      final isFresh = registeredAt != null &&
+          DateTime.now().difference(registeredAt) < _registerTtl;
+      // 이전 토큰과 동일 + TTL 안쪽이면 스킵
+      if (savedToken != null &&
+          savedToken == token &&
+          savedToken.isNotEmpty &&
+          isFresh) {
+        return;
+      }
+    }
 
     const maxRetries = 3;
     for (var attempt = 0; attempt < maxRetries; attempt++) {
@@ -139,7 +156,10 @@ class PushNotificationService {
         );
 
         await _storage.saveFcmToken(token);
-        debugPrint('[Push] FCM 토큰 등록 완료');
+        await _storage.setFcmTokenRegisteredAt(DateTime.now());
+        await _storage.setPendingFcmRegister(false);
+        debugPrint(
+            '[Push] FCM 토큰 등록 완료 (platform=${Platform.isIOS ? 'IOS' : 'ANDROID'}, head=${token.substring(0, token.length.clamp(0, 12))}...)');
         return;
       } catch (e) {
         debugPrint('[Push] FCM 토큰 등록 실패 (시도 ${attempt + 1}/$maxRetries): $e');
@@ -149,45 +169,64 @@ class PushNotificationService {
         }
       }
     }
+
+    // 모든 재시도 실패 — 다음 resume 시 재시도 하도록 플래그 저장
+    await _storage.setPendingFcmRegister(true);
+    debugPrint('[Push] FCM 토큰 등록 영구 실패 — pending 플래그 저장, 다음 resume 시 재시도');
   }
 
   /// 로그인 성공 후 FCM 토큰 재등록 (인증 토큰 확보 후 호출)
   Future<void> reregisterToken() async {
     try {
       final token = await _messaging.getToken();
-      if (token == null) return;
-      // 강제 재등록 (savedToken 체크 스킵)
-      await ApiClient.instance.post(
-        '/devices/push-token',
-        body: {
-          'token': token,
-          'platform': Platform.isIOS ? 'IOS' : 'ANDROID',
-        },
-      );
-      await _storage.saveFcmToken(token);
-      debugPrint('[Push] FCM 토큰 재등록 완료');
+      if (token == null) {
+        // 권한 거부/시뮬레이터 등으로 토큰을 못 받은 경우 — 다음 resume 시 재시도
+        await _storage.setPendingFcmRegister(true);
+        return;
+      }
+      // _registerToken 의 재시도/플래그 처리 로직 재사용
+      await _registerToken(token, force: true);
     } catch (e) {
       debugPrint('[Push] FCM 토큰 재등록 실패: $e');
+      await _storage.setPendingFcmRegister(true);
     }
+  }
+
+  /// 권한이 새로 허용되었거나 pending 플래그가 있을 때 호출
+  /// (앱 lifecycle resumed 훅에서 사용)
+  Future<void> retryIfPending() async {
+    final pending = await _storage.getPendingFcmRegister();
+    if (!pending) return;
+    debugPrint('[Push] pending 플래그 감지 — FCM 토큰 재등록 시도');
+    await reregisterToken();
   }
 
   /// 서버에서 토큰 해제 (로그아웃 시)
   Future<void> unregisterToken() async {
     try {
       final token = await _storage.getFcmToken();
-      if (token == null) return;
-
-      await ApiClient.instance.delete(
-        '/devices/push-token',
-        body: {'token': token},
-      );
-
-      debugPrint('[Push] FCM 토큰 해제 완료');
+      // 빈 문자열도 스킵 — 이전 unregister 후 saveFcmToken('')로 비워진 상태일 수 있음
+      if (token == null || token.isEmpty) {
+        debugPrint('[Push] FCM 토큰 없음 — 해제 API 호출 스킵');
+      } else {
+        // 인증 토큰이 있을 때만 서버 호출 (로그아웃 시점엔 access token이 곧 클리어됨)
+        final accessToken = await _storage.getAccessToken();
+        if (accessToken == null || accessToken.isEmpty) {
+          debugPrint('[Push] 인증 토큰 없음 — FCM 해제 API 호출 스킵');
+        } else {
+          await ApiClient.instance.delete(
+            '/devices/push-token',
+            body: {'token': token},
+          );
+          debugPrint('[Push] FCM 토큰 해제 완료');
+        }
+      }
     } catch (e) {
       debugPrint('[Push] FCM 토큰 해제 실패: $e');
     }
     // 로컬 토큰 삭제 → 다음 로그인 시 재등록되도록
     await _storage.saveFcmToken('');
+    await _storage.setPendingFcmRegister(false);
   }
 
   /// 딥링크 처리

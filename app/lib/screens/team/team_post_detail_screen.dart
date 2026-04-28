@@ -29,7 +29,12 @@ class TeamPostDetailScreen extends ConsumerWidget {
     );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('게시글')),
+      backgroundColor: const Color(0xFF0A0A0A),
+      appBar: AppBar(
+        title: const Text('게시글'),
+        backgroundColor: const Color(0xFF0A0A0A),
+        elevation: 0,
+      ),
       body: postAsync.when(
         loading: () => const FullScreenLoading(),
         error: (e, _) => ErrorView(

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -96,6 +97,118 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
     }
   }
 
+  /// Firebase 이메일 회원가입
+  Future<void> signupWithFirebase({
+    required String email,
+    required String password,
+  }) async {
+    final previousState = state;
+    state = const AsyncLoading();
+    try {
+      // 1. Firebase Auth로 계정 생성
+      final credential = await fb.FirebaseAuth.instance
+          .createUserWithEmailAndPassword(email: email, password: password);
+
+      final idToken = await credential.user?.getIdToken();
+      if (idToken == null) throw Exception('Firebase ID 토큰을 가져올 수 없습니다.');
+
+      // 2. 서버에 전달
+      final response = await _api.post(
+        '/auth/firebase/signup',
+        body: {'idToken': idToken, 'agreedTerms': true},
+      );
+
+      await _handleAuthResponse(response, isNewUser: true);
+    } on fb.FirebaseAuthException catch (e) {
+      state = previousState;
+      rethrow;
+    } catch (e) {
+      state = previousState;
+      rethrow;
+    }
+  }
+
+  /// Firebase 이메일 로그인
+  Future<void> loginWithFirebase({
+    required String email,
+    required String password,
+  }) async {
+    final previousState = state;
+    state = const AsyncLoading();
+    try {
+      // 1. Firebase Auth로 로그인
+      final credential = await fb.FirebaseAuth.instance
+          .signInWithEmailAndPassword(email: email, password: password);
+
+      final idToken = await credential.user?.getIdToken();
+      if (idToken == null) throw Exception('Firebase ID 토큰을 가져올 수 없습니다.');
+
+      // 2. 서버에 전달
+      final response = await _api.post(
+        '/auth/firebase/login',
+        body: {'idToken': idToken},
+      );
+
+      await _handleAuthResponse(response, isNewUser: false);
+    } on fb.FirebaseAuthException catch (e) {
+      state = previousState;
+      rethrow;
+    } catch (e) {
+      state = previousState;
+      rethrow;
+    }
+  }
+
+  /// 공통 인증 응답 처리 (Firebase 이메일 가입/로그인 공통)
+  Future<void> _handleAuthResponse(
+    Map<String, dynamic> response, {
+    required bool isNewUser,
+  }) async {
+    final data = response['data'] as Map<String, dynamic>;
+    final accessToken = data['accessToken'] as String;
+    final refreshToken = data['refreshToken'] as String;
+    final userData = data['user'] as Map<String, dynamic>;
+    final actualIsNewUser = userData['isNewUser'] as bool? ?? isNewUser;
+    final isVerified = userData['isVerified'] as bool? ?? false;
+
+    await _storage.saveTokens(
+      accessToken: accessToken,
+      refreshToken: refreshToken,
+      userId: userData['id'] as String,
+    );
+
+    _socket.connect(accessToken);
+    unawaited(PushNotificationService.instance.reregisterToken());
+
+    User user;
+    if (!actualIsNewUser) {
+      final repo = ref.read(userRepositoryProvider);
+      user = (await repo.getMe()) ??
+          User(
+            id: userData['id'] as String,
+            nickname: userData['nickname'] as String? ?? '',
+            status: 'ACTIVE',
+            createdAt: DateTime.now(),
+            isVerified: isVerified,
+          );
+    } else {
+      user = User(
+        id: userData['id'] as String,
+        nickname: userData['nickname'] as String? ?? '',
+        status: 'ACTIVE',
+        createdAt: DateTime.now(),
+        isVerified: isVerified,
+      );
+    }
+
+    state = AsyncData(AuthState(
+      isAuthenticated: true,
+      user: user,
+      isNewUser: actualIsNewUser,
+      isVerified: isVerified,
+    ));
+  }
+
   /// 카카오 로그인
   Future<void> loginWithKakao(String kakaoAccessToken) async {
     state = const AsyncLoading();
@@ -121,6 +234,9 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
 
       // 소켓 연결
       _socket.connect(accessToken);
+
+      // FCM 토큰 재등록 (로그인 직후 인증 토큰 확보 시점)
+      unawaited(PushNotificationService.instance.reregisterToken());
 
       // 사용자 정보 불러오기 → 로컬 DB에도 저장
       User user;
@@ -180,6 +296,9 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
 
       // 소켓 연결
       _socket.connect(accessToken);
+
+      // FCM 토큰 재등록 (로그인 직후 인증 토큰 확보 시점)
+      unawaited(PushNotificationService.instance.reregisterToken());
 
       // 사용자 정보 불러오기 → 로컬 DB에도 저장
       User user;
@@ -256,6 +375,9 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
       // 소켓 연결
       _socket.connect(accessToken);
 
+      // FCM 토큰 재등록 (로그인 직후 인증 토큰 확보 시점)
+      unawaited(PushNotificationService.instance.reregisterToken());
+
       // 사용자 정보 불러오기 → 로컬 DB에도 저장
       User user;
       if (!isNewUser) {
@@ -317,28 +439,46 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
     state = AsyncData(current.copyWith(isNewUser: false));
   }
 
+  /// 로그아웃 재진입 방지 플래그 — onForceLogout이 logout 중에 다시 호출되어
+  /// 무한 루프를 만드는 케이스 차단
+  bool _isLoggingOut = false;
+
   /// 로그아웃
   Future<void> logout() async {
+    if (_isLoggingOut) return;
+    if (state.valueOrNull?.isAuthenticated == false) {
+      // 이미 unauthenticated — 어차피 호출할 필요 없음
+      return;
+    }
+    _isLoggingOut = true;
     try {
-      await _api.post('/auth/logout');
-    } catch (_) {}
+      // /auth/logout: 토큰이 살아 있을 때만 호출 (없으면 401 → 또 logout 트리거)
+      final accessToken = await _storage.getAccessToken();
+      if (accessToken != null && accessToken.isNotEmpty) {
+        try {
+          await _api.post('/auth/logout');
+        } catch (_) {}
+      }
 
-    try {
-      await PushNotificationService.instance.unregisterToken();
-    } catch (_) {}
+      try {
+        await PushNotificationService.instance.unregisterToken();
+      } catch (_) {}
 
-    PushNotificationService.instance.onDeepLink = null;
-    _socket.disconnect();
-    await _storage.clearTokens();
+      PushNotificationService.instance.onDeepLink = null;
+      _socket.disconnect();
+      await _storage.clearTokens();
 
-    // 로컬 DB 전체 정리
-    await ref.read(appDatabaseProvider).clearAll();
+      // 로컬 DB 전체 정리
+      await ref.read(appDatabaseProvider).clearAll();
 
-    // SharedPreferences 정리 (종목/핀 설정 등)
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
+      // SharedPreferences 정리 (종목/핀 설정 등)
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
 
-    state = const AsyncData(AuthState.unauthenticated);
+      state = const AsyncData(AuthState.unauthenticated);
+    } finally {
+      _isLoggingOut = false;
+    }
   }
 
   /// 회원 탈퇴

@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { ChatService } from './chat.service.js';
+import { requireVerified } from '../../shared/middleware/require-verified.middleware.js';
 
 const sendMessageSchema = z.object({
   messageType: z.enum(['TEXT', 'IMAGE', 'SYSTEM', 'SCHEDULE_PROPOSAL', 'LOCATION']).default('TEXT'),
@@ -22,7 +23,7 @@ export async function chatRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/chat-rooms',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Chat'],
         summary: '내 채팅방 목록',
@@ -39,7 +40,7 @@ export async function chatRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/chat-rooms/:id/messages',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Chat'],
         summary: '메시지 목록',
@@ -83,7 +84,7 @@ export async function chatRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.patch(
     '/chat-rooms/:id/read',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Chat'],
         summary: '메시지 읽음 처리',
@@ -110,7 +111,7 @@ export async function chatRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/chat-rooms/:id/messages',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Chat'],
         summary: '메시지 전송 (HTTP fallback)',

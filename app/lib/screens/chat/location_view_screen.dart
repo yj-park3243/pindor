@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import '../../config/theme.dart';
 import '../../models/message.dart';
+import '../../widgets/common/app_toast.dart';
 
 /// 위치 메시지 전체화면 보기
 /// - 전달받은 좌표에 마커 표시
@@ -47,15 +48,7 @@ class _LocationViewScreenState extends State<LocationViewScreen> {
 
   void _copyAddress() {
     Clipboard.setData(ClipboardData(text: _displayAddress));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('주소가 복사되었습니다'),
-        backgroundColor: const Color(0xFF1E1E1E),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    AppToast.success('주소가 복사되었습니다');
   }
 
   @override

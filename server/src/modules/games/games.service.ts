@@ -25,6 +25,7 @@ import {
   ResultConfirmation,
   ScoreHistory,
   RankingEntry,
+  MannerRating,
 } from '../../entities/index.js';
 import { Tier } from '../../entities/index.js';
 import { Message } from '../../entities/message.entity.js';
@@ -179,21 +180,44 @@ export class GamesService {
 
     await this.gameRepo.update(gameId, updatePayload);
 
-    // 매너 점수 처리: 상대방 스포츠 프로필에 누적
+    // 매너 점수 처리: 상대방 스포츠 프로필에 누적 + manner_ratings INSERT (트랜잭션)
     if (dto.mannerScore != null) {
       const opponentProfile = isRequester
         ? (match.opponentProfile as any)
         : (match.requesterProfile as any);
+      const raterUserId = isRequester
+        ? (match.requesterProfile as any).userId
+        : (match.opponentProfile as any).userId;
+      const ratedUserId = opponentProfile.userId;
 
-      await this.sportsProfileRepo
-        .createQueryBuilder()
-        .update(SportsProfile)
-        .set({
-          mannerTotal: () => `manner_total + ${dto.mannerScore}`,
-          mannerCount: () => 'manner_count + 1',
-        })
-        .where('id = :id', { id: opponentProfile.id })
-        .execute();
+      await this.dataSource.transaction(async (manager) => {
+        // manner_ratings INSERT (UNIQUE 충돌 시 무시)
+        await manager
+          .createQueryBuilder()
+          .insert()
+          .into(MannerRating)
+          .values({
+            matchId: game.matchId,
+            raterId: raterUserId,
+            ratedUserId,
+            ratedProfileId: opponentProfile.id,
+            score: dto.mannerScore!,
+            source: 'USER',
+          })
+          .orIgnore()
+          .execute();
+
+        // sports_profiles manner_total/count 동시 갱신
+        await manager
+          .createQueryBuilder()
+          .update(SportsProfile)
+          .set({
+            mannerTotal: () => `manner_total + ${dto.mannerScore}`,
+            mannerCount: () => 'manner_count + 1',
+          })
+          .where('id = :id', { id: opponentProfile.id })
+          .execute();
+      });
     }
 
     // 양측 claim이 모두 제출되었는지 확인
@@ -1102,7 +1126,7 @@ export class GamesService {
           type: 'SCORE_UPDATED',
           title: scoreTitleA,
           body: `현재 점수: ${finalNotifScoreA}점`,
-          data: { gameId, deepLink: '/profile/score', isCasual: 'false' },
+          data: { gameId, deepLink: '/profile/sports', isCasual: 'false' },
         });
 
         notifs.push({
@@ -1110,7 +1134,7 @@ export class GamesService {
           type: 'SCORE_UPDATED',
           title: scoreTitleB,
           body: `현재 점수: ${finalNotifScoreB}점`,
-          data: { gameId, deepLink: '/profile/score', isCasual: 'false' },
+          data: { gameId, deepLink: '/profile/sports', isCasual: 'false' },
         });
       }
 
@@ -1132,7 +1156,7 @@ export class GamesService {
             type: 'TIER_CHANGED',
             title: up ? '축하합니다! 티어가 승급되었습니다!' : '티어가 변경되었습니다',
             body: `${tierKo(requesterProfile.tier)} → ${tierKo(newTierRequester)}`,
-            data: { deepLink: '/profile/score' },
+            data: { deepLink: '/profile/sports' },
           });
         }
 
@@ -1143,7 +1167,7 @@ export class GamesService {
             type: 'TIER_CHANGED',
             title: up ? '축하합니다! 티어가 승급되었습니다!' : '티어가 변경되었습니다',
             body: `${tierKo(opponentProfile.tier)} → ${tierKo(newTierOpponent)}`,
-            data: { deepLink: '/profile/score' },
+            data: { deepLink: '/profile/sports' },
           });
         }
       }

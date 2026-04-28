@@ -8,6 +8,7 @@ import '../../providers/profile_provider.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/score_display.dart';
 import '../../widgets/common/app_toast.dart';
+import '../../widgets/common/safe_bottom_sheet.dart';
 
 
 /// 스포츠 프로필 관리 화면
@@ -26,6 +27,8 @@ class SportsProfileScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('스포츠 프로필'),
         backgroundColor: const Color(0xFF0A0A0A),
+        surfaceTintColor: Colors.transparent,
+        scrolledUnderElevation: 0,
         elevation: 0,
         actions: [
           IconButton(
@@ -79,7 +82,12 @@ class SportsProfileScreen extends ConsumerWidget {
 
           return ListView.builder(
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.fromLTRB(
+              16,
+              16,
+              16,
+              MediaQuery.of(context).padding.bottom + 100,
+            ),
             itemCount: profiles.length,
             itemBuilder: (context, index) {
               return _SportProfileCard(
@@ -99,7 +107,7 @@ class SportsProfileScreen extends ConsumerWidget {
       BuildContext context, WidgetRef ref, SportsProfile profile) {
     final controller = TextEditingController(text: profile.matchMessage ?? '');
 
-    showModalBottomSheet(
+    showAppBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -200,7 +208,7 @@ class SportsProfileScreen extends ConsumerWidget {
     final messageController = TextEditingController();
     final handicapController = TextEditingController();
 
-    showModalBottomSheet(
+    showAppBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -400,13 +408,36 @@ class _SportProfileCard extends StatelessWidget {
             ),
           ),
 
-          // 경기 수
+          // 전적 통계 (랭크 승률 + 승/무/패 + 랭크/일반 게임 횟수)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
+            child: Column(
               children: [
-                _Stat('경기', '${profile.gamesPlayed}'),
+                // 1행: 승률 / 승 / 무 / 패 (랭크 기준)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _Stat(
+                      '승률',
+                      profile.gamesPlayed > 0
+                          ? '${profile.winRate.toStringAsFixed(0)}%'
+                          : '-',
+                      color: AppTheme.primaryColor,
+                    ),
+                    _Stat('승', '${profile.wins}', color: const Color(0xFF4CAF50)),
+                    _Stat('무', '${profile.draws}', color: AppTheme.textSecondary),
+                    _Stat('패', '${profile.losses}', color: const Color(0xFFE57373)),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                // 2행: 랭크 게임 / 일반 게임 횟수
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _Stat('랭크 게임', '${profile.gamesPlayed}'),
+                    _Stat('일반 게임', '${profile.casualGamesPlayed}'),
+                  ],
+                ),
               ],
             ),
           ),

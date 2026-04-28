@@ -88,6 +88,9 @@ class HomeScreen extends ConsumerWidget {
               // ─── 매칭 수락 대기 배너 ───
               _PendingAcceptBanner(),
 
+              // ─── 진행 중 매칭 + 대기 중 요청 카드 ───
+              _ActiveMatchSummary(),
+
               const SizedBox(height: 8),
 
               // ─── 공지사항 배너 ───
@@ -777,6 +780,213 @@ class _PendingAcceptBanner extends ConsumerWidget {
         );
       },
       orElse: () => const SizedBox.shrink(),
+    );
+  }
+}
+
+/// 진행 중 매칭(CHAT/CONFIRMED) + 매칭 요청 큐(WAITING) 요약 카드
+/// — 홈 화면에서 한눈에 활성 매칭 상태 파악 + 매칭 탭으로 빠른 진입
+class _ActiveMatchSummary extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final matchListAsync = ref.watch(matchListProvider(null));
+    final requestsAsync = ref.watch(matchRequestProvider);
+
+    final activeMatches = matchListAsync.valueOrNull
+            ?.where((m) => m.isChat || m.isConfirmed)
+            .toList() ??
+        const [];
+    final waitingRequests = requestsAsync.valueOrNull?.sent
+            .where((r) => r.isWaiting)
+            .toList() ??
+        const [];
+
+    if (activeMatches.isEmpty && waitingRequests.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+      child: Column(
+        children: [
+          for (final m in activeMatches) ...[
+            _ActiveMatchCard(match: m),
+            const SizedBox(height: 8),
+          ],
+          for (final r in waitingRequests) ...[
+            _WaitingRequestSummaryCard(request: r),
+            const SizedBox(height: 8),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ActiveMatchCard extends StatelessWidget {
+  final Match match;
+  const _ActiveMatchCard({required this.match});
+
+  @override
+  Widget build(BuildContext context) {
+    final statusLabel = match.isChat ? '채팅 중' : '경기 확정';
+    final accent = match.isChat ? const Color(0xFF34C759) : AppTheme.primaryColor;
+    final scheduled = match.scheduledDate != null
+        ? '${match.scheduledDate}${match.scheduledTime != null ? ' ${match.scheduledTime}' : ''}'
+        : null;
+
+    return GestureDetector(
+      onTap: () => context.go('/matches/${match.id}'),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.circular(14),
+          border: Border(left: BorderSide(color: accent, width: 4)),
+        ),
+        child: Row(
+          children: [
+            UserAvatar(
+              imageUrl: match.opponent.profileImageUrl,
+              size: 40,
+              nickname: match.opponent.nickname,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: accent.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(statusLabel,
+                            style: TextStyle(
+                                color: accent,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800)),
+                      ),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          match.opponent.nickname,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    [
+                      sportLabel(match.sportType),
+                      if (match.pinName != null) match.pinName!,
+                      if (scheduled != null) scheduled,
+                    ].join(' · '),
+                    style: const TextStyle(
+                        color: AppTheme.textSecondary, fontSize: 12),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Symbols.arrow_forward_ios_rounded,
+                color: AppTheme.textDisabled, size: 14),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WaitingRequestSummaryCard extends StatelessWidget {
+  final dynamic request; // MatchRequest
+  const _WaitingRequestSummaryCard({required this.request});
+
+  @override
+  Widget build(BuildContext context) {
+    final pinLabel = (request.pinName as String?) ??
+        (request.locationName as String?) ??
+        '핀 미지정';
+    final sport = sportLabel(request.sportType as String);
+    final timeSlot = request.timeSlotDisplayName as String;
+    final dateLabel = (request.desiredDate as String?) ?? '날짜 미정';
+
+    return GestureDetector(
+      onTap: () => context.go(AppRoutes.matchList),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.circular(14),
+          border: Border(left: BorderSide(color: Colors.amber.shade600, width: 4)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Colors.amber.shade600.withOpacity(0.18),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Symbols.search_rounded,
+                  color: Colors.amber.shade600, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade600.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text('상대 찾는 중',
+                            style: TextStyle(
+                                color: Colors.amber.shade600,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800)),
+                      ),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          pinLabel,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '$sport · $dateLabel · $timeSlot',
+                    style: const TextStyle(
+                        color: AppTheme.textSecondary, fontSize: 12),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Symbols.arrow_forward_ios_rounded,
+                color: AppTheme.textDisabled, size: 14),
+          ],
+        ),
+      ),
     );
   }
 }

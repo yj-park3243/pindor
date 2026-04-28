@@ -4,15 +4,11 @@ import {
   kakaoLoginSchema,
   googleLoginSchema,
   appleLoginSchema,
-  emailRegisterSchema,
-  emailLoginSchema,
   refreshTokenSchema,
   logoutSchema,
   type KakaoLoginDto,
   type GoogleLoginDto,
   type AppleLoginDto,
-  type EmailRegisterDto,
-  type EmailLoginDto,
   type RefreshTokenDto,
   type LogoutDto,
 } from './auth.schema.js';
@@ -107,57 +103,6 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
         success: true,
         data: result,
       });
-    },
-  );
-
-  // ─── POST /auth/email/register ───
-  fastify.post(
-    '/auth/email/register',
-    {
-      ...authRateLimitConfig,
-      schema: {
-        tags: ['Auth'],
-        summary: '이메일 회원가입',
-        body: {
-          type: 'object',
-          required: ['email', 'password'],
-          properties: {
-            email: { type: 'string', format: 'email' },
-            password: { type: 'string', minLength: 6 },
-            nickname: { type: 'string', minLength: 2, maxLength: 20 },
-          },
-        },
-      },
-    },
-    async (request: FastifyRequest<{ Body: EmailRegisterDto }>, reply: FastifyReply) => {
-      const dto = emailRegisterSchema.parse(request.body);
-      const result = await authService.emailRegister(dto);
-      return reply.status(201).send({ success: true, data: result });
-    },
-  );
-
-  // ─── POST /auth/email/login ───
-  fastify.post(
-    '/auth/email/login',
-    {
-      ...authRateLimitConfig,
-      schema: {
-        tags: ['Auth'],
-        summary: '이메일 로그인',
-        body: {
-          type: 'object',
-          required: ['email', 'password'],
-          properties: {
-            email: { type: 'string', format: 'email' },
-            password: { type: 'string' },
-          },
-        },
-      },
-    },
-    async (request: FastifyRequest<{ Body: EmailLoginDto }>, reply: FastifyReply) => {
-      const dto = emailLoginSchema.parse(request.body);
-      const result = await authService.emailLogin(dto);
-      return reply.status(200).send({ success: true, data: result });
     },
   );
 

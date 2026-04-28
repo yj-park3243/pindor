@@ -90,7 +90,13 @@ export type NotificationType =
   | 'MATCH_COMPLETED'
   | 'MATCH_CANCELLED'
   | 'CHAT_LOCATION'
-  | 'ADMIN';
+  | 'ADMIN'
+  | 'CAMPAIGN'
+  | 'NOSHOW_REPORT_RECEIVED'
+  | 'NOSHOW_REPORT_APPROVED'
+  | 'NOSHOW_REPORT_REJECTED'
+  | 'NOSHOW_REPORT_INSUFFICIENT'
+  | 'NOSHOW_BAN_PERMANENT';
 
 export interface NotificationPayload {
   userId: string;

@@ -6,6 +6,7 @@ import { User, SocialAccount } from '../../entities/index.js';
 import { UserStatus } from '../../entities/enums.js';
 import type { KcpRawResult, KcpVerifyResult } from './kcp.schema.js';
 import { encryptJson, decryptJson } from './kcp-crypto.js';
+import { sendAdminAlert, escapeHtml } from '../../shared/services/telegram.service.js';
 
 // KCP 본인확인 V2 (API 기반)
 // - 1단계: certDataReg.do로 거래등록 → call_url, reg_cert_key 수신
@@ -347,6 +348,15 @@ export class KcpService {
       tokens.refreshToken,
     );
 
+    // 텔레그램 관리자 알림 — 신규 회원가입 (KCP 본인인증 통과)
+    void sendAdminAlert(
+      `🆕 <b>신규 회원가입</b>\n` +
+        `• ID: <code>${escapeHtml(updatedUser.id)}</code>\n` +
+        `• 이름: ${escapeHtml(updatedUser.realName ?? '-')}\n` +
+        `• 전화: ${escapeHtml(kcpData.phoneNumber ?? '-')}\n` +
+        `• 성별: ${escapeHtml(gender ?? '-')}`,
+    );
+
     return {
       ...tokens,
       user: {
@@ -437,17 +447,93 @@ export class KcpService {
       };
     }
 
-    // ACTIVE → 기존 계정으로 자동 로그인
-    await this.dataSource.transaction(async (manager) => {
-      await manager.update(
-        SocialAccount,
-        { userId: currentUser.id },
-        { userId: existingUser.id },
+    // ACTIVE → 병합 처리 (기존 계정으로 통합)
+    // 안전 체크: 신규 유저에 의미있는 이력이 있으면 병합 거부
+    const [matchCount, gameCount] = await Promise.all([
+      this.dataSource.query(
+        `SELECT COUNT(*) FROM match_requests WHERE requester_id = $1`,
+        [currentUser.id],
+      ),
+      this.dataSource.query(
+        `SELECT COUNT(*) FROM games WHERE requester_id = $1 OR opponent_id = $1`,
+        [currentUser.id],
+      ),
+    ]);
+    const hasMeaningfulHistory =
+      parseInt(matchCount[0].count, 10) > 0 || parseInt(gameCount[0].count, 10) > 0;
+
+    if (hasMeaningfulHistory) {
+      // 병합 거부 + 관리자 알림
+      void sendAdminAlert(
+        `⚠️ <b>계정 병합 거부</b>\n` +
+        `• 현재 유저: <code>${escapeHtml(currentUser.id)}</code>\n` +
+        `• 기존 유저: <code>${escapeHtml(existingUser.id)}</code>\n` +
+        `• 이유: 신규 유저에 매칭/게임 이력 존재 (match=${matchCount[0].count}, game=${gameCount[0].count})\n` +
+        `• 수동 처리 필요`,
       );
-      await manager.delete(User, { id: currentUser.id });
+      throw new AppError(
+        ErrorCode.CONFLICT,
+        409,
+        '계정 병합 중 이력 충돌이 발생했습니다. 관리자에게 문의해주세요.',
+      );
+    }
+
+    await this.dataSource.transaction(async (manager) => {
+      // 1. social_accounts 이전 (provider 충돌 시 신규 것 삭제)
+      await manager.query(
+        `UPDATE social_accounts
+           SET user_id = $1
+         WHERE user_id = $2
+           AND provider NOT IN (
+             SELECT provider FROM social_accounts WHERE user_id = $1
+           )`,
+        [existingUser.id, currentUser.id],
+      );
+      await manager.query(
+        `DELETE FROM social_accounts WHERE user_id = $1`,
+        [currentUser.id],
+      );
+
+      // 2. device_tokens 이전 (토큰 중복 시 신규 것 삭제)
+      await manager.query(
+        `UPDATE device_tokens
+           SET user_id = $1
+         WHERE user_id = $2
+           AND token NOT IN (
+             SELECT token FROM device_tokens WHERE user_id = $1
+           )`,
+        [existingUser.id, currentUser.id],
+      );
+      await manager.query(
+        `DELETE FROM device_tokens WHERE user_id = $1`,
+        [currentUser.id],
+      );
+
+      // 3. refresh_tokens (Redis) 삭제는 트랜잭션 밖에서 처리
+
+      // 4. 신규 유저 MERGED 처리
+      await manager.query(
+        `UPDATE users SET
+           status = 'MERGED',
+           merged_into_user_id = $1,
+           merged_at = NOW(),
+           email = NULL,
+           ci = NULL,
+           firebase_uid = NULL
+         WHERE id = $2`,
+        [existingUser.id, currentUser.id],
+      );
+
+      // 5. 기존 유저 최근 로그인 + KCP 데이터 갱신
+      await manager.query(
+        `UPDATE users SET last_login_at = NOW(), is_verified = TRUE, verified_at = NOW()
+         WHERE id = $1`,
+        [existingUser.id],
+      );
     });
 
-    await userRepo.update(existingUser.id, { lastLoginAt: new Date() });
+    // Redis refresh token 삭제 (신규 유저 토큰 무효화)
+    await redis.del(`refresh_token:${currentUser.id}`);
 
     const updatedExisting = await userRepo.findOne({
       where: { id: existingUser.id },
@@ -464,8 +550,15 @@ export class KcpService {
       tokens.refreshToken,
     );
 
+    void sendAdminAlert(
+      `🔀 <b>계정 병합 완료</b>\n` +
+      `• 신규(병합됨): <code>${escapeHtml(currentUser.id)}</code>\n` +
+      `• 기존(유지됨): <code>${escapeHtml(existingUser.id)}</code>`,
+    );
+
     return {
       ...tokens,
+      merged: true,
       user: {
         id: updatedExisting.id,
         nickname: updatedExisting.nickname,

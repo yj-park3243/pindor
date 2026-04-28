@@ -13,6 +13,7 @@ import '../../widgets/team/team_member_tile.dart';
 import '../../widgets/team/team_match_card.dart';
 import '../team/team_board_screen.dart';
 import '../../widgets/common/app_toast.dart';
+import '../../widgets/common/safe_bottom_sheet.dart';
 import '../../core/network/api_client.dart';
 
 /// 팀 상세 화면
@@ -27,11 +28,19 @@ class TeamDetailScreen extends ConsumerWidget {
 
     return teamAsync.when(
       loading: () => Scaffold(
-        appBar: AppBar(),
+        backgroundColor: const Color(0xFF0A0A0A),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF0A0A0A),
+          elevation: 0,
+        ),
         body: const FullScreenLoading(),
       ),
       error: (e, _) => Scaffold(
-        appBar: AppBar(),
+        backgroundColor: const Color(0xFF0A0A0A),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF0A0A0A),
+          elevation: 0,
+        ),
         body: ErrorView(
           message: '팀 정보를 불러올 수 없습니다.',
           onRetry: () => ref.invalidate(teamDetailProvider(teamId)),
@@ -179,28 +188,14 @@ class _TeamDetailViewState extends ConsumerState<_TeamDetailView> {
   }
 
   Future<void> _showLeaveTeamDialog(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showModalBottomSheet<bool>(
+    final confirmed = await showAppCardSheet<bool>(
       context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF1E1E1E),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: EdgeInsets.fromLTRB(
-            24, 20, 24, MediaQuery.of(ctx).padding.bottom + 20),
+      backgroundColor: const Color(0xFF1E1E1E),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: const Color(0xFF2A2A2A),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 20),
             Container(
               width: 56,
               height: 56,

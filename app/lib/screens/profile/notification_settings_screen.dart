@@ -67,8 +67,11 @@ class _NotificationSettingsScreenState
     }
 
     return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         title: const Text('알림 설정'),
+        backgroundColor: const Color(0xFF0A0A0A),
+        elevation: 0,
         actions: [
           TextButton(
             onPressed: _isSaving ? null : _saveSettings,
@@ -122,6 +125,22 @@ class _NotificationSettingsScreenState
             value: _settings.communityReply,
             onChanged: (v) => setState(
                 () => _settings = _settings.copyWith(communityReply: v)),
+          ),
+
+          _buildSectionHeader('활동 권유 알림'),
+          _buildSwitchTile(
+            title: '휴면 알림 받기',
+            subtitle: '매칭을 안 한 지 2일이 지나면 알림을 보내드려요',
+            value: _settings.inactiveNudge,
+            onChanged: (v) =>
+                setState(() => _settings = _settings.copyWith(inactiveNudge: v)),
+          ),
+          _buildSwitchTile(
+            title: '랭킹 하락 알림 받기',
+            subtitle: '핀 랭킹이 5위 이상 떨어지면 알림을 보내드려요',
+            value: _settings.rankDropAlert,
+            onChanged: (v) =>
+                setState(() => _settings = _settings.copyWith(rankDropAlert: v)),
           ),
 
           _buildSectionHeader('방해 금지'),

@@ -68,7 +68,7 @@ export const resultDeadlineWorker = new Worker<ResultDeadlineJobData>(
             type: 'RESULT_DEADLINE',
             title: '경기 결과 입력 마감 임박',
             body: `경기 결과 입력 기한이 ${Math.round(hoursUntilDeadline)}시간 남았습니다.`,
-            data: { gameId, deepLink: `/games/${gameId}` },
+            data: { gameId, deepLink: `/games/${gameId}/result` },
             saveToDb: false,
           }),
         );
@@ -90,7 +90,7 @@ export const resultDeadlineWorker = new Worker<ResultDeadlineJobData>(
             type: 'RESULT_DEADLINE',
             title: '경기 결과 미입력 경고',
             body: '결과 입력 기한이 지나 경기가 취소 처리되었습니다.',
-            data: { gameId, deepLink: `/games/${gameId}` },
+            data: { gameId, deepLink: '/matches' },
           }),
         );
       }

@@ -111,6 +111,14 @@ export class SportsProfile {
   @Column({ name: 'manner_count', type: 'int', default: 0 })
   mannerCount!: number;
 
+  // 노쇼 확정 누적 횟수 (APPROVED된 노쇼 신고 기준)
+  @Column({ name: 'noshow_confirmed_count', type: 'int', default: 0 })
+  noshowConfirmedCount!: number;
+
+  // 노쇼 신고 PENDING 중 임시 매칭 신청 차단
+  @Column({ name: 'match_request_ban_until', type: 'timestamptz', nullable: true })
+  matchRequestBanUntil!: Date | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 

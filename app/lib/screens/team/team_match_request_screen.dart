@@ -120,7 +120,12 @@ class _TeamMatchRequestScreenState
   Widget build(BuildContext context) {
     if (!_hasPermission) {
       return Scaffold(
-        appBar: AppBar(title: const Text('팀 매칭 요청')),
+        backgroundColor: const Color(0xFF0A0A0A),
+        appBar: AppBar(
+          title: const Text('팀 매칭 요청'),
+          backgroundColor: const Color(0xFF0A0A0A),
+          elevation: 0,
+        ),
         body: const Center(
           child: Text(
             '방장 또는 부방장만 매칭 요청을 보낼 수 있습니다.',
@@ -131,7 +136,12 @@ class _TeamMatchRequestScreenState
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('팀 매칭 요청')),
+      backgroundColor: const Color(0xFF0A0A0A),
+      appBar: AppBar(
+        title: const Text('팀 매칭 요청'),
+        backgroundColor: const Color(0xFF0A0A0A),
+        elevation: 0,
+      ),
       body: Form(
         key: _formKey,
         child: ListView(

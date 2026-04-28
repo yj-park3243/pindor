@@ -4,6 +4,7 @@ import { updateUserHomeLocation } from '../../shared/utils/geo.js';
 import { getTierInfo } from '../../shared/utils/elo.js';
 import { User, SportsProfile, Game, UserStatus } from '../../entities/index.js';
 import type { UpdateUserDto, UpdateLocationDto } from './users.schema.js';
+import { sendAdminAlert, escapeHtml } from '../../shared/services/telegram.service.js';
 
 export class UsersService {
   constructor(private dataSource: DataSource) {}
@@ -313,11 +314,21 @@ export class UsersService {
 
   async deleteMe(userId: string): Promise<void> {
     const userRepo = this.dataSource.getRepository(User);
+
+    // 닉네임 마스킹 전에 원본 닉네임 보관 → 텔레그램 알림용
+    const before = await userRepo.findOne({ where: { id: userId } });
+
     await userRepo.update(userId, {
       status: UserStatus.WITHDRAWN,
       email: null,
       phoneNumber: null,
       nickname: `탈퇴회원_${Date.now()}`,
     });
+
+    void sendAdminAlert(
+      `👋 <b>회원 탈퇴</b>\n` +
+        `• 닉네임: ${escapeHtml(before?.nickname ?? '-')}\n` +
+        `• ID: <code>${escapeHtml(userId)}</code>`,
+    );
   }
 }

@@ -14,6 +14,7 @@ class MatchRequest {
   final double longitude;
   final String? locationName;
   final String? pinName;
+  final String? pinId;
   final double radiusKm;
   final int minOpponentScore;
   final int maxOpponentScore;
@@ -42,6 +43,7 @@ class MatchRequest {
     required this.longitude,
     this.locationName,
     this.pinName,
+    this.pinId,
     required this.radiusKm,
     required this.minOpponentScore,
     required this.maxOpponentScore,
@@ -75,6 +77,7 @@ class MatchRequest {
       longitude: (json['longitude'] as num?)?.toDouble() ?? 0.0,
       locationName: json['locationName'] as String?,
       pinName: json['pinName'] as String?,
+      pinId: json['pinId'] as String?,
       radiusKm: (json['radiusKm'] as num?)?.toDouble() ?? 10.0,
       minOpponentScore: json['minOpponentScore'] as int? ?? 800,
       maxOpponentScore: json['maxOpponentScore'] as int? ?? 1600,

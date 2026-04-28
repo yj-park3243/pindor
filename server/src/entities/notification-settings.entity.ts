@@ -37,6 +37,13 @@ export class NotificationSettings {
   @Column({ name: 'do_not_disturb_end', type: 'time', nullable: true })
   doNotDisturbEnd!: string | null;
 
+  // 캠페인 알림 설정 (기획서 섹션 6)
+  @Column({ name: 'inactive_nudge', type: 'boolean', default: true })
+  inactiveNudge!: boolean;
+
+  @Column({ name: 'rank_drop_alert', type: 'boolean', default: true })
+  rankDropAlert!: boolean;
+
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt!: Date;
 

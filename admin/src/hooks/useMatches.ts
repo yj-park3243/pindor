@@ -56,6 +56,75 @@ export function useNoshowReports(params?: NoshowReportListParams) {
   });
 }
 
+export function useNoshowPendingCount() {
+  return useQuery({
+    queryKey: ['noshow-reports', 'pending-count'],
+    queryFn: () => matchesApi.getNoshowPendingCount(),
+    refetchInterval: 60 * 1000, // 1분마다 갱신
+  });
+}
+
+export function useApproveNoshowReport() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, memo }: { id: string; memo: string }) =>
+      matchesApi.approveNoshowReport(id, memo),
+    onSuccess: () => {
+      message.success('노쇼 신고가 승인되었습니다.');
+      queryClient.invalidateQueries({ queryKey: ['noshow-reports'] });
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.error?.message ?? '승인 처리에 실패했습니다.';
+      message.error(msg);
+    },
+  });
+}
+
+export function useRejectNoshowReport() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, memo, reporterPenalty }: { id: string; memo: string; reporterPenalty?: boolean }) =>
+      matchesApi.rejectNoshowReport(id, memo, reporterPenalty),
+    onSuccess: () => {
+      message.success('노쇼 신고가 기각되었습니다.');
+      queryClient.invalidateQueries({ queryKey: ['noshow-reports'] });
+    },
+    onError: () => {
+      message.error('기각 처리에 실패했습니다.');
+    },
+  });
+}
+
+export function useInsufficientNoshowReport() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, memo }: { id: string; memo: string }) =>
+      matchesApi.insufficientNoshowReport(id, memo),
+    onSuccess: () => {
+      message.success('자료 요청이 발송되었습니다.');
+      queryClient.invalidateQueries({ queryKey: ['noshow-reports'] });
+    },
+    onError: () => {
+      message.error('자료 요청에 실패했습니다.');
+    },
+  });
+}
+
+export function useBulkRejectNoshowReports() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ids, memo }: { ids: string[]; memo: string }) =>
+      matchesApi.bulkRejectNoshowReports(ids, memo),
+    onSuccess: (data) => {
+      message.success(data.message);
+      queryClient.invalidateQueries({ queryKey: ['noshow-reports'] });
+    },
+    onError: () => {
+      message.error('일괄 기각에 실패했습니다.');
+    },
+  });
+}
+
 export function useForceComplete() {
   const queryClient = useQueryClient();
 

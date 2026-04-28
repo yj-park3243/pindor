@@ -17,6 +17,9 @@ class SportsProfile {
   final int gamesPlayed;
   final int wins;
   final int losses;
+  final int draws;
+  final int casualWin;
+  final int casualLoss;
   final bool isActive;
   final DateTime createdAt;
 
@@ -54,6 +57,9 @@ class SportsProfile {
     required this.gamesPlayed,
     required this.wins,
     required this.losses,
+    this.draws = 0,
+    this.casualWin = 0,
+    this.casualLoss = 0,
     this.isActive = true,
     required this.createdAt,
     this.pointsToNext,
@@ -91,6 +97,9 @@ class SportsProfile {
       gamesPlayed: _toInt(json['gamesPlayed']) ?? 0,
       wins: _toInt(json['wins']) ?? 0,
       losses: _toInt(json['losses']) ?? 0,
+      draws: _toInt(json['draws']) ?? 0,
+      casualWin: _toInt(json['casualWin']) ?? 0,
+      casualLoss: _toInt(json['casualLoss']) ?? 0,
       isActive: json['isActive'] as bool? ?? true,
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'] as String)
@@ -131,6 +140,9 @@ class SportsProfile {
         'gamesPlayed': gamesPlayed,
         'wins': wins,
         'losses': losses,
+        'draws': draws,
+        'casualWin': casualWin,
+        'casualLoss': casualLoss,
         'isActive': isActive,
         'createdAt': createdAt.toIso8601String(),
         if (pointsToNext != null) 'pointsToNext': pointsToNext,
@@ -155,6 +167,9 @@ class SportsProfile {
     int? gamesPlayed,
     int? wins,
     int? losses,
+    int? draws,
+    int? casualWin,
+    int? casualLoss,
     bool? isActive,
     int? pointsToNext,
     double? progress,
@@ -180,6 +195,9 @@ class SportsProfile {
       gamesPlayed: gamesPlayed ?? this.gamesPlayed,
       wins: wins ?? this.wins,
       losses: losses ?? this.losses,
+      draws: draws ?? this.draws,
+      casualWin: casualWin ?? this.casualWin,
+      casualLoss: casualLoss ?? this.casualLoss,
       isActive: isActive ?? this.isActive,
       createdAt: createdAt,
       pointsToNext: pointsToNext ?? this.pointsToNext,
@@ -193,7 +211,11 @@ class SportsProfile {
     );
   }
 
+  /// 랭크 게임 승률 (랭크 게임만 카운트)
   double get winRate => gamesPlayed > 0 ? (wins / gamesPlayed * 100) : 0.0;
+
+  /// 일반(캐주얼) 게임 횟수 — 승+패 합계
+  int get casualGamesPlayed => casualWin + casualLoss;
 
   String get sportTypeDisplayName {
     return sportLabel(sportType);

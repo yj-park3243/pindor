@@ -21,7 +21,7 @@ class ChatListScreen extends ConsumerWidget {
       backgroundColor: AppTheme.backgroundDark,
       appBar: AppBar(
         title: const Text('채팅'),
-        backgroundColor: AppTheme.backgroundDark,
+        backgroundColor: const Color(0xFF0A0A0A),
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),

@@ -11,12 +11,16 @@ import '../../core/utils/permission_helper.dart';
 import '../../models/pin.dart';
 import '../../providers/pin_provider.dart';
 import '../../widgets/map/sport_marker.dart';
+import '../../widgets/common/safe_bottom_sheet.dart';
 import '../profile/profile_screen.dart';
 import 'pin_detail_sheet.dart';
 
 /// 핀 지도 탭 화면
 class MapScreen extends ConsumerStatefulWidget {
-  const MapScreen({super.key});
+  /// 진입 시 강제로 포커싱할 핀 ID (selectedPinProvider보다 우선)
+  final String? focusPinId;
+
+  const MapScreen({super.key, this.focusPinId});
 
   @override
   ConsumerState<MapScreen> createState() => _MapScreenState();
@@ -178,22 +182,31 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   void _showPinDetail(Pin pin) {
-    showModalBottomSheet(
+    showAppBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.5,
-        minChildSize: 0.3,
-        maxChildSize: 0.85,
-        builder: (context, scrollController) => Container(
-          decoration: const BoxDecoration(
-            color: Color(0xFF1A1A1A),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: SingleChildScrollView(
-            controller: scrollController,
-            child: PinDetailSheet(pin: pin),
+      useRootNavigator: true,
+      insetForBottomNav: false,
+      builder: (sheetCtx) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => Navigator.of(sheetCtx).pop(),
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.5,
+          minChildSize: 0.3,
+          maxChildSize: 0.85,
+          builder: (context, scrollController) => GestureDetector(
+            onTap: () {},
+            child: Container(
+              decoration: const BoxDecoration(
+                color: Color(0xFF1A1A1A),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: SingleChildScrollView(
+                controller: scrollController,
+                child: PinDetailSheet(pin: pin),
+              ),
+            ),
           ),
         ),
       ),
@@ -274,6 +287,22 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     _lastPins = pins;
 
+    // focusPinId 우선 처리: 매칭 카드 등에서 특정 핀으로 진입한 경우 해당 핀 포커스 + 상세 시트 오픈
+    if (!_didAutoNavigateToFavoritePin && widget.focusPinId != null) {
+      final target = pins.firstWhere(
+        (p) => p.id == widget.focusPinId,
+        orElse: () => pins.first,
+      );
+      if (target.id == widget.focusPinId) {
+        _didAutoNavigateToFavoritePin = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _onPinTap(target);
+        });
+        return;
+      }
+    }
+
     if (!_didAutoNavigateToFavoritePin) {
       final favoritePin = ref.read(selectedPinProvider);
       if (favoritePin != null) {
@@ -306,7 +335,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   void _showSearchSheet(List<Pin> allPins) {
-    showModalBottomSheet(
+    showAppBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -615,7 +644,13 @@ class _PinSearchSheetState extends State<_PinSearchSheet> {
       if (query.isEmpty) {
         _filtered = _sortedByDistance(widget.allPins);
       } else {
-        _filtered = _sortedByDistance(widget.allPins.where((p) => p.name.toLowerCase().contains(query)).toList());
+        _filtered = _sortedByDistance(widget.allPins.where((p) {
+          if (p.name.toLowerCase().contains(query)) return true;
+          for (final k in p.searchKeywords) {
+            if (k.toLowerCase().contains(query)) return true;
+          }
+          return false;
+        }).toList());
       }
     });
   }

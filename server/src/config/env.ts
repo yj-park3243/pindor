@@ -42,6 +42,10 @@ const envSchema = z.object({
   // Rate Limit
   RATE_LIMIT_MAX: z.coerce.number().default(100),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60000),
+
+  // Telegram 관리자 알림 (선택) — 토큰/Chat ID 둘 다 있어야 동작
+  TELEGRAM_BOT_TOKEN: z.string().default(''),
+  TELEGRAM_ADMIN_CHAT_ID: z.string().default(''),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

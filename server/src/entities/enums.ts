@@ -2,6 +2,7 @@ export enum UserStatus {
   ACTIVE = 'ACTIVE',
   SUSPENDED = 'SUSPENDED',
   WITHDRAWN = 'WITHDRAWN',
+  MERGED = 'MERGED',
 }
 
 export enum SocialProvider {

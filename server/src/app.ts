@@ -13,6 +13,7 @@ import { registerRateLimit } from './shared/middleware/rate-limit.js';
 
 // ─── 라우트 임포트 ───
 import { authRoutes } from './modules/auth/auth.routes.js';
+import { firebaseAuthRoutes } from './modules/auth/firebase.routes.js';
 import { kcpRoutes } from './modules/auth/kcp.routes.js';
 import { usersRoutes } from './modules/users/users.routes.js';
 import { blocksRoutes } from './modules/users/blocks.routes.js';
@@ -45,6 +46,7 @@ import { disputesRoutes } from './modules/disputes/disputes.routes.js';
 import { errorLogRoutes } from './modules/error-logs/error-log.routes.js';
 import { adminErrorLogsRoutes } from './modules/admin/admin-error-logs.routes.js';
 import { adminAnalyticsRoutes } from './modules/admin/admin-analytics.routes.js';
+import { adminNoshowRoutes } from './modules/admin/admin-noshow.routes.js';
 
 export async function createApp(): Promise<FastifyInstance> {
   const fastify = Fastify({
@@ -228,14 +230,28 @@ export async function createApp(): Promise<FastifyInstance> {
     }
 
     // Rate Limit 에러
-    if (error.statusCode === 429) {
-      return reply.status(429).send({
-        success: false,
-        error: {
-          code: ErrorCode.RATE_LIMIT_EXCEEDED,
-          message: '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.',
-        },
-      });
+    // @fastify/rate-limit가 errorResponseBuilder 결과(body)를 그대로 throw하는 경로가
+    // 있어 statusCode 가 안 붙는 경우가 있다 → body shape(code === COMMON_004)으로도 감지
+    const errAsAny = error as unknown as {
+      statusCode?: number;
+      success?: boolean;
+      error?: { code?: string; message?: string; details?: unknown };
+    };
+    const isRateLimitBody =
+      errAsAny?.success === false &&
+      errAsAny?.error?.code === ErrorCode.RATE_LIMIT_EXCEEDED;
+    if (error.statusCode === 429 || isRateLimitBody) {
+      return reply.status(429).send(
+        isRateLimitBody
+          ? errAsAny
+          : {
+              success: false,
+              error: {
+                code: ErrorCode.RATE_LIMIT_EXCEEDED,
+                message: '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.',
+              },
+            }
+      );
     }
 
     // 서버 에러
@@ -274,6 +290,7 @@ export async function createApp(): Promise<FastifyInstance> {
   const V1_PREFIX = '/v1';
 
   await fastify.register(authRoutes, { prefix: V1_PREFIX });
+  await fastify.register(firebaseAuthRoutes, { prefix: V1_PREFIX });
   await fastify.register(kcpRoutes, { prefix: V1_PREFIX });
   await fastify.register(usersRoutes, { prefix: V1_PREFIX });
   await fastify.register(blocksRoutes, { prefix: V1_PREFIX });
@@ -306,6 +323,7 @@ export async function createApp(): Promise<FastifyInstance> {
   await fastify.register(errorLogRoutes, { prefix: V1_PREFIX });
   await fastify.register(adminErrorLogsRoutes, { prefix: V1_PREFIX });
   await fastify.register(adminAnalyticsRoutes, { prefix: V1_PREFIX });
+  await fastify.register(adminNoshowRoutes, { prefix: V1_PREFIX });
 
   // ─────────────────────────────────────
   // 헬스체크 엔드포인트

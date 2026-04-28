@@ -21,6 +21,7 @@ import '../../models/ranking_entry.dart';
 import '../../widgets/map/sport_marker.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/fullscreen_image_viewer.dart';
+import '../../widgets/common/safe_bottom_sheet.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
@@ -952,7 +953,7 @@ class _ProfileMenu extends ConsumerWidget {
   }
 
   void _showSportSelectionSheet(BuildContext context, WidgetRef ref) {
-    showModalBottomSheet(
+    showAppBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -1185,7 +1186,7 @@ class _PinMapSelectionPageState extends ConsumerState<_PinMapSelectionPage> {
       backgroundColor: AppTheme.backgroundDark,
       appBar: AppBar(
         title: const Text('자주 가는 핀 선택'),
-        backgroundColor: AppTheme.backgroundDark,
+        backgroundColor: const Color(0xFF0A0A0A),
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.close_rounded, size: 24),

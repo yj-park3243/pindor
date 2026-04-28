@@ -36,13 +36,23 @@ import { useAuthStore } from '@/store/auth.store';
 import { authApi } from '@/api/auth.api';
 import { ROUTES } from '@/config/routes';
 import { ADMIN_ROLE_CONFIG } from '@/config/constants';
+import { useNoshowPendingCount } from '@/hooks/useMatches';
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
 
 // 메뉴 아이템 정의
-function buildMenuItems(role: string): MenuProps['items'] {
+function buildMenuItems(role: string, noshowPendingCount: number): MenuProps['items'] {
   const isModerator = role === 'MODERATOR';
+
+  const noshowLabel = noshowPendingCount > 0
+    ? (
+      <span>
+        노쇼 신고{' '}
+        <Badge count={noshowPendingCount} size="small" style={{ marginLeft: 4 }} />
+      </span>
+    )
+    : '노쇼 신고';
 
   const items: MenuProps['items'] = [
     {
@@ -67,7 +77,7 @@ function buildMenuItems(role: string): MenuProps['items'] {
         { key: ROUTES.MATCHES, icon: <SwapOutlined />, label: '매칭 관리' },
         { key: ROUTES.GAMES, icon: <TrophyOutlined />, label: '경기 결과' },
         { key: ROUTES.GAME_REVIEW, icon: <AlertOutlined />, label: '이의 신청 처리' },
-        { key: ROUTES.NOSHOW_REPORTS, icon: <WarningOutlined />, label: '노쇼 신고' },
+        { key: ROUTES.NOSHOW_REPORTS, icon: <WarningOutlined />, label: noshowLabel },
       ],
     },
     {
@@ -132,6 +142,8 @@ export function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { admin, logout } = useAuthStore();
+  const { data: noshowCountData } = useNoshowPendingCount();
+  const noshowPendingCount = noshowCountData?.pendingCount ?? 0;
 
   const handleLogout = async () => {
     try {
@@ -161,7 +173,7 @@ export function AdminLayout() {
     ],
   };
 
-  const menuItems = buildMenuItems(admin?.role || 'MODERATOR');
+  const menuItems = buildMenuItems(admin?.role || 'MODERATOR', noshowPendingCount);
 
   // 현재 경로에 맞는 메뉴 키 찾기
   const selectedKey = location.pathname;

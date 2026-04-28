@@ -13,6 +13,7 @@ import {
   type CreateCommentDto,
 } from './pins.schema.js';
 import { likeRateLimitConfig } from '../../shared/middleware/rate-limit.js';
+import { requireVerified } from '../../shared/middleware/require-verified.middleware.js';
 
 export async function pinsRoutes(fastify: FastifyInstance): Promise<void> {
   const pinsService = new PinsService();
@@ -168,7 +169,7 @@ export async function pinsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/pins/:pinId/posts',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Pins'],
         summary: '게시글 작성',
@@ -222,7 +223,7 @@ export async function pinsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.patch(
     '/pins/:pinId/posts/:postId',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Pins'],
         summary: '게시글 수정',
@@ -255,7 +256,7 @@ export async function pinsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.delete(
     '/pins/:pinId/posts/:postId',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Pins'],
         summary: '게시글 삭제',
@@ -286,7 +287,7 @@ export async function pinsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/pins/:pinId/posts/:postId/comments',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Pins'],
         summary: '댓글 작성',
@@ -355,7 +356,7 @@ export async function pinsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.delete(
     '/pins/:pinId/posts/:postId/comments/:commentId',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Pins'],
         summary: '댓글 삭제 (소프트 삭제)',
@@ -388,7 +389,7 @@ export async function pinsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/pins/:pinId/posts/:postId/like',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       ...likeRateLimitConfig,
       schema: {
         tags: ['Pins'],

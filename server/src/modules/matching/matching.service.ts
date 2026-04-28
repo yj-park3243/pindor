@@ -26,8 +26,11 @@ import {
   ScoreHistory,
   RankingEntry,
   Report,
+  NoshowReport,
+  MannerRating,
 } from '../../entities/index.js';
 import { MatchRequestStatus, RequestType, ScoreChangeType } from '../../entities/index.js';
+import { sendAdminAlert, escapeHtml } from '../../shared/services/telegram.service.js';
 
 // ─────────────────────────────────────
 // 나이 계산 헬퍼
@@ -70,6 +73,27 @@ export class MatchingService {
     this.chatRoomRepo = dataSource.getRepository(ChatRoom);
     this.gameRepo = dataSource.getRepository(Game);
     this.messageRepo = dataSource.getRepository(Message);
+  }
+
+  // ─────────────────────────────────────
+  // 만료된 PENDING_ACCEPT 매칭 lazy cleanup
+  // BullMQ timeout 워커가 처리 못 한 경우(잡 누락/Redis 재시작 등)를 보정.
+  // 매칭 조회 API 진입 시 호출되어 stale 매칭이 응답에 섞이지 않도록 한다.
+  // ─────────────────────────────────────
+
+  private async cleanupExpiredPendingMatches(): Promise<void> {
+    try {
+      await this.dataSource.query(
+        `UPDATE matches SET status = 'CANCELLED', cancel_reason = 'expires_at 경과 자동 정리'
+         WHERE status = 'PENDING_ACCEPT'
+           AND id IN (
+             SELECT match_id FROM match_acceptances
+             WHERE expires_at < NOW()
+           )`,
+      );
+    } catch (err) {
+      console.warn('[MatchingService] cleanupExpiredPendingMatches failed:', (err as Error).message);
+    }
   }
 
   // ─────────────────────────────────────
@@ -333,7 +357,9 @@ export class MatchingService {
         expiresAt = new Date(`${dto.desiredDate}T${String(endHour).padStart(2, '0')}:00:00+09:00`);
       }
     } else {
-      expiresAt = new Date(`${new Date().toISOString().slice(0, 10)}T23:59:59+09:00`);
+      const kstNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+      const kstToday = `${kstNow.getFullYear()}-${String(kstNow.getMonth() + 1).padStart(2, '0')}-${String(kstNow.getDate()).padStart(2, '0')}`;
+      expiresAt = new Date(`${kstToday}T23:59:59+09:00`);
     }
 
     // Pin 조회 (pinId로 중심 좌표 가져오기)
@@ -425,6 +451,16 @@ export class MatchingService {
 
     const requestId = request[0].id;
 
+    // 핀 활동 기록 (매칭 신청 시점에 활동 인구에 즉시 반영)
+    // - PinActivity는 (pin_id, user_id) UNIQUE이므로 동일 핀 중복 신청은 무시됨
+    // - 한 유저가 여러 핀에 신청하면 각 핀별로 활동 인구 +1 누적
+    try {
+      const { PinsService } = await import('../pins/pins.service.js');
+      await new PinsService().recordActivity(dto.pinId, userId);
+    } catch (e) {
+      console.warn('[MatchService] recordActivity on request failed:', (e as Error).message);
+    }
+
     // 자동 매칭 시도
     const candidatesCount = await this.tryAutoMatch(requestId, {
       sportType: dto.sportType,
@@ -438,6 +474,7 @@ export class MatchingService {
       genderPreference: dto.genderPreference ?? 'ANY',
       minAge: dto.minAge,
       maxAge: dto.maxAge,
+      desiredDate: dto.desiredDate ? new Date(dto.desiredDate) : null,
     });
 
     // tryAutoMatch 성공 시 상태가 MATCHED로 변경될 수 있으므로 DB에서 최신 상태 재조회
@@ -456,6 +493,14 @@ export class MatchingService {
         console.warn('[MatchService] triggerMatchingProcess failed:', (e as Error).message);
       }
     }
+
+    // 텔레그램 관리자 알림 — 매칭 시작
+    void sendAdminAlert(
+      `🎯 <b>매칭 시작</b>\n` +
+        `• 닉네임: ${escapeHtml(user.nickname)}\n` +
+        `• 종목: ${escapeHtml(dto.sportType)}\n` +
+        `• 핀: ${escapeHtml(dto.locationName ?? dto.pinId)}`,
+    );
 
     return {
       id: requestId,
@@ -499,6 +544,7 @@ export class MatchingService {
       genderPreference: string;
       minAge?: number;
       maxAge?: number;
+      desiredDate?: Date | null;
     },
   ): Promise<number> {
     // 1) 같은 Pin + 같은 종목 + WAITING 상태 + 점수 범위 내 후보 조회
@@ -539,6 +585,12 @@ export class MatchingService {
         AND mr.expires_at > NOW()
         AND sp.current_score >= $4
         AND sp.current_score <= $5
+        AND mr.desired_date IS NOT DISTINCT FROM $7::date
+        AND NOT EXISTS (
+          SELECT 1 FROM user_blocks ub
+          WHERE (ub.blocker_id = $3::uuid AND ub.blocked_id = mr.requester_id)
+             OR (ub.blocker_id = mr.requester_id AND ub.blocked_id = $3::uuid)
+        )
       ORDER BY ABS(sp.current_score - $6) ASC
       LIMIT 50`,
       [
@@ -548,6 +600,7 @@ export class MatchingService {
         opts.minOpponentScore,
         opts.maxOpponentScore,
         opts.requesterScore,
+        opts.desiredDate ?? null,
       ],
     );
 
@@ -673,6 +726,7 @@ export class MatchingService {
         status: 'PENDING_ACCEPT' as any,
         desiredDate: (reqMr as any)?.desiredDate ?? null,
         desiredTimeSlot: resolvedSlot,
+        scheduledDate: (reqMr as any)?.desiredDate ?? null,
       });
       const savedMatch = await manager.save(Match, match);
 
@@ -744,6 +798,13 @@ export class MatchingService {
           );
         }
       }
+
+      // 텔레그램 관리자 알림 — 매칭 잡힘 (PENDING_ACCEPT 진입)
+      void sendAdminAlert(
+        `🤝 <b>매칭 잡힘</b>\n` +
+          `• ${escapeHtml((requester as any)?.nickname ?? '-')} vs ${escapeHtml(bestCandidate.nickname)}\n` +
+          `• matchId: <code>${escapeHtml(savedMatch.id)}</code>`,
+      );
 
       // 양측에 알림 발송
       if (this.notificationService) {
@@ -825,23 +886,33 @@ export class MatchingService {
       );
     }
 
-    // 4) 수락 처리
-    await this.matchAcceptanceRepo.update(acceptance.id, {
-      accepted: true,
-      respondedAt: new Date(),
-    });
+    // 4) 수락 처리 + 상대 확인을 트랜잭션으로 묶어 race condition 방지
+    let createdChatRoomId: string | undefined;
+    let notifData: any = null;
+    let bothAccepted = false;
 
-    // 5) 상대방 MatchAcceptance 확인
-    const opponentAcceptance = await this.matchAcceptanceRepo.findOne({
-      where: { matchId, userId: Not(userId) },
-    });
+    await this.dataSource.transaction(async (manager) => {
+      // SELECT FOR UPDATE로 양측 acceptance 락
+      const lockedAcceptances = await manager
+        .createQueryBuilder(MatchAcceptance, 'ma')
+        .setLock('pessimistic_write')
+        .where('ma.matchId = :matchId', { matchId })
+        .getMany();
 
-    if (opponentAcceptance?.accepted === true) {
-      // 양측 수락! → Match status를 CHAT으로, ChatRoom 생성
-      let createdChatRoomId: string | undefined;
-      let notifData: any = null;
+      const myAcc = lockedAcceptances.find((a) => a.userId === userId);
+      if (!myAcc || myAcc.accepted !== null) return; // 이미 처리됨
 
-      await this.dataSource.transaction(async (manager) => {
+      // 내 수락 처리
+      await manager.update(MatchAcceptance, myAcc.id, {
+        accepted: true,
+        respondedAt: new Date(),
+      });
+
+      // 상대방 확인
+      const opponentAcc = lockedAcceptances.find((a) => a.userId !== userId);
+      if (opponentAcc?.accepted !== true) return; // 상대 미수락 → 대기
+
+      bothAccepted = true;
         // ChatRoom 생성
         const chatRoom = manager.create(ChatRoom, { roomType: 'MATCH' as any });
         const savedChatRoom = await manager.save(ChatRoom, chatRoom);
@@ -900,8 +971,9 @@ export class MatchingService {
           opponentNickname: (match.opponentProfile as any).user?.nickname ?? '',
           chatRoomId: savedChatRoom.id,
         } : null;
-      });
+    });  // end transaction
 
+    if (bothAccepted) {
       // 양측 수락 완료 → CHAT 상태 실시간 전달 (트랜잭션 커밋 후)
       console.info(`[MatchAccept] 양측 수락 완료 — MATCH_STATUS_CHANGED 발행: matchId=${matchId}, chatRoomId=${createdChatRoomId}`);
       await this.emitMatchEvent('MATCH_STATUS_CHANGED', {
@@ -909,8 +981,6 @@ export class MatchingService {
         data: { matchId, status: 'CHAT', chatRoomId: createdChatRoomId },
       });
 
-      // 양측 알림 (트랜잭션 커밋 후 발송 — 클라이언트가 조회 시 최신 데이터 보장)
-      console.info(`[MatchAccept] MATCH_BOTH_ACCEPTED 알림 발송: notifData=${JSON.stringify(notifData)}, hasService=${!!this.notificationService}`);
       if (this.notificationService && notifData) {
         await this.notificationService.sendBulk([
           {
@@ -936,10 +1006,8 @@ export class MatchingService {
         if (matchForPin?.pinId) {
           const { PinsService } = await import('../pins/pins.service.js');
           const pinsService = new PinsService();
-          const requesterUserId = (await this.matchAcceptanceRepo.findOne({ where: { matchId, userId } }))
-            ? userId : undefined;
-          const opponentUserId = opponentAcceptance.userId;
-          const userIds = [userId, opponentUserId].filter(Boolean) as string[];
+          const allAcceptances = await this.matchAcceptanceRepo.find({ where: { matchId } });
+          const userIds = allAcceptances.map((a) => a.userId);
           await pinsService.recordActivities(matchForPin.pinId, userIds);
         }
       } catch { /* 활동 기록 실패해도 매칭에 영향 없음 */ }
@@ -1086,8 +1154,9 @@ export class MatchingService {
           .execute();
       }
 
-      // 7) 거절자 -15 displayScore 패널티 (glickoRating은 변경하지 않음)
+      // 7) 거절자 -5 displayScore 패널티 (기존 -15에서 1/3로 축소, glickoRating은 변경하지 않음)
       //    수락자에게 +5 displayScore 보상
+      const REJECT_PENALTY_POINTS = 5;
       if (matchForReject) {
         const isRequester = (matchForReject.requesterProfile as any).userId === userId;
         const rejecterProfile = isRequester
@@ -1097,12 +1166,12 @@ export class MatchingService {
           ? matchForReject.opponentProfile
           : matchForReject.requesterProfile;
 
-        // 거절자 패널티: displayScore -15, currentScore -15 (glickoRating 불변)
+        // 거절자 패널티: displayScore/currentScore -REJECT_PENALTY_POINTS (glickoRating 불변)
         if (rejecterProfile) {
           const scoreBefore = (rejecterProfile as any).displayScore
             ?? (rejecterProfile as any).currentScore
             ?? 1000;
-          const newScore = Math.max(100, scoreBefore - 15);
+          const newScore = Math.max(100, scoreBefore - REJECT_PENALTY_POINTS);
 
           await manager
             .createQueryBuilder()
@@ -1119,7 +1188,7 @@ export class MatchingService {
             gameId: null,
             changeType: ScoreChangeType.NO_SHOW_PENALTY,
             scoreBefore,
-            scoreChange: -15,
+            scoreChange: -REJECT_PENALTY_POINTS,
             scoreAfter: newScore,
           }));
         }
@@ -1163,7 +1232,7 @@ export class MatchingService {
           userId,
           type: 'MATCH_REJECTED',
           title: '매칭 거절 완료',
-          body: '매칭을 거절했습니다. -15점 패널티가 적용되었습니다.',
+          body: '매칭을 거절했습니다. -5점 패널티가 적용되었습니다.',
           data: { matchId },
         },
         {
@@ -1179,7 +1248,7 @@ export class MatchingService {
         userId,
         type: 'MATCH_REJECTED',
         title: '매칭 거절 완료',
-        body: '매칭을 거절했습니다. -15점 패널티가 적용되었습니다.',
+        body: '매칭을 거절했습니다. -5점 패널티가 적용되었습니다.',
         data: { matchId },
       });
     }
@@ -1291,6 +1360,9 @@ export class MatchingService {
   // ─────────────────────────────────────
 
   async listMatches(userId: string, query: ListMatchesQuery) {
+    // 만료된 PENDING_ACCEPT 자동 정리 (응답에서 stale 데이터 제거)
+    await this.cleanupExpiredPendingMatches();
+
     const { status, cursor } = query;
     const limit = Math.min(Math.max(Number(query.limit) || 20, 1), 100);
 
@@ -1439,6 +1511,9 @@ export class MatchingService {
   // ─────────────────────────────────────
 
   async getMatch(userId: string, matchId: string) {
+    // 만료된 PENDING_ACCEPT 자동 정리 (이 매칭이 stale일 수도)
+    await this.cleanupExpiredPendingMatches();
+
     const match = await this.matchRepo.findOne({
       where: { id: matchId },
       relations: {
@@ -1682,10 +1757,14 @@ export class MatchingService {
           }
         }
         const hasPinRecord = pinScore !== null;
+        // 친선(캐주얼) 매치인 경우에만 상대 나이/성별 노출
+        const oppUser = (opponentProfile as any).user;
+        const oppBirth = oppUser?.birthDate ? new Date(oppUser.birthDate) : null;
+        const oppAge = oppBirth ? calculateAge(oppBirth) : null;
         return {
-          id: (opponentProfile as any).user?.id,
-          nickname: (opponentProfile as any).user?.nickname,
-          profileImageUrl: (opponentProfile as any).user?.profileImageUrl,
+          id: oppUser?.id,
+          nickname: oppUser?.nickname,
+          profileImageUrl: oppUser?.profileImageUrl,
           tier: pinTier ?? (opponentProfile as any).tier,
           wins: (opponentProfile as any).wins,
           losses: (opponentProfile as any).losses,
@@ -1696,6 +1775,8 @@ export class MatchingService {
           displayScore: hasPinRecord ? pinScore : null,
           isPlacement: !hasPinRecord,
           placementGamesRemaining: hasPinRecord ? null : 5,
+          gender: isCasual ? (oppUser?.gender ?? null) : null,
+          age: isCasual ? oppAge : null,
         };
       })(),
     };
@@ -1840,7 +1921,7 @@ export class MatchingService {
       await manager
         .createQueryBuilder()
         .update(SportsProfile)
-        .set({ currentScore: cancellerNewScore })
+        .set({ currentScore: cancellerNewScore, displayScore: cancellerNewScore })
         .where('id = :id', { id: cancellerProfileId })
         .execute();
 
@@ -1879,7 +1960,7 @@ export class MatchingService {
       await manager
         .createQueryBuilder()
         .update(SportsProfile)
-        .set({ currentScore: opponentNewScore })
+        .set({ currentScore: opponentNewScore, displayScore: opponentNewScore })
         .where('id = :id', { id: opponentProfileId })
         .execute();
 
@@ -1957,6 +2038,9 @@ export class MatchingService {
   // ─────────────────────────────────────
 
   async getActiveMatch(userId: string) {
+    // 만료된 PENDING_ACCEPT 자동 정리 (활성 매칭이라 잘못 응답되는 것 방지)
+    await this.cleanupExpiredPendingMatches();
+
     const match = await this.matchRepo
       .createQueryBuilder('match')
       .leftJoinAndSelect('match.requesterProfile', 'rp')
@@ -1999,20 +2083,37 @@ export class MatchingService {
       }
     }
 
+    // 친선(캐주얼) 여부 조회 — 캐주얼이면 상대 나이/성별 노출
+    let isCasual = false;
+    if (match.matchRequestId) {
+      const mrRows = await this.dataSource.query<Array<{ isCasual: boolean }>>(
+        `SELECT mr.is_casual AS "isCasual" FROM match_requests mr WHERE mr.id = $1 LIMIT 1`,
+        [match.matchRequestId],
+      );
+      if (mrRows.length > 0) isCasual = mrRows[0].isCasual === true;
+    }
+
+    const oppUserActive = (opponentProfile as any).user;
+    const oppBirthActive = oppUserActive?.birthDate ? new Date(oppUserActive.birthDate) : null;
+    const oppAgeActive = oppBirthActive ? calculateAge(oppBirthActive) : null;
+
     return {
       id: match.id,
       status: match.status,
       sportType: match.sportType,
       chatRoomId: match.chatRoomId,
       createdAt: match.createdAt,
+      isCasual,
       myAcceptance,
       opponentAcceptance,
       timeRemainingSeconds,
       opponent: {
-        id: (opponentProfile as any).user?.id,
-        nickname: (opponentProfile as any).user?.nickname,
-        profileImageUrl: (opponentProfile as any).user?.profileImageUrl,
+        id: oppUserActive?.id,
+        nickname: oppUserActive?.nickname,
+        profileImageUrl: oppUserActive?.profileImageUrl,
         tier: (opponentProfile as any).tier,
+        gender: isCasual ? (oppUserActive?.gender ?? null) : null,
+        age: isCasual ? oppAgeActive : null,
       },
     };
   }
@@ -2100,6 +2201,7 @@ export class MatchingService {
         .update(SportsProfile)
         .set({
           currentScore: forfeitGlickoOut.rating,
+          displayScore: forfeitGlickoOut.rating,
           glickoRating: forfeitGlickoOut.rating,
           glickoRd: forfeitGlickoOut.rd,
           glickoVolatility: forfeitGlickoOut.volatility,
@@ -2119,6 +2221,7 @@ export class MatchingService {
         .update(SportsProfile)
         .set({
           currentScore: winnerGlickoOut.rating,
+          displayScore: winnerGlickoOut.rating,
           glickoRating: winnerGlickoOut.rating,
           glickoRd: winnerGlickoOut.rd,
           glickoVolatility: winnerGlickoOut.volatility,
@@ -2220,11 +2323,26 @@ export class MatchingService {
   }
 
   // ─────────────────────────────────────
-  // 노쇼 신고
+  // 노쇼 신고 (PENDING 접수 전환 버전)
   // ─────────────────────────────────────
 
-  async reportNoshow(reporterUserId: string, matchId: string, imageUrls?: string[]) {
-    // 1. Match 확인 — CHAT/CONFIRMED 상태만 신고 가능
+  async reportNoshow(reporterUserId: string, matchId: string, imageUrls?: string[], reporterMessage?: string) {
+    // 1. 신고자의 신고 자격 차단 여부 확인
+    const reporterUser = await this.userRepo.findOne({
+      where: { id: reporterUserId },
+      select: ['id', 'noshowReportBanUntil'] as any,
+    });
+    if (reporterUser && (reporterUser as any).noshowReportBanUntil) {
+      const banUntil = new Date((reporterUser as any).noshowReportBanUntil);
+      if (banUntil > new Date()) {
+        throw AppError.forbidden(
+          ErrorCode.AUTH_FORBIDDEN,
+          `신고 자격이 ${banUntil.toLocaleDateString('ko-KR')}까지 제한되어 있습니다.`,
+        );
+      }
+    }
+
+    // 2. Match 확인 — CHAT/CONFIRMED 상태만 신고 가능
     const match = await this.getMatch(reporterUserId, matchId);
     if (!['CHAT', 'CONFIRMED'].includes(match.status)) {
       throw AppError.badRequest(
@@ -2233,7 +2351,7 @@ export class MatchingService {
       );
     }
 
-    // 2. 상대방 식별
+    // 3. 상대방 식별
     const isRequester = (match.requesterProfile as any)?.userId === reporterUserId;
     const noshowUserId = isRequester
       ? (match.opponentProfile as any)?.userId
@@ -2241,85 +2359,396 @@ export class MatchingService {
     const noshowProfileId = isRequester
       ? (match as any).opponentProfileId
       : (match as any).requesterProfileId;
-    const reporterProfileId = isRequester
-      ? (match as any).requesterProfileId
-      : (match as any).opponentProfileId;
 
     if (!noshowUserId || !noshowProfileId) {
       throw AppError.badRequest(ErrorCode.MATCH_NOT_PARTICIPANT, '상대방 정보를 확인할 수 없습니다.');
     }
 
-    // 3. 상대방 noShowCount 증가 (atomic)
-    await this.sportsProfileRepo
-      .createQueryBuilder()
-      .update()
-      .set({ noShowCount: () => 'no_show_count + 1' })
-      .where('id = :id', { id: noshowProfileId })
-      .execute();
-
-    // 4. 자동 밴 (7일). 영구 정지는 관리자 판단으로만 처리되며
-    //    여기서는 단순히 매칭 제한 타이머만 연장한다.
-    const banUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    await this.sportsProfileRepo.update(
-      noshowProfileId,
-      { matchBanUntil: banUntil } as any,
+    // 4. 같은 reporter → reported 24h 내 중복 신고 차단
+    const recentReport = await this.dataSource.query(
+      `SELECT id FROM noshow_reports
+       WHERE reporter_id = $1 AND reported_user_id = $2
+         AND created_at > NOW() - INTERVAL '24 hours'
+       LIMIT 1`,
+      [reporterUserId, noshowUserId],
     );
-
-    // 5. 매칭 완료 처리
-    await this.matchRepo.update(matchId, {
-      status: 'COMPLETED' as any,
-      completedAt: new Date(),
-    });
-
-    // 6. displayScore/currentScore 패널티 적용 (atomic)
-    // 노쇼 유저 -30 (최소 100점)
-    await this.sportsProfileRepo
-      .createQueryBuilder()
-      .update()
-      .set({
-        displayScore: () => 'GREATEST(100, display_score - 30)',
-        currentScore: () => 'GREATEST(100, current_score - 30)',
-      })
-      .where('id = :id', { id: noshowProfileId })
-      .execute();
-
-    // 신고자 +15
-    await this.sportsProfileRepo
-      .createQueryBuilder()
-      .update()
-      .set({
-        displayScore: () => 'display_score + 15',
-        currentScore: () => 'current_score + 15',
-      })
-      .where('id = :id', { id: reporterProfileId })
-      .execute();
-
-    // 7. 증거 사진 포함 Report 레코드 생성
-    if (imageUrls && imageUrls.length > 0) {
-      const reportRepo = this.dataSource.getRepository(Report);
-      await reportRepo.save(
-        reportRepo.create({
-          reporterId: reporterUserId,
-          targetType: 'USER' as any,
-          targetId: noshowUserId,
-          reason: 'NOSHOW',
-          description: `매치 ${matchId} 노쇼 신고`,
-          imageUrls,
-        }),
+    if (recentReport.length > 0) {
+      throw AppError.badRequest(
+        ErrorCode.MATCH_ALREADY_EXISTS,
+        '같은 상대에게 24시간 내 중복 신고는 불가합니다.',
       );
     }
 
-    // 8. 알림 발송 (자동 정지 없음 — 운영자가 관리자 페이지에서 수동 정지 시 별도 알림)
+    // 5. 이미 같은 매칭에 신고가 있는지 확인
+    const existingReport = await this.dataSource.query(
+      `SELECT id FROM noshow_reports WHERE match_id = $1 AND reporter_id = $2 LIMIT 1`,
+      [matchId, reporterUserId],
+    );
+    if (existingReport.length > 0) {
+      throw AppError.badRequest(ErrorCode.MATCH_ALREADY_EXISTS, '이미 이 매칭에 노쇼 신고를 접수했습니다.');
+    }
+
+    let noshowReportId = '';
+
+    // 6. 트랜잭션: noshow_reports INSERT + 매칭 COMPLETED + 임시 차단
+    await this.dataSource.transaction(async (manager) => {
+      // 매칭 완료 처리 (노쇼 신고 시 즉시 매칭 종결)
+      await manager.update(Match, matchId, {
+        status: 'COMPLETED' as any,
+        completedAt: new Date(),
+      });
+
+      // noshow_reports INSERT
+      const noshowRepo = manager.getRepository(NoshowReport);
+      const report = noshowRepo.create({
+        matchId,
+        reporterId: reporterUserId,
+        reportedUserId: noshowUserId,
+        reportedProfileId: noshowProfileId,
+        status: 'PENDING',
+        evidenceUrls: imageUrls ?? [],
+        reporterMessage: reporterMessage ?? null,
+      });
+      const saved = await noshowRepo.save(report);
+      noshowReportId = saved.id;
+
+      // 신고 대상에게 24h 임시 매칭 신청 차단 적용
+      const banUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      await manager
+        .createQueryBuilder()
+        .update(SportsProfile)
+        .set({ matchRequestBanUntil: banUntil } as any)
+        .where('id = :id', { id: noshowProfileId })
+        .execute();
+    });
+
+    // 7. 알림 발송 — 트랜잭션 외부 (실패해도 롤백 불필요)
     if (this.notificationService) {
       await this.notificationService.send({
         userId: noshowUserId,
-        type: 'MATCH_NO_SHOW_PENALTY',
-        title: '노쇼 패널티',
-        body: '노쇼 신고로 7일간 매칭이 제한됩니다.',
-        data: { matchId },
+        type: 'NOSHOW_REPORT_RECEIVED',
+        title: '노쇼 신고 접수',
+        body: '노쇼 신고가 접수되었습니다. 검토 중입니다.',
+        data: { matchId, reportId: noshowReportId },
       });
     }
 
-    return { message: '노쇼 신고가 접수되었습니다.' };
+    return { message: '노쇼 신고가 접수되었습니다. 관리자 검토 후 결과를 알려드릴게요.' };
+  }
+
+  // ─────────────────────────────────────
+  // 노쇼 신고 승인 (어드민)
+  // ─────────────────────────────────────
+
+  async approveNoshowReport(reportId: string, adminId: string, memo: string) {
+    const noshowRepo = this.dataSource.getRepository(NoshowReport);
+    const report = await noshowRepo.findOne({ where: { id: reportId } });
+    if (!report) {
+      throw AppError.notFound(ErrorCode.NOT_FOUND, '노쇼 신고를 찾을 수 없습니다.');
+    }
+    if (report.status !== 'PENDING' && report.status !== 'INSUFFICIENT') {
+      throw AppError.badRequest(ErrorCode.MATCH_INVALID_STATUS, '처리 가능한 상태가 아닙니다.');
+    }
+
+    // 누적 확정 횟수 조회
+    const confirmedCountResult = await this.dataSource.query(
+      `SELECT noshow_confirmed_count FROM sports_profiles WHERE id = $1`,
+      [report.reportedProfileId],
+    );
+    const currentConfirmedCount: number = confirmedCountResult[0]?.noshow_confirmed_count ?? 0;
+    const newConfirmedCount = currentConfirmedCount + 1;
+
+    // 밴 기간 결정: 1회 → 7일, 2회 이상 → 영구(SUSPENDED)
+    const isPermanent = newConfirmedCount >= 2;
+    const banHours = isPermanent ? 0 : 7 * 24; // 영구는 별도 처리
+
+    await this.dataSource.transaction(async (manager) => {
+      // noshow_reports 상태 업데이트
+      await manager.update(NoshowReport, reportId, {
+        status: 'APPROVED',
+        adminId,
+        adminDecisionAt: new Date(),
+        adminMemo: memo,
+        appliedScoreChange: -30,
+        appliedBanHours: isPermanent ? -1 : banHours, // -1 = 영구
+      });
+
+      // 노쇼 유저 패널티 적용
+      if (isPermanent) {
+        // 영구 정지: UserStatus → SUSPENDED (SUPER_ADMIN 호출 시에만 실제 적용)
+        // 이 메서드는 MODERATOR가 승인할 때 호출되므로, 영구정지는 422를 라우트에서 처리
+        // 여기서는 noshow_confirmed_count만 증가하고 장기 밴만 적용
+        await manager
+          .createQueryBuilder()
+          .update(SportsProfile)
+          .set({
+            noshowConfirmedCount: newConfirmedCount,
+            matchBanUntil: null, // 임시 차단 해제
+            matchRequestBanUntil: null, // 임시 차단 해제
+            displayScore: () => 'GREATEST(100, display_score - 30)',
+            currentScore: () => 'GREATEST(100, current_score - 30)',
+          } as any)
+          .where('id = :id', { id: report.reportedProfileId })
+          .execute();
+
+        // 영구 정지: 사용자 계정 SUSPENDED
+        await manager
+          .createQueryBuilder()
+          .update(User)
+          .set({ status: 'SUSPENDED' as any })
+          .where('id = :id', { id: report.reportedUserId })
+          .execute();
+
+        // 영구 정지 시 진행 중인 다른 매칭 강제 취소
+        await manager
+          .createQueryBuilder()
+          .update(Match)
+          .set({ status: 'CANCELLED' as any, cancelReason: '영구 정지로 인한 강제 취소' })
+          .where(
+            `(requester_profile_id = :profileId OR opponent_profile_id = :profileId)
+             AND status IN ('PENDING_ACCEPT', 'CHAT', 'CONFIRMED')`,
+            { profileId: report.reportedProfileId },
+          )
+          .execute();
+      } else {
+        // 7일 밴
+        const banUntil = new Date(Date.now() + banHours * 60 * 60 * 1000);
+        await manager
+          .createQueryBuilder()
+          .update(SportsProfile)
+          .set({
+            noshowConfirmedCount: newConfirmedCount,
+            matchBanUntil: banUntil,
+            matchRequestBanUntil: null, // 임시 차단 해제 (정식 밴으로 대체)
+            displayScore: () => 'GREATEST(100, display_score - 30)',
+            currentScore: () => 'GREATEST(100, current_score - 30)',
+          } as any)
+          .where('id = :id', { id: report.reportedProfileId })
+          .execute();
+      }
+
+      // 신고자 보상 +15
+      const reporterProfile = await manager.query(
+        `SELECT id FROM sports_profiles WHERE user_id = $1 LIMIT 1`,
+        [report.reporterId],
+      );
+      if (reporterProfile.length > 0) {
+        await manager
+          .createQueryBuilder()
+          .update(SportsProfile)
+          .set({
+            displayScore: () => 'display_score + 15',
+            currentScore: () => 'current_score + 15',
+          })
+          .where('id = :id', { id: reporterProfile[0].id })
+          .execute();
+      }
+
+      // 매너 점수 1점 강제 부여 (추가 누적 방식)
+      await manager
+        .createQueryBuilder()
+        .update(SportsProfile)
+        .set({
+          mannerTotal: () => 'manner_total + 1',
+          mannerCount: () => 'manner_count + 1',
+        })
+        .where('id = :id', { id: report.reportedProfileId })
+        .execute();
+
+      // manner_ratings INSERT (NOSHOW_AUTO 소스)
+      const mannerRatingRepo = manager.getRepository(MannerRating);
+      await mannerRatingRepo
+        .createQueryBuilder()
+        .insert()
+        .into(MannerRating)
+        .values({
+          matchId: report.matchId,
+          raterId: report.reporterId,
+          ratedUserId: report.reportedUserId,
+          ratedProfileId: report.reportedProfileId,
+          score: 1,
+          source: 'NOSHOW_AUTO',
+          noshowReportId: reportId,
+        })
+        .orIgnore() // UNIQUE 충돌 시 무시 (이미 USER 평가가 있는 경우)
+        .execute();
+    });
+
+    // 알림 발송
+    if (this.notificationService) {
+      const notifs = [
+        this.notificationService.send({
+          userId: report.reporterId,
+          type: 'NOSHOW_REPORT_APPROVED',
+          title: '노쇼 신고 승인',
+          body: '노쇼 신고가 승인되었습니다. +15점 보상이 적용되었습니다.',
+          data: { reportId },
+        }),
+      ];
+      if (isPermanent) {
+        notifs.push(
+          this.notificationService.send({
+            userId: report.reportedUserId,
+            type: 'NOSHOW_BAN_PERMANENT',
+            title: '계정 영구 정지',
+            body: '노쇼 누적으로 계정이 영구 정지되었습니다.',
+            data: { reportId },
+          }),
+        );
+      }
+      await Promise.allSettled(notifs);
+    }
+
+    return { message: '노쇼 신고가 승인되었습니다.' };
+  }
+
+  // ─────────────────────────────────────
+  // 노쇼 신고 기각 (어드민)
+  // ─────────────────────────────────────
+
+  async rejectNoshowReport(
+    reportId: string,
+    adminId: string,
+    memo: string,
+    reporterPenalty: boolean = false,
+  ) {
+    const noshowRepo = this.dataSource.getRepository(NoshowReport);
+    const report = await noshowRepo.findOne({ where: { id: reportId } });
+    if (!report) {
+      throw AppError.notFound(ErrorCode.NOT_FOUND, '노쇼 신고를 찾을 수 없습니다.');
+    }
+    if (report.status !== 'PENDING' && report.status !== 'INSUFFICIENT') {
+      throw AppError.badRequest(ErrorCode.MATCH_INVALID_STATUS, '처리 가능한 상태가 아닙니다.');
+    }
+
+    await this.dataSource.transaction(async (manager) => {
+      // 상태 업데이트
+      await manager.update(NoshowReport, reportId, {
+        status: 'REJECTED',
+        adminId,
+        adminDecisionAt: new Date(),
+        adminMemo: memo,
+      });
+
+      // 임시 차단 해제
+      await manager
+        .createQueryBuilder()
+        .update(SportsProfile)
+        .set({ matchRequestBanUntil: null } as any)
+        .where('id = :id', { id: report.reportedProfileId })
+        .execute();
+
+      // 신고자가 이 매칭에서 입력했던 USER 소스 매너 평가 무효화
+      await manager
+        .createQueryBuilder()
+        .update(MannerRating)
+        .set({ voidedAt: new Date() })
+        .where(
+          `match_id = :matchId AND rater_id = :raterId AND source = 'USER' AND voided_at IS NULL`,
+          { matchId: report.matchId, raterId: report.reporterId },
+        )
+        .execute();
+
+      // 무효화된 평가만큼 manner_total/count 차감 (무효화된 건의 score)
+      await manager.query(
+        `UPDATE sports_profiles
+         SET manner_total = GREATEST(0, manner_total - sub.total_voided),
+             manner_count = GREATEST(0, manner_count - sub.count_voided)
+         FROM (
+           SELECT COALESCE(SUM(score), 0) AS total_voided, COUNT(*) AS count_voided
+           FROM manner_ratings
+           WHERE match_id = $1 AND rater_id = $2
+             AND source = 'USER'
+             AND voided_at IS NOT NULL
+         ) sub
+         WHERE id = $3`,
+        [report.matchId, report.reporterId, report.reportedProfileId],
+      );
+
+      // 악의적 신고자 패널티
+      if (reporterPenalty) {
+        const reporterProfiles = await manager.query(
+          `SELECT id FROM sports_profiles WHERE user_id = $1 LIMIT 1`,
+          [report.reporterId],
+        );
+        if (reporterProfiles.length > 0) {
+          await manager
+            .createQueryBuilder()
+            .update(SportsProfile)
+            .set({
+              displayScore: () => 'GREATEST(100, display_score - 10)',
+              currentScore: () => 'GREATEST(100, current_score - 10)',
+            })
+            .where('id = :id', { id: reporterProfiles[0].id })
+            .execute();
+        }
+
+        // 신고 자격 7일 차단
+        const reportBanUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        await manager
+          .createQueryBuilder()
+          .update(User)
+          .set({ noshowReportBanUntil: reportBanUntil } as any)
+          .where('id = :id', { id: report.reporterId })
+          .execute();
+      }
+    });
+
+    // 알림 발송
+    if (this.notificationService) {
+      await Promise.allSettled([
+        this.notificationService.send({
+          userId: report.reporterId,
+          type: 'NOSHOW_REPORT_REJECTED',
+          title: '노쇼 신고 기각',
+          body: '노쇼 신고가 기각되었습니다. 자세한 내용은 1:1 문의로 확인해주세요.',
+          data: { reportId },
+        }),
+        this.notificationService.send({
+          userId: report.reportedUserId,
+          type: 'NOSHOW_REPORT_REJECTED',
+          title: '신고 처리 완료',
+          body: '접수된 노쇼 신고가 기각되었습니다. 임시 제한이 해제됩니다.',
+          data: { reportId, side: 'REPORTED' },
+        }),
+      ]);
+    }
+
+    return { message: '노쇼 신고가 기각되었습니다.' };
+  }
+
+  // ─────────────────────────────────────
+  // 노쇼 신고 자료 부족 (어드민)
+  // ─────────────────────────────────────
+
+  async requestMoreEvidence(reportId: string, adminId: string, memo: string) {
+    const noshowRepo = this.dataSource.getRepository(NoshowReport);
+    const report = await noshowRepo.findOne({ where: { id: reportId } });
+    if (!report) {
+      throw AppError.notFound(ErrorCode.NOT_FOUND, '노쇼 신고를 찾을 수 없습니다.');
+    }
+    if (report.status !== 'PENDING') {
+      throw AppError.badRequest(ErrorCode.MATCH_INVALID_STATUS, 'PENDING 상태에서만 자료 요청이 가능합니다.');
+    }
+
+    await this.dataSource.getRepository(NoshowReport).update(reportId, {
+      status: 'INSUFFICIENT',
+      adminId,
+      adminDecisionAt: new Date(),
+      adminMemo: memo,
+    });
+
+    // 신고자에게 추가 자료 요청 알림
+    if (this.notificationService) {
+      await this.notificationService.send({
+        userId: report.reporterId,
+        type: 'NOSHOW_REPORT_INSUFFICIENT',
+        title: '추가 자료 요청',
+        body: '증거 자료가 부족합니다. 추가 자료를 첨부해주세요.',
+        data: { reportId },
+      });
+    }
+
+    return { message: '추가 자료 요청이 발송되었습니다.' };
   }
 }

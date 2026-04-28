@@ -28,6 +28,15 @@ const _statusLabels = {
   'CLOSED': '종료',
 };
 
+/// content 에서 `[첨부 이미지] <url>` 마커를 분리한다.
+({String text, String? imageUrl}) _splitContentAndImage(String raw) {
+  final match = RegExp(r'\n*\[첨부 이미지\]\s*(\S+)\s*$').firstMatch(raw);
+  if (match == null) return (text: raw, imageUrl: null);
+  final url = match.group(1);
+  final text = raw.substring(0, match.start).trimRight();
+  return (text: text, imageUrl: url);
+}
+
 /// 내 문의 목록 프로바이더
 final myInquiriesProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) {
@@ -418,7 +427,10 @@ class _InquiryTileState extends State<_InquiryTile> {
     final status = inquiry['status'] as String? ?? 'PENDING';
     final statusLabel = _statusLabels[status] ?? status;
     final title = inquiry['title'] as String? ?? '';
-    final content = inquiry['content'] as String? ?? '';
+    final rawContent = inquiry['content'] as String? ?? '';
+    final parsed = _splitContentAndImage(rawContent);
+    final content = parsed.text;
+    final imageUrl = parsed.imageUrl;
     final answer = (inquiry['adminReply'] ?? inquiry['answer']) as String?;
     final category = inquiry['category'] as String? ?? '';
     final categoryLabel = _inquiryCategories
@@ -566,6 +578,38 @@ class _InquiryTileState extends State<_InquiryTile> {
                     height: 1.5,
                   ),
                 ),
+                if (imageUrl != null && imageUrl.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      imageUrl,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, progress) {
+                        if (progress == null) return child;
+                        return Container(
+                          height: 160,
+                          alignment: Alignment.center,
+                          color: const Color(0xFF2A2A2A),
+                          child: const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        );
+                      },
+                      errorBuilder: (context, error, stack) => Container(
+                        height: 120,
+                        alignment: Alignment.center,
+                        color: const Color(0xFF2A2A2A),
+                        child: const Icon(
+                          Icons.broken_image_outlined,
+                          color: AppTheme.textDisabled,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
                 // 답변 (있을 경우)
                 if (answer != null && answer.isNotEmpty) ...[
                   const SizedBox(height: 12),

@@ -11,6 +11,7 @@ import '../../repositories/game_repository.dart';
 import '../../repositories/matching_repository.dart';
 import '../../repositories/upload_repository.dart';
 import 'app_toast.dart';
+import 'safe_bottom_sheet.dart';
 import '../../core/network/api_client.dart';
 import '../../core/error/error_reporter.dart';
 
@@ -26,19 +27,21 @@ void showGameResultSheet(
   String? opponentNickname,
   String? initialVerificationCode,
   VoidCallback? onSubmitted,
+  bool insetForBottomNav = false,
 }) {
   String? selectedResult;
-  int mannerScore = 5;
+  int mannerScore = 5; // 기본 5점, 사용자가 1~5 사이로 조정 가능
   bool isSubmitting = false;
   final List<File> photos = [];
   final verificationCodeController = TextEditingController(
     text: initialVerificationCode ?? '',
   );
 
-  showModalBottomSheet(
+  showAppBottomSheet(
     context: context,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
+    insetForBottomNav: insetForBottomNav,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setSheetState) {
         final canSubmit = !isSubmitting;
@@ -212,9 +215,10 @@ void showGameResultSheet(
                         GestureDetector(
                           onTap: () async {
                             final source =
-                                await showModalBottomSheet<ImageSource>(
+                                await showAppBottomSheet<ImageSource>(
                               context: ctx,
                               backgroundColor: const Color(0xFF1E1E1E),
+                              insetForBottomNav: insetForBottomNav,
                               shape: const RoundedRectangleBorder(
                                   borderRadius: BorderRadius.vertical(
                                       top: Radius.circular(16))),
@@ -322,12 +326,12 @@ void showGameResultSheet(
                               const EdgeInsets.symmetric(horizontal: 4),
                           child: Icon(
                             score <= mannerScore
-                                ? Symbols.star_rounded
-                                : Symbols.star_outline_rounded,
+                                ? Icons.star_rounded
+                                : Icons.star_border_rounded,
                             size: 32,
                             color: score <= mannerScore
                                 ? Colors.amber
-                                : const Color(0xFF2A2A2A),
+                                : const Color(0xFF555555),
                           ),
                         ),
                       );
@@ -412,7 +416,6 @@ void showGameResultSheet(
                                 }
 
                                 if (ctx.mounted) Navigator.pop(ctx);
-                                AppToast.success('결과가 제출되었습니다.');
                                 ref.invalidate(
                                     matchDetailProvider(matchId));
                                 ref.invalidate(matchListProvider(null));

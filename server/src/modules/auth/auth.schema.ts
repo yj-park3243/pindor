@@ -23,6 +23,17 @@ export const googleLoginSchema = z.object({
   idToken: z.string().min(1, 'idToken is required'),
 });
 
+// Firebase Auth 기반 이메일 스키마
+export const firebaseSignupSchema = z.object({
+  idToken: z.string().min(1, 'Firebase ID 토큰이 필요합니다.'),
+  agreedTerms: z.boolean().optional(),
+});
+
+export const firebaseLoginSchema = z.object({
+  idToken: z.string().min(1, 'Firebase ID 토큰이 필요합니다.'),
+});
+
+// (하위 호환 — 기존 코드 참조용 타입만 유지, 라우트는 삭제됨)
 export const emailRegisterSchema = z.object({
   email: z.string().email('유효한 이메일을 입력해주세요.'),
   password: z.string().min(6, '비밀번호는 6자 이상이어야 합니다.'),
@@ -37,6 +48,8 @@ export const emailLoginSchema = z.object({
 export type KakaoLoginDto = z.infer<typeof kakaoLoginSchema>;
 export type AppleLoginDto = z.infer<typeof appleLoginSchema>;
 export type GoogleLoginDto = z.infer<typeof googleLoginSchema>;
+export type FirebaseSignupDto = z.infer<typeof firebaseSignupSchema>;
+export type FirebaseLoginDto = z.infer<typeof firebaseLoginSchema>;
 export type EmailRegisterDto = z.infer<typeof emailRegisterSchema>;
 export type EmailLoginDto = z.infer<typeof emailLoginSchema>;
 export type RefreshTokenDto = z.infer<typeof refreshTokenSchema>;

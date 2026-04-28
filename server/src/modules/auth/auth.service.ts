@@ -9,10 +9,11 @@ import {
   DeviceToken,
 } from '../../entities/index.js';
 import { SocialProvider } from '../../entities/index.js';
-import { createHash } from 'crypto';
-import type { KakaoLoginDto, KakaoUserInfo, GoogleLoginDto, GoogleUserInfo, AppleLoginDto, EmailRegisterDto, EmailLoginDto } from './auth.schema.js';
+import type { KakaoLoginDto, KakaoUserInfo, GoogleLoginDto, GoogleUserInfo, AppleLoginDto, FirebaseSignupDto, FirebaseLoginDto } from './auth.schema.js';
 import { createPublicKey } from 'crypto';
 import * as jwt from 'jsonwebtoken';
+import * as admin from 'firebase-admin';
+import { getFirebaseApp } from '../../config/firebase.js';
 
 export class AuthService {
   constructor(private dataSource: DataSource) {}
@@ -445,44 +446,95 @@ export class AuthService {
   }
 
   // ─────────────────────────────────────
-  // 이메일 회원가입
+  // Firebase ID 토큰 검증
   // ─────────────────────────────────────
 
-  async emailRegister(dto: EmailRegisterDto) {
-    const socialAccountRepo = this.dataSource.getRepository(SocialAccount);
+  private async verifyFirebaseIdToken(idToken: string): Promise<admin.auth.DecodedIdToken> {
+    const app = getFirebaseApp();
+    if (!app) {
+      throw new AppError(ErrorCode.INTERNAL_SERVER_ERROR, 500, 'Firebase가 초기화되지 않았습니다.');
+    }
+    try {
+      return await app.auth().verifyIdToken(idToken);
+    } catch (e: any) {
+      console.error('[Firebase] verifyIdToken error:', e.message);
+      throw new AppError(ErrorCode.AUTH_INVALID_TOKEN, 401, 'Firebase 인증 토큰이 유효하지 않습니다.');
+    }
+  }
+
+  // ─────────────────────────────────────
+  // Firebase 이메일 회원가입
+  // ─────────────────────────────────────
+
+  async firebaseSignup(dto: FirebaseSignupDto) {
+    const decoded = await this.verifyFirebaseIdToken(dto.idToken);
+    const firebaseUid = decoded.uid;
+    const email = decoded.email ?? null;
+
     const userRepo = this.dataSource.getRepository(User);
 
-    // 이메일 중복 확인
-    const existing = await socialAccountRepo.findOne({
-      where: { provider: SocialProvider.EMAIL, providerId: dto.email },
-    });
+    // 이미 가입된 firebase_uid 확인
+    const existing = await userRepo.findOne({ where: { firebaseUid } });
     if (existing) {
-      throw new AppError(ErrorCode.AUTH_DUPLICATE_EMAIL ?? 'AUTH_DUPLICATE_EMAIL', 409, '이미 가입된 이메일입니다.');
+      if (existing.status === 'SUSPENDED') throw new AppError(ErrorCode.USER_SUSPENDED, 403);
+      if (existing.status === 'WITHDRAWN') throw new AppError(ErrorCode.USER_WITHDRAWN, 403);
+      // 이미 가입된 경우 — 로그인처럼 처리
+      await userRepo.update(existing.id, { lastLoginAt: new Date() });
+      const tokens = await issueTokenPair({ userId: existing.id, email: existing.email });
+      await this.storeRefreshToken(existing.id, tokens.refreshToken);
+      return {
+        ...tokens,
+        user: {
+          id: existing.id,
+          nickname: existing.nickname,
+          profileImageUrl: existing.profileImageUrl,
+          isNewUser: false,
+          isVerified: existing.isVerified ?? false,
+        },
+      };
     }
 
-    const passwordHash = this.hashPassword(dto.password);
-    const nickname = dto.nickname ?? await this.generateUniqueNickname(null);
+    // 동일 이메일로 가입된 유저가 있으면 firebase_uid만 연결
+    if (email) {
+      const existingByEmail = await userRepo.findOne({ where: { email } });
+      if (existingByEmail) {
+        if (existingByEmail.status === 'SUSPENDED') throw new AppError(ErrorCode.USER_SUSPENDED, 403);
+        if (existingByEmail.status === 'WITHDRAWN') throw new AppError(ErrorCode.USER_WITHDRAWN, 403);
+        await userRepo.update(existingByEmail.id, {
+          firebaseUid,
+          lastLoginAt: new Date(),
+        });
+        const tokens = await issueTokenPair({ userId: existingByEmail.id, email: existingByEmail.email });
+        await this.storeRefreshToken(existingByEmail.id, tokens.refreshToken);
+        return {
+          ...tokens,
+          user: {
+            id: existingByEmail.id,
+            nickname: existingByEmail.nickname,
+            profileImageUrl: existingByEmail.profileImageUrl,
+            isNewUser: false,
+            isVerified: existingByEmail.isVerified ?? false,
+          },
+        };
+      }
+    }
+
+    // 신규 유저 생성
+    const nickname = await this.generateUniqueNickname(null);
 
     const user = await this.dataSource.transaction(async (manager) => {
+      const now = new Date();
       const newUser = manager.create(User, {
-        email: dto.email,
+        email,
+        firebaseUid,
         nickname,
-        lastLoginAt: new Date(),
-        updatedAt: new Date(),
+        lastLoginAt: now,
+        updatedAt: now,
       });
       await manager.save(User, newUser);
 
-      // providerId = email, accessToken = passwordHash
-      await manager.save(SocialAccount, manager.create(SocialAccount, {
-        userId: newUser.id,
-        provider: SocialProvider.EMAIL,
-        providerId: dto.email,
-        accessToken: passwordHash,
-      }));
-
       await manager.save(NotificationSettings, manager.create(NotificationSettings, {
         userId: newUser.id,
-        updatedAt: new Date(),
       }));
 
       return newUser;
@@ -504,25 +556,35 @@ export class AuthService {
   }
 
   // ─────────────────────────────────────
-  // 이메일 로그인
+  // Firebase 이메일 로그인
   // ─────────────────────────────────────
 
-  async emailLogin(dto: EmailLoginDto) {
-    const socialAccountRepo = this.dataSource.getRepository(SocialAccount);
+  async firebaseLogin(dto: FirebaseLoginDto) {
+    const decoded = await this.verifyFirebaseIdToken(dto.idToken);
+    const firebaseUid = decoded.uid;
+    const email = decoded.email ?? null;
+
     const userRepo = this.dataSource.getRepository(User);
 
-    const socialAccount = await socialAccountRepo.findOne({
-      where: { provider: SocialProvider.EMAIL, providerId: dto.email },
-      relations: { user: true },
-    });
+    // firebase_uid로 유저 조회
+    let user = await userRepo.findOne({ where: { firebaseUid } });
 
-    if (!socialAccount || socialAccount.accessToken !== this.hashPassword(dto.password)) {
-      throw new AppError(ErrorCode.AUTH_INVALID_CREDENTIALS ?? 'AUTH_INVALID_CREDENTIALS', 401, '이메일 또는 비밀번호가 올바르지 않습니다.');
+    // 없으면 이메일로 조회 (기존 가입 유저에 firebase_uid 연결)
+    if (!user && email) {
+      user = await userRepo.findOne({ where: { email } });
+      if (user) {
+        await userRepo.update(user.id, { firebaseUid });
+      }
     }
 
-    const user = socialAccount.user;
+    if (!user) {
+      // 미가입 → 자동 가입 처리 (firebaseSignup과 동일한 신규 생성 흐름)
+      return this.firebaseSignup(dto);
+    }
+
     if (user.status === 'SUSPENDED') throw new AppError(ErrorCode.USER_SUSPENDED, 403);
     if (user.status === 'WITHDRAWN') throw new AppError(ErrorCode.USER_WITHDRAWN, 403);
+    if (user.status === 'MERGED') throw new AppError(ErrorCode.USER_WITHDRAWN, 403, '이미 병합된 계정입니다.');
 
     await userRepo.update(user.id, { lastLoginAt: new Date() });
 
@@ -539,10 +601,6 @@ export class AuthService {
         isVerified: user.isVerified ?? false,
       },
     };
-  }
-
-  private hashPassword(password: string): string {
-    return createHash('sha256').update(password).digest('hex');
   }
 
   // ─────────────────────────────────────

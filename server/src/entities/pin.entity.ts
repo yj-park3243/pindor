@@ -55,6 +55,10 @@ export class Pin {
   @Column({ type: 'jsonb', default: {} })
   metadata!: Record<string, unknown>;
 
+  // 검색용 키워드 (도/시 등): 예) 성남시청 → ['성남', '경기', '경기도']
+  @Column({ name: 'search_keywords', type: 'text', array: true, default: () => "'{}'::text[]" })
+  searchKeywords!: string[];
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 

@@ -148,7 +148,7 @@ export function calculateElo(params: EloCalculationInput): EloCalculationResult 
  * | 플래티넘 이상 티어 | 10 |
  */
 export function getKFactor(gamesPlayed: number, tier: Tier): number {
-  if (tier === Tier.PLATINUM || tier === Tier.GRANDMASTER) return 10;
+  if (tier === Tier.PLATINUM || tier === Tier.MASTER || tier === Tier.GRANDMASTER) return 10;
   if (gamesPlayed <= 10) return 24;
   if (gamesPlayed <= 30) return 18;
   return 12;
@@ -183,6 +183,7 @@ export function calculateTier(score: number): Tier {
  */
 export function calculateTierFallback(score: number): Tier {
   if (score >= 1800) return Tier.GRANDMASTER;
+  if (score >= 1650) return Tier.MASTER;
   if (score >= 1500) return Tier.PLATINUM;
   if (score >= 1300) return Tier.GOLD;
   if (score >= 1100) return Tier.SILVER;
@@ -238,10 +239,12 @@ export function calculateTierWithBuffer(
 ): Tier {
   const rawTier = calculateTier(score);
   const tierOrder: Tier[] = [
+    Tier.IRON,
     Tier.BRONZE,
     Tier.SILVER,
     Tier.GOLD,
     Tier.PLATINUM,
+    Tier.MASTER,
     Tier.GRANDMASTER,
   ];
 

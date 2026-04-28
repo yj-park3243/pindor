@@ -78,6 +78,179 @@ async function start(): Promise<void> {
     `DO $$ BEGIN ALTER TYPE "RequestType" ADD VALUE IF NOT EXISTS 'CASUAL'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`
   ).catch((e: any) => console.warn('[Server] ALTER TYPE RequestType (CASUAL):', e.message));
 
+  // pins 테이블에 search_keywords 컬럼 추가 (없으면)
+  await AppDataSource.query(
+    `ALTER TABLE pins ADD COLUMN IF NOT EXISTS search_keywords TEXT[] NOT NULL DEFAULT '{}';`
+  ).catch((e: any) => console.warn('[Server] ALTER TABLE pins (search_keywords):', e.message));
+
+  // ─── 캠페인 알림 마이그레이션 ───
+  // notification_settings: 캠페인 토글 컬럼 추가
+  await AppDataSource.query(`
+    ALTER TABLE notification_settings
+      ADD COLUMN IF NOT EXISTS inactive_nudge   BOOLEAN NOT NULL DEFAULT TRUE,
+      ADD COLUMN IF NOT EXISTS rank_drop_alert  BOOLEAN NOT NULL DEFAULT TRUE;
+  `).catch((e: any) => console.warn('[Server] ALTER TABLE notification_settings (campaign):', e.message));
+
+  // notification_campaign_logs 테이블 신설
+  await AppDataSource.query(`
+    CREATE TABLE IF NOT EXISTS notification_campaign_logs (
+      id                        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id                   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      campaign_type             VARCHAR(40) NOT NULL,
+      context                   JSONB NOT NULL DEFAULT '{}',
+      sent_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      push_clicked_at           TIMESTAMPTZ,
+      resulting_match_request_id UUID
+    );
+  `).catch((e: any) => console.warn('[Server] CREATE TABLE notification_campaign_logs:', e.message));
+
+  await AppDataSource.query(`
+    CREATE INDEX IF NOT EXISTS idx_ncl_user_type_sent
+      ON notification_campaign_logs(user_id, campaign_type, sent_at DESC);
+  `).catch((e: any) => console.warn('[Server] CREATE INDEX idx_ncl_user_type_sent:', e.message));
+
+  // ─── 노쇼 신고 시스템 마이그레이션 ───
+  // noshow_reports 테이블 신설
+  await AppDataSource.query(`
+    CREATE TABLE IF NOT EXISTS noshow_reports (
+      id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      match_id            UUID NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+      reporter_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      reported_user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      reported_profile_id UUID NOT NULL REFERENCES sports_profiles(id) ON DELETE CASCADE,
+      status              VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+      evidence_urls       TEXT[] NOT NULL DEFAULT '{}',
+      reporter_message    TEXT,
+      admin_id            UUID REFERENCES admin_accounts(id),
+      admin_decision_at   TIMESTAMPTZ,
+      admin_memo          TEXT,
+      applied_score_change INT,
+      applied_ban_hours   INT,
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `).catch((e: any) => console.warn('[Server] CREATE TABLE noshow_reports:', e.message));
+
+  await AppDataSource.query(`
+    CREATE INDEX IF NOT EXISTS idx_noshow_status_created
+      ON noshow_reports(status, created_at DESC);
+  `).catch((e: any) => console.warn('[Server] CREATE INDEX idx_noshow_status_created:', e.message));
+
+  await AppDataSource.query(`
+    CREATE INDEX IF NOT EXISTS idx_noshow_reported_user
+      ON noshow_reports(reported_user_id, status);
+  `).catch((e: any) => console.warn('[Server] CREATE INDEX idx_noshow_reported_user:', e.message));
+
+  await AppDataSource.query(`
+    CREATE INDEX IF NOT EXISTS idx_noshow_reporter
+      ON noshow_reports(reporter_id, created_at DESC);
+  `).catch((e: any) => console.warn('[Server] CREATE INDEX idx_noshow_reporter:', e.message));
+
+  // manner_ratings 테이블 신설
+  // UNIQUE: (match_id, rater_id, rated_user_id, source) — USER + NOSHOW_AUTO 같은 매칭에서 둘 다 가능
+  await AppDataSource.query(`
+    CREATE TABLE IF NOT EXISTS manner_ratings (
+      id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      match_id          UUID NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+      rater_id          UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      rated_user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      rated_profile_id  UUID NOT NULL REFERENCES sports_profiles(id) ON DELETE CASCADE,
+      score             INT NOT NULL CHECK (score BETWEEN 1 AND 5),
+      source            VARCHAR(20) NOT NULL DEFAULT 'USER',
+      noshow_report_id  UUID REFERENCES noshow_reports(id) ON DELETE SET NULL,
+      voided_at         TIMESTAMPTZ,
+      created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(match_id, rater_id, rated_user_id, source)
+    );
+  `).catch((e: any) => console.warn('[Server] CREATE TABLE manner_ratings:', e.message));
+
+  // 기존 환경에 UNIQUE(match_id, rater_id, rated_user_id)가 이미 있으면 source 포함으로 교체
+  await AppDataSource.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM pg_constraint c
+        JOIN pg_class t ON t.oid = c.conrelid
+        WHERE t.relname = 'manner_ratings' AND c.contype = 'u'
+          AND pg_get_constraintdef(c.oid) = 'UNIQUE (match_id, rater_id, rated_user_id)'
+      ) THEN
+        EXECUTE (
+          SELECT 'ALTER TABLE manner_ratings DROP CONSTRAINT ' || quote_ident(c.conname)
+          FROM pg_constraint c
+          JOIN pg_class t ON t.oid = c.conrelid
+          WHERE t.relname = 'manner_ratings' AND c.contype = 'u'
+            AND pg_get_constraintdef(c.oid) = 'UNIQUE (match_id, rater_id, rated_user_id)'
+          LIMIT 1
+        );
+        ALTER TABLE manner_ratings
+          ADD CONSTRAINT manner_ratings_match_rater_rated_source_uk
+          UNIQUE (match_id, rater_id, rated_user_id, source);
+      END IF;
+    END$$;
+  `).catch((e: any) => console.warn('[Server] manner_ratings UNIQUE migration:', e.message));
+
+  await AppDataSource.query(`
+    CREATE INDEX IF NOT EXISTS idx_manner_ratings_rated_profile
+      ON manner_ratings(rated_profile_id, voided_at);
+  `).catch((e: any) => console.warn('[Server] CREATE INDEX idx_manner_ratings_rated_profile:', e.message));
+
+  await AppDataSource.query(`
+    CREATE INDEX IF NOT EXISTS idx_manner_ratings_match_rater
+      ON manner_ratings(match_id, rater_id);
+  `).catch((e: any) => console.warn('[Server] CREATE INDEX idx_manner_ratings_match_rater:', e.message));
+
+  // sports_profiles: noshow_confirmed_count, match_request_ban_until 컬럼 추가
+  await AppDataSource.query(`
+    ALTER TABLE sports_profiles
+      ADD COLUMN IF NOT EXISTS noshow_confirmed_count INT NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS match_request_ban_until TIMESTAMPTZ NULL;
+  `).catch((e: any) => console.warn('[Server] ALTER TABLE sports_profiles (noshow):', e.message));
+
+  // users: noshow_report_ban_until 컬럼 추가
+  await AppDataSource.query(`
+    ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS noshow_report_ban_until TIMESTAMPTZ NULL;
+  `).catch((e: any) => console.warn('[Server] ALTER TABLE users (noshow_report_ban):', e.message));
+
+  // pin_ranking_snapshots 테이블 신설
+  await AppDataSource.query(`
+    CREATE TABLE IF NOT EXISTS pin_ranking_snapshots (
+      id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      pin_id            UUID NOT NULL REFERENCES pins(id) ON DELETE CASCADE,
+      sports_profile_id UUID NOT NULL REFERENCES sports_profiles(id) ON DELETE CASCADE,
+      user_id           UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      sport_type        "SportType" NOT NULL,
+      rank              INT NOT NULL,
+      score             INT NOT NULL,
+      snapshot_date     DATE NOT NULL,
+      created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(pin_id, sports_profile_id, sport_type, snapshot_date)
+    );
+  `).catch((e: any) => console.warn('[Server] CREATE TABLE pin_ranking_snapshots:', e.message));
+
+  await AppDataSource.query(`
+    CREATE INDEX IF NOT EXISTS idx_prs_user_date
+      ON pin_ranking_snapshots(user_id, snapshot_date DESC);
+  `).catch((e: any) => console.warn('[Server] CREATE INDEX idx_prs_user_date:', e.message));
+
+  // UserStatus enum에 MERGED 추가 (없으면)
+  await AppDataSource.query(
+    `DO $$ BEGIN ALTER TYPE "UserStatus" ADD VALUE IF NOT EXISTS 'MERGED'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`
+  ).catch((e: any) => console.warn('[Server] ALTER TYPE UserStatus (MERGED):', e.message));
+
+  // users: Firebase UID + 계정 병합 컬럼 추가 (없으면)
+  await AppDataSource.query(`
+    ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS firebase_uid          VARCHAR(128) NULL,
+      ADD COLUMN IF NOT EXISTS merged_into_user_id   UUID        NULL REFERENCES users(id) ON DELETE SET NULL,
+      ADD COLUMN IF NOT EXISTS merged_at             TIMESTAMPTZ NULL;
+  `).catch((e: any) => console.warn('[Server] ALTER TABLE users (firebase/merge):', e.message));
+
+  // firebase_uid unique index (NULL 제외)
+  await AppDataSource.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS uidx_users_firebase_uid ON users(firebase_uid) WHERE firebase_uid IS NOT NULL;`
+  ).catch((e: any) => console.warn('[Server] CREATE INDEX uidx_users_firebase_uid:', e.message));
+
   // ─────────────────────────────────────
   // Firebase 초기화
   // ─────────────────────────────────────
@@ -169,6 +342,22 @@ async function start(): Promise<void> {
       console.error('[Redis Sub] Message parse error:', err);
     }
   });
+
+  // ─────────────────────────────────────
+  // 캠페인 알림 워커 + Cron 등록
+  // ─────────────────────────────────────
+  {
+    const { registerCampaignCronJobs } = await import('./workers/notification-campaign.worker.js');
+    await registerCampaignCronJobs();
+  }
+
+  // ─────────────────────────────────────
+  // 노쇼 신고 정리 워커 Cron 등록
+  // ─────────────────────────────────────
+  {
+    const { registerNoshowCleanupCron } = await import('./workers/noshow-cleanup.worker.js');
+    await registerNoshowCleanupCron();
+  }
 
   // ─────────────────────────────────────
   // 매칭 수락 타임아웃 워커 (항상 활성화 — BullMQ delayed job 처리용)

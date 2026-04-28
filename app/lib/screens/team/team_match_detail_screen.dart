@@ -23,7 +23,12 @@ class TeamMatchDetailScreen extends ConsumerWidget {
     final matchAsync = ref.watch(teamMatchDetailProvider(matchId));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('팀 매칭 상세')),
+      backgroundColor: const Color(0xFF0A0A0A),
+      appBar: AppBar(
+        title: const Text('팀 매칭 상세'),
+        backgroundColor: const Color(0xFF0A0A0A),
+        elevation: 0,
+      ),
       body: matchAsync.when(
         loading: () => const FullScreenLoading(),
         error: (e, _) => ErrorView(
@@ -277,10 +282,6 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
         'awayScore': awayScore,
       });
       ref.invalidate(teamMatchDetailProvider(widget.matchId));
-
-      if (mounted) {
-        AppToast.success('결과가 제출되었습니다.');
-      }
     } catch (e) {
       if (mounted) {
         AppToast.error(extractErrorMessage(e, '결과 제출에 실패했습니다.'));

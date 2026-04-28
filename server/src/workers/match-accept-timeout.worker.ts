@@ -380,8 +380,9 @@ async function handleAcceptTimeout(
         });
       }
 
-      // 미응답자 패널티: 수락한 상대방이 있는 경우에만 -15 displayScore 적용
+      // 미응답자 패널티: 수락한 상대방이 있는 경우에만 -5 displayScore 적용
       // glickoRating은 변경하지 않음 (순수 MMR 보존)
+      const PENALTY_POINTS = 5; // 기존 -15에서 1/3로 축소
       if (hasPenalty) {
         const sportType = match.sportType as string;
         const noResponderProfile = await manager
@@ -394,7 +395,7 @@ async function handleAcceptTimeout(
 
         if (noResponderProfile) {
           const scoreBefore = noResponderProfile.displayScore ?? noResponderProfile.currentScore;
-          const newScore = Math.max(100, scoreBefore - 15);
+          const newScore = Math.max(100, scoreBefore - PENALTY_POINTS);
 
           await manager
             .createQueryBuilder()
@@ -411,7 +412,7 @@ async function handleAcceptTimeout(
             gameId: null,
             changeType: ScoreChangeType.NO_SHOW_PENALTY,
             scoreBefore,
-            scoreChange: -15,
+            scoreChange: -PENALTY_POINTS,
             scoreAfter: newScore,
           }));
         }
@@ -423,7 +424,7 @@ async function handleAcceptTimeout(
             userId: acc.userId,
             type: 'MATCH_ACCEPT_TIMEOUT',
             title: '매칭 수락 시간 만료 (패널티)',
-            body: '수락 시간이 만료되어 매칭이 취소되었습니다. -15점 패널티가 적용되었습니다.',
+            body: `수락 시간이 만료되어 매칭이 취소되었습니다. -${PENALTY_POINTS}점 패널티가 적용되었습니다.`,
             data: { matchId, deepLink: '/matches/requests' },
           }),
         );
@@ -487,7 +488,7 @@ async function handleAcceptTimeout(
         await manager.save(ScoreHistory, manager.create(ScoreHistory, {
           sportsProfileId: acceptorProfile.id,
           gameId: null,
-          changeType: ScoreChangeType.NO_SHOW_PENALTY,
+          changeType: ScoreChangeType.NO_SHOW_COMPENSATION,
           scoreBefore: acceptorScoreBefore,
           scoreChange: 5,
           scoreAfter: acceptorNewScore,

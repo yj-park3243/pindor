@@ -43,6 +43,36 @@ export const matchesApi = {
     const response = await apiClient.get('/admin/noshow-reports', { params });
     return response.data.data;
   },
+
+  // PENDING 노쇼 신고 카운트 조회
+  getNoshowPendingCount: async (): Promise<{ pendingCount: number; overdueCount: number }> => {
+    const response = await apiClient.get('/admin/noshow-reports/pending-count');
+    return response.data.data;
+  },
+
+  // 노쇼 신고 승인
+  approveNoshowReport: async (id: string, memo: string): Promise<{ message: string }> => {
+    const response = await apiClient.post(`/admin/noshow-reports/${id}/approve`, { memo });
+    return response.data.data;
+  },
+
+  // 노쇼 신고 기각
+  rejectNoshowReport: async (id: string, memo: string, reporterPenalty?: boolean): Promise<{ message: string }> => {
+    const response = await apiClient.post(`/admin/noshow-reports/${id}/reject`, { memo, reporterPenalty });
+    return response.data.data;
+  },
+
+  // 노쇼 신고 자료 부족
+  insufficientNoshowReport: async (id: string, memo: string): Promise<{ message: string }> => {
+    const response = await apiClient.post(`/admin/noshow-reports/${id}/insufficient`, { memo });
+    return response.data.data;
+  },
+
+  // 노쇼 신고 일괄 기각
+  bulkRejectNoshowReports: async (ids: string[], memo: string): Promise<{ message: string }> => {
+    const response = await apiClient.post('/admin/noshow-reports/bulk-reject', { ids, memo });
+    return response.data.data;
+  },
 };
 
 export interface ChatMessage {
@@ -59,17 +89,29 @@ export interface ChatMessage {
 
 export interface NoshowReport {
   id: string;
+  matchId: string;
   reporterId: string;
   reporterNickname: string;
-  targetId: string;
-  targetNickname: string;
-  targetProfileImageUrl: string | null;
-  description: string | null;
-  imageUrls: string[];
+  reporterProfileImageUrl: string | null;
+  reporterMannerAvg: number | null;
+  reporterTotalReports: number;
+  reporterApprovedReports: number;
+  reportedUserId: string;
+  reportedNickname: string;
+  reportedProfileImageUrl: string | null;
+  reportedProfileId: string;
+  reportedConfirmedCount: number;
+  reportedMannerAvg: number | null;
   status: string;
-  resolvedBy: string | null;
-  resolvedAt: string | null;
+  evidenceUrls: string[];
+  reporterMessage: string | null;
+  adminId: string | null;
+  adminDecisionAt: string | null;
+  adminMemo: string | null;
+  appliedScoreChange: number | null;
+  appliedBanHours: number | null;
   createdAt: string;
+  updatedAt: string;
   match: {
     id: string;
     sportType: string;

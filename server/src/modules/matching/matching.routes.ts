@@ -16,6 +16,7 @@ import {
 } from './matching.schema.js';
 import { AppDataSource } from '../../config/database.js';
 import { NotificationService } from '../notifications/notification.service.js';
+import { requireVerified } from '../../shared/middleware/require-verified.middleware.js';
 
 export async function matchingRoutes(fastify: FastifyInstance): Promise<void> {
   const notificationService: NotificationService | undefined =
@@ -26,7 +27,7 @@ export async function matchingRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/matches/requests',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Matching'],
         summary: '매칭 요청 생성',
@@ -47,7 +48,7 @@ export async function matchingRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/matches/instant',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Matching'],
         summary: '즉시 매칭 (오늘 대결)',
@@ -68,7 +69,7 @@ export async function matchingRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/matches/requests',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Matching'],
         summary: '내 매칭 요청 목록',
@@ -96,7 +97,7 @@ export async function matchingRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.delete(
     '/matches/requests/:id',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Matching'],
         summary: '매칭 요청 취소',
@@ -122,7 +123,7 @@ export async function matchingRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/matches',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Matching'],
         summary: '내 매칭 목록',
@@ -150,7 +151,7 @@ export async function matchingRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/matches/active',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Matching'],
         summary: '활성 매칭 조회 (앱 시작 시 리다이렉트용)',
@@ -170,7 +171,7 @@ export async function matchingRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/matches/:id',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Matching'],
         summary: '매칭 상세 조회',
@@ -196,7 +197,7 @@ export async function matchingRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.patch(
     '/matches/:id/confirm',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Matching'],
         summary: '경기 확정',
@@ -227,7 +228,7 @@ export async function matchingRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.patch(
     '/matches/:id/cancel',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Matching'],
         summary: '경기 취소',
@@ -258,7 +259,7 @@ export async function matchingRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/matches/:matchId/accept',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Matching'],
         summary: '매칭 수락',
@@ -288,7 +289,7 @@ export async function matchingRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/matches/:matchId/reject',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Matching'],
         summary: '매칭 거절',
@@ -318,7 +319,7 @@ export async function matchingRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/matches/:matchId/status',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Matching'],
         summary: '매칭 수락 상태 조회 (양측 수락 여부)',
@@ -348,7 +349,7 @@ export async function matchingRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/matches/:id/report-noshow',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Matching'],
         summary: '노쇼 신고 (증거 사진 필수)',
@@ -386,7 +387,7 @@ export async function matchingRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/matches/:id/forfeit',
     {
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticate, requireVerified],
       schema: {
         tags: ['Matching'],
         summary: '매칭 포기 (패배 처리)',

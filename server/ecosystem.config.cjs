@@ -4,9 +4,7 @@ module.exports = {
       name: 'match-api',
       script: 'src/server.ts',
       interpreter: './node_modules/.bin/tsx',
-      watch: ['src'],
-      watch_delay: 1000,
-      ignore_watch: ['node_modules', 'dist', 'logs', '*.log'],
+      watch: false,
       env: {
         NODE_ENV: 'development',
         PORT: 3000,
@@ -29,9 +27,7 @@ module.exports = {
       name: 'match-worker',
       script: 'src/workers/push.worker.ts',
       interpreter: './node_modules/.bin/tsx',
-      watch: ['src/workers'],
-      watch_delay: 1000,
-      ignore_watch: ['node_modules', 'dist', 'logs'],
+      watch: false,
       env: {
         NODE_ENV: 'development',
       },
@@ -47,9 +43,7 @@ module.exports = {
       name: 'match-queue',
       script: 'src/workers/matching-queue.worker.ts',
       interpreter: './node_modules/.bin/tsx',
-      watch: ['src/workers'],
-      watch_delay: 1000,
-      ignore_watch: ['node_modules', 'dist', 'logs'],
+      watch: false,
       env: {
         NODE_ENV: 'development',
         STANDALONE_WORKER: 'true',

@@ -32,7 +32,7 @@ export async function processAutoResolveGames(): Promise<void> {
     .where('game.resultStatus = :status', { status: 'PENDING' })
     .andWhere('game.requesterClaimedResult IS NULL')
     .andWhere('game.opponentClaimedResult IS NULL')
-    .andWhere('match.status = :matchStatus', { matchStatus: 'CONFIRMED' })
+    .andWhere('match.status IN (:...matchStatuses)', { matchStatuses: ['CONFIRMED', 'CHAT'] })
     .andWhere('game.createdAt <= :threshold', { threshold: threeDaysAgo })
     .take(50)
     .getMany();
@@ -63,7 +63,7 @@ export async function processAutoResolveGames(): Promise<void> {
       '(game.requesterClaimedResult IS NOT NULL AND game.opponentClaimedResult IS NULL) OR ' +
       '(game.requesterClaimedResult IS NULL AND game.opponentClaimedResult IS NOT NULL)',
     )
-    .andWhere('match.status = :matchStatus', { matchStatus: 'CONFIRMED' })
+    .andWhere('match.status IN (:...matchStatuses)', { matchStatuses: ['CONFIRMED', 'CHAT'] })
     .andWhere('game.updatedAt <= :threshold', { threshold: threeMinutesAgo })
     .take(50)
     .getMany();

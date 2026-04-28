@@ -20,7 +20,12 @@ class GameConfirmScreen extends ConsumerWidget {
     final gameAsync = ref.watch(gameResultProvider(gameId));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('결과 인증')),
+      backgroundColor: const Color(0xFF0A0A0A),
+      appBar: AppBar(
+        title: const Text('결과 인증'),
+        backgroundColor: const Color(0xFF0A0A0A),
+        elevation: 0,
+      ),
       body: gameAsync.when(
         loading: () => const FullScreenLoading(),
         error: (e, _) => ErrorView(message: '경기 정보를 불러올 수 없습니다.'),

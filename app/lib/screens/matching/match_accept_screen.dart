@@ -88,6 +88,10 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
           a.expiresAt != null && a.expiresAt!.isBefore(DateTime.now())) ?? false;
 
       if (alreadyAccepted || !match.isPendingAccept || isExpired) {
+        // ★ stale로 인한 무한 redirect 루프 방지: 로컬 캐시 + force refresh로
+        //    매칭 목록의 stale PENDING_ACCEPT 데이터까지 같이 정리.
+        ref.read(matchingRepositoryProvider).clearLocalCache();
+        ref.read(matchListForceRefreshProvider.notifier).state = true;
         ref.invalidate(matchListProvider(null));
         context.go(AppRoutes.matchList);
         return;
@@ -469,7 +473,7 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
                                 Icon(Icons.sports_rounded, size: 24, color: AppTheme.primaryColor),
                                 SizedBox(width: 8),
                                 Text(
-                                  '매칭이 잡혔습니다!',
+                                  '상대를 찾았습니다!',
                                   style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: AppTheme.primaryColor),
                                 ),
                               ],
@@ -494,6 +498,43 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
 
                             // 닉네임
                             Text(match.opponent.nickname, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
+
+                            // 친선 매치: 상대 성별/나이 노출
+                            if (match.isCasual && (match.opponent.gender != null || match.opponent.age != null)) ...[
+                              const SizedBox(height: 4),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  if (match.opponent.gender != null) ...[
+                                    Icon(
+                                      match.opponent.gender == 'FEMALE'
+                                          ? Icons.female_rounded
+                                          : (match.opponent.gender == 'MALE'
+                                              ? Icons.male_rounded
+                                              : Icons.transgender_rounded),
+                                      size: 16,
+                                      color: match.opponent.gender == 'FEMALE'
+                                          ? Colors.pinkAccent
+                                          : (match.opponent.gender == 'MALE'
+                                              ? Colors.lightBlueAccent
+                                              : AppTheme.textSecondary),
+                                    ),
+                                    const SizedBox(width: 2),
+                                    Text(
+                                      match.opponent.gender == 'FEMALE'
+                                          ? '여'
+                                          : (match.opponent.gender == 'MALE' ? '남' : '기타'),
+                                      style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                                    ),
+                                  ],
+                                  if (match.opponent.gender != null && match.opponent.age != null)
+                                    const Text('  ·  ', style: TextStyle(color: AppTheme.textDisabled)),
+                                  if (match.opponent.age != null)
+                                    Text('${match.opponent.age}세',
+                                        style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+                                ],
+                              ),
+                            ],
 
                             // 프로필 메시지 (닉네임 바로 아래)
                             if (match.opponent.matchMessage != null && match.opponent.matchMessage!.isNotEmpty) ...[

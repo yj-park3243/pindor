@@ -338,7 +338,7 @@ export function setupSocketGateway(io: Server, redis: Redis): void {
             data: {
               roomId: data.roomId,
               senderId: userId,
-              deepLink: `/chat/${data.roomId}`,
+              deepLink: `/chats/${data.roomId}`,
             },
             createdAt: new Date().toISOString(),
           });
@@ -355,7 +355,7 @@ export function setupSocketGateway(io: Server, redis: Redis): void {
               data: {
                 roomId: data.roomId,
                 senderId: userId,
-                deepLink: `/chat/${data.roomId}`,
+                deepLink: `/chats/${data.roomId}`,
               },
               saveToDb: false,
             }),

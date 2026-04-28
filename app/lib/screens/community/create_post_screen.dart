@@ -8,15 +8,15 @@ import '../../config/theme.dart';
 import '../../core/network/api_client.dart';
 import '../../core/utils/permission_helper.dart';
 import '../../providers/community_provider.dart';
-import '../../providers/sport_preference_provider.dart';
 import '../../repositories/upload_repository.dart';
 import '../../widgets/common/app_toast.dart';
 
 /// 게시글 작성 화면
 class CreatePostScreen extends ConsumerStatefulWidget {
   final String pinId;
+  final String sportType;
 
-  const CreatePostScreen({super.key, required this.pinId});
+  const CreatePostScreen({super.key, required this.pinId, required this.sportType});
 
   @override
   ConsumerState<CreatePostScreen> createState() => _CreatePostScreenState();
@@ -27,15 +27,8 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   final _contentController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
-  late String _selectedSport;
   final List<File> _pickedImages = [];
   bool _isSubmitting = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _selectedSport = ref.read(sportPreferenceProvider);
-  }
 
   @override
   void dispose() {
@@ -79,7 +72,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
             pinId: widget.pinId,
             title: _titleController.text.trim(),
             content: _contentController.text.trim(),
-            sportType: _selectedSport,
+            sportType: widget.sportType,
             imageUrls: imageUrls.isNotEmpty ? imageUrls : null,
           );
 
@@ -103,7 +96,9 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
+        backgroundColor: const Color(0xFF0A0A0A),
         title: const Text('게시글 작성'),
         actions: [
           TextButton(
@@ -132,74 +127,32 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 스포츠 선택 (가로 스크롤 칩)
-              const Text(
-                '종목',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                height: 40,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: allSports.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
-                  itemBuilder: (context, index) {
-                    final sport = allSports[index];
-                    final isSelected = _selectedSport == sport.value;
-                    return GestureDetector(
-                      onTap: () {
-                        setState(() => _selectedSport = sport.value);
-                        ref
-                            .read(sportPreferenceProvider.notifier)
-                            .select(sport.value);
-                      },
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? AppTheme.primaryColor
-                              : const Color(0xFFF0F2F5),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: isSelected
-                                ? AppTheme.primaryColor
-                                : const Color(0xFFE0E3E8),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              sport.icon,
-                              size: 16,
-                              color:
-                                  isSelected ? Colors.white : AppTheme.textSecondary,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              sport.label,
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: isSelected
-                                    ? Colors.white
-                                    : AppTheme.textPrimary,
-                              ),
-                            ),
-                          ],
+              // 종목 태그 (고정)
+              Builder(builder: (_) {
+                final sport = allSports.where((s) => s.value == widget.sportType).firstOrNull ?? allSports.first;
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(sport.icon, size: 16, color: Colors.white),
+                      const SizedBox(width: 6),
+                      Text(
+                        sport.label,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
                         ),
                       ),
-                    );
-                  },
-                ),
-              ),
+                    ],
+                  ),
+                );
+              }),
               const SizedBox(height: 20),
 
               // 제목
@@ -214,9 +167,16 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
               const SizedBox(height: 8),
               TextFormField(
                 controller: _titleController,
-                decoration: const InputDecoration(
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
                   hintText: '제목을 입력하세요',
-                  border: OutlineInputBorder(),
+                  hintStyle: const TextStyle(color: AppTheme.textDisabled),
+                  filled: true,
+                  fillColor: const Color(0xFF1E1E1E),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide.none,
+                  ),
                 ),
                 maxLength: 100,
                 validator: (v) {
@@ -239,9 +199,16 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
               const SizedBox(height: 8),
               TextFormField(
                 controller: _contentController,
-                decoration: const InputDecoration(
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
                   hintText: '내용을 입력하세요...',
-                  border: OutlineInputBorder(),
+                  hintStyle: const TextStyle(color: AppTheme.textDisabled),
+                  filled: true,
+                  fillColor: const Color(0xFF1E1E1E),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide.none,
+                  ),
                   alignLabelWithHint: true,
                 ),
                 maxLines: 10,
@@ -307,7 +274,7 @@ class _ImagePicker extends StatelessWidget {
                 height: 80,
                 margin: const EdgeInsets.only(right: 8),
                 decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey.shade300, width: 1.5),
+                  border: Border.all(color: const Color(0xFF3A3A3A), width: 1.5),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Column(

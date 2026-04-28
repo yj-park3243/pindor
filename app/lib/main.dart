@@ -218,7 +218,18 @@ class _AppInitializerState extends ConsumerState<_AppInitializer>
       _refreshStaleData();
       // 활성 매칭 여부에 따라 소켓 연결/해제
       syncSocketConnection(ref);
+      // 권한 변경/이전 등록 실패 등으로 누락된 FCM 토큰 재시도
+      _retryFcmIfNeeded();
     }
+  }
+
+  /// 앱 resume 시 FCM 토큰 재시도
+  /// - pending 플래그가 있으면 무조건 재시도 (이전 등록 실패 케이스)
+  /// - 인증된 상태면 항상 한 번 호출 — TTL/캐시 검사로 내부 스킵 처리됨
+  Future<void> _retryFcmIfNeeded() async {
+    final isAuth = ref.read(isAuthenticatedProvider);
+    if (!isAuth) return;
+    await PushNotificationService.instance.retryIfPending();
   }
 
   /// 앱 포그라운드 복귀 시 TTL 만료 데이터만 선택적 갱신

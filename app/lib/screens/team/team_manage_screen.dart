@@ -11,6 +11,7 @@ import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/error_view.dart';
 import '../../widgets/team/team_member_tile.dart';
 import '../../widgets/common/app_toast.dart';
+import '../../widgets/common/safe_bottom_sheet.dart';
 import '../../core/network/api_client.dart';
 
 /// 팀 관리 화면 (CAPTAIN 전용)
@@ -89,28 +90,14 @@ class _TeamManageScreenState extends ConsumerState<TeamManageScreen> {
   }
 
   Future<void> _kickMember(TeamMember member) async {
-    final confirmed = await showModalBottomSheet<bool>(
+    final confirmed = await showAppCardSheet<bool>(
       context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF1E1E1E),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: EdgeInsets.fromLTRB(
-            24, 20, 24, MediaQuery.of(ctx).padding.bottom + 20),
+      backgroundColor: const Color(0xFF1E1E1E),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: const Color(0xFF2A2A2A),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 20),
             Container(
               width: 56,
               height: 56,
@@ -217,28 +204,14 @@ class _TeamManageScreenState extends ConsumerState<TeamManageScreen> {
   }
 
   Future<void> _disbandTeam() async {
-    final confirmed = await showModalBottomSheet<bool>(
+    final confirmed = await showAppCardSheet<bool>(
       context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF1E1E1E),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: EdgeInsets.fromLTRB(
-            24, 20, 24, MediaQuery.of(ctx).padding.bottom + 20),
+      backgroundColor: const Color(0xFF1E1E1E),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: const Color(0xFF2A2A2A),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 20),
             Container(
               width: 56,
               height: 56,
@@ -331,8 +304,11 @@ class _TeamManageScreenState extends ConsumerState<TeamManageScreen> {
     final currentUser = ref.watch(currentUserProvider);
 
     return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         title: const Text('팀 관리'),
+        backgroundColor: const Color(0xFF0A0A0A),
+        elevation: 0,
         actions: [
           TextButton(
             onPressed: _isSaving ? null : _saveInfo,
@@ -471,28 +447,14 @@ class _TeamManageScreenState extends ConsumerState<TeamManageScreen> {
   }
 
   Future<void> _confirmAndTransferCaptain(TeamMember member) async {
-    final confirmed = await showModalBottomSheet<bool>(
+    final confirmed = await showAppCardSheet<bool>(
       context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF1E1E1E),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: EdgeInsets.fromLTRB(
-            24, 20, 24, MediaQuery.of(ctx).padding.bottom + 20),
+      backgroundColor: const Color(0xFF1E1E1E),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: const Color(0xFF2A2A2A),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 20),
             Container(
               width: 56,
               height: 56,

@@ -16,8 +16,11 @@ class TeamHomeScreen extends ConsumerWidget {
     final myTeamsAsync = ref.watch(myTeamsProvider);
 
     return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         title: const Text('팀'),
+        backgroundColor: const Color(0xFF0A0A0A),
+        elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.add),

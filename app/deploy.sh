@@ -71,6 +71,7 @@ if [ "$PLATFORM" = "android" ] || [ "$PLATFORM" = "all" ]; then
     --json_key "$PLAY_KEY" \
     --package_name "kr.pins.spots" \
     --track "internal" \
+    --release_status draft \
     --skip_upload_metadata \
     --skip_upload_images \
     --skip_upload_screenshots \

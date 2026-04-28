@@ -9,6 +9,7 @@ class PinPost {
   final String title;
   final String content;
   final String category; // GENERAL | MATCH_SEEK | REVIEW | NOTICE
+  final String sportType; // GOLF | BILLIARDS | TENNIS | ...
   final int viewCount;
   final int likeCount;
   final int commentCount;
@@ -28,6 +29,7 @@ class PinPost {
     required this.title,
     required this.content,
     required this.category,
+    this.sportType = 'GOLF',
     required this.viewCount,
     required this.likeCount,
     required this.commentCount,
@@ -72,6 +74,7 @@ class PinPost {
       title: json['title'] as String,
       content: json['content'] as String,
       category: json['category'] as String? ?? 'GENERAL',
+      sportType: json['sportType'] as String? ?? 'GOLF',
       viewCount: json['viewCount'] as int? ?? 0,
       likeCount: json['likeCount'] as int? ?? 0,
       commentCount: json['commentCount'] as int? ?? 0,
@@ -95,6 +98,7 @@ class PinPost {
       title: title,
       content: content,
       category: category,
+      sportType: sportType,
       viewCount: viewCount,
       likeCount: likeCount ?? this.likeCount,
       commentCount: commentCount ?? this.commentCount,

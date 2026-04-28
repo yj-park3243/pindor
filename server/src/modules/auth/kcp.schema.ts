@@ -21,6 +21,7 @@ export interface KcpRawResult {
 export interface KcpVerifyResult {
   accessToken: string;
   refreshToken: string;
+  merged?: boolean;
   user: {
     id: string;
     nickname: string;

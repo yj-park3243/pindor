@@ -87,6 +87,21 @@ export class User {
   @Column({ name: 'verified_at', type: 'timestamptz', nullable: true })
   verifiedAt!: Date | null;
 
+  // Firebase UID (이메일 가입)
+  @Column({ name: 'firebase_uid', type: 'varchar', length: 128, nullable: true, unique: true })
+  firebaseUid!: string | null;
+
+  // 계정 병합 추적
+  @Column({ name: 'merged_into_user_id', type: 'uuid', nullable: true })
+  mergedIntoUserId!: string | null;
+
+  @Column({ name: 'merged_at', type: 'timestamptz', nullable: true })
+  mergedAt!: Date | null;
+
+  // 노쇼 신고 자격 차단 (악의적 신고자 페널티)
+  @Column({ name: 'noshow_report_ban_until', type: 'timestamptz', nullable: true })
+  noshowReportBanUntil!: Date | null;
+
   // Relations
   @OneToMany('SocialAccount', 'user')
   socialAccounts!: SocialAccount[];
