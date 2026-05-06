@@ -14,6 +14,23 @@ import { createPublicKey } from 'crypto';
 import * as jwt from 'jsonwebtoken';
 import * as admin from 'firebase-admin';
 import { getFirebaseApp } from '../../config/firebase.js';
+import { sendAdminAlert, escapeHtml } from '../../shared/services/telegram.service.js';
+
+// App Store 심사 대응 — 본인인증 우회 (env로 제어, 심사 통과 후 켜기)
+const VERIFICATION_BYPASS = process.env.REQUIRE_VERIFIED_ENABLED !== 'true';
+function effectiveIsVerified(actual: boolean | undefined): boolean {
+  return VERIFICATION_BYPASS ? true : (actual ?? false);
+}
+
+/// 신규 가입 시 텔레그램 관리자 알림 (KCP 본인인증과 별개로 계정 생성 시점)
+function notifyNewSignup(provider: string, user: { id: string; nickname: string; email: string | null }): void {
+  void sendAdminAlert(
+    `🆕 <b>신규 계정 생성</b> (${escapeHtml(provider)})\n` +
+      `• ID: <code>${escapeHtml(user.id)}</code>\n` +
+      `• 닉네임: ${escapeHtml(user.nickname)}\n` +
+      `• 이메일: ${escapeHtml(user.email ?? '-')}`,
+  );
+}
 
 export class AuthService {
   constructor(private dataSource: DataSource) {}
@@ -105,7 +122,7 @@ export class AuthService {
           nickname: user.nickname,
           profileImageUrl: user.profileImageUrl,
           isNewUser: false,
-          isVerified: user.isVerified ?? false,
+          isVerified: effectiveIsVerified(user.isVerified),
         },
       };
     }
@@ -138,7 +155,7 @@ export class AuthService {
             nickname: existingUser.nickname,
             profileImageUrl: existingUser.profileImageUrl,
             isNewUser: false,
-            isVerified: existingUser.isVerified ?? false,
+            isVerified: effectiveIsVerified(existingUser.isVerified),
           },
         };
       }
@@ -178,6 +195,8 @@ export class AuthService {
     const tokens = await issueTokenPair({ userId: user.id, email: user.email });
     await this.storeRefreshToken(user.id, tokens.refreshToken);
 
+    notifyNewSignup('KAKAO', { id: user.id, nickname: user.nickname, email: user.email });
+
     return {
       ...tokens,
       user: {
@@ -185,7 +204,7 @@ export class AuthService {
         nickname: user.nickname,
         profileImageUrl: user.profileImageUrl,
         isNewUser,
-        isVerified: false,
+        isVerified: effectiveIsVerified(false),
       },
     };
   }
@@ -246,7 +265,7 @@ export class AuthService {
           nickname: user.nickname,
           profileImageUrl: user.profileImageUrl,
           isNewUser: false,
-          isVerified: user.isVerified ?? false,
+          isVerified: effectiveIsVerified(user.isVerified),
         },
       };
     }
@@ -275,7 +294,7 @@ export class AuthService {
             nickname: existingUser.nickname,
             profileImageUrl: existingUser.profileImageUrl,
             isNewUser: false,
-            isVerified: existingUser.isVerified ?? false,
+            isVerified: effectiveIsVerified(existingUser.isVerified),
           },
         };
       }
@@ -311,6 +330,8 @@ export class AuthService {
     const tokens = await issueTokenPair({ userId: user.id, email: user.email });
     await this.storeRefreshToken(user.id, tokens.refreshToken);
 
+    notifyNewSignup('GOOGLE', { id: user.id, nickname: user.nickname, email: user.email });
+
     return {
       ...tokens,
       user: {
@@ -318,7 +339,7 @@ export class AuthService {
         nickname: user.nickname,
         profileImageUrl: user.profileImageUrl,
         isNewUser: true,
-        isVerified: false,
+        isVerified: effectiveIsVerified(false),
       },
     };
   }
@@ -369,7 +390,7 @@ export class AuthService {
           nickname: user.nickname,
           profileImageUrl: user.profileImageUrl,
           isNewUser: false,
-          isVerified: user.isVerified ?? false,
+          isVerified: effectiveIsVerified(user.isVerified),
         },
       };
     }
@@ -398,7 +419,7 @@ export class AuthService {
             nickname: existingUser.nickname,
             profileImageUrl: existingUser.profileImageUrl,
             isNewUser: false,
-            isVerified: existingUser.isVerified ?? false,
+            isVerified: effectiveIsVerified(existingUser.isVerified),
           },
         };
       }
@@ -407,10 +428,14 @@ export class AuthService {
     // 완전 신규 사용자
     const uniqueNickname = await this.generateUniqueNickname(nickname);
 
+    // Apple은 두 번째 로그인부터 email을 안 줌. email NULL + UNIQUE 충돌 방지를 위해
+    // email이 없으면 providerId 기반 placeholder를 저장 (사용자에게 노출되지 않음)
+    const safeEmail = email ?? `apple_${providerId}@privaterelay.pins.kr`;
+
     const user = await this.dataSource.transaction(async (manager) => {
       const now = new Date();
       const newUser = manager.create(User, {
-        email,
+        email: safeEmail,
         nickname: uniqueNickname,
         lastLoginAt: now,
         updatedAt: now,
@@ -433,6 +458,8 @@ export class AuthService {
     const tokens = await issueTokenPair({ userId: user.id, email: user.email });
     await this.storeRefreshToken(user.id, tokens.refreshToken);
 
+    notifyNewSignup('APPLE', { id: user.id, nickname: user.nickname, email: user.email });
+
     return {
       ...tokens,
       user: {
@@ -440,7 +467,7 @@ export class AuthService {
         nickname: user.nickname,
         profileImageUrl: user.profileImageUrl,
         isNewUser: true,
-        isVerified: false,
+        isVerified: effectiveIsVerified(false),
       },
     };
   }
@@ -489,7 +516,7 @@ export class AuthService {
           nickname: existing.nickname,
           profileImageUrl: existing.profileImageUrl,
           isNewUser: false,
-          isVerified: existing.isVerified ?? false,
+          isVerified: effectiveIsVerified(existing.isVerified),
         },
       };
     }
@@ -513,7 +540,7 @@ export class AuthService {
             nickname: existingByEmail.nickname,
             profileImageUrl: existingByEmail.profileImageUrl,
             isNewUser: false,
-            isVerified: existingByEmail.isVerified ?? false,
+            isVerified: effectiveIsVerified(existingByEmail.isVerified),
           },
         };
       }
@@ -543,6 +570,8 @@ export class AuthService {
     const tokens = await issueTokenPair({ userId: user.id, email: user.email });
     await this.storeRefreshToken(user.id, tokens.refreshToken);
 
+    notifyNewSignup('EMAIL', { id: user.id, nickname: user.nickname, email: user.email });
+
     return {
       ...tokens,
       user: {
@@ -550,7 +579,7 @@ export class AuthService {
         nickname: user.nickname,
         profileImageUrl: user.profileImageUrl,
         isNewUser: true,
-        isVerified: false,
+        isVerified: effectiveIsVerified(false),
       },
     };
   }
@@ -598,7 +627,7 @@ export class AuthService {
         nickname: user.nickname,
         profileImageUrl: user.profileImageUrl,
         isNewUser: false,
-        isVerified: user.isVerified ?? false,
+        isVerified: effectiveIsVerified(user.isVerified),
       },
     };
   }

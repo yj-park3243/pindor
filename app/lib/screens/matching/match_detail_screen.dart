@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../config/sports.dart';
 import '../../config/theme.dart';
 import '../../models/match.dart';
 import '../../providers/matching_provider.dart';
@@ -962,20 +963,7 @@ class _MatchupCard extends ConsumerWidget {
 
   const _MatchupCard({required this.match});
 
-  IconData _sportIcon(String sportType) {
-    switch (sportType) {
-      case 'GOLF':
-        return Icons.golf_course_rounded;
-      case 'TENNIS':
-        return Icons.sports_tennis_rounded;
-      case 'TABLE_TENNIS':
-        return Icons.sports_tennis_rounded;
-      case 'BILLIARDS':
-        return Icons.circle_outlined;
-      default:
-        return Icons.sports_rounded;
-    }
-  }
+  IconData _sportIcon(String sportType) => sportIcon(sportType);
 
   String _formatMatchDateTime(String? dateRaw, String? timeSlot) {
     String datePart = '';

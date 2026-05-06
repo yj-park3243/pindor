@@ -60,6 +60,12 @@ class SelectedPinNotifier extends Notifier<Pin?> {
       await prefs.remove(_key);
     }
   }
+
+  /// 캐시에서 직접 state만 갱신 (SharedPreferences 재저장/서버 sync 생략).
+  /// 앱 재시작 직후 _load() 비동기 race를 회피하기 위해 main_tab_screen에서 호출.
+  void restoreFromCache(Pin pin) {
+    state = pin;
+  }
 }
 
 final selectedPinProvider =
@@ -447,7 +453,7 @@ class _ProfileHeaderState extends ConsumerState<_ProfileHeader>
                                         color: Colors.white.withValues(alpha: 0.06),
                                         borderRadius: BorderRadius.circular(10),
                                       ),
-                                      child: const Icon(Symbols.settings_rounded, color: Colors.white54, size: 18),
+                                      child: const Icon(Icons.settings_rounded, color: Colors.white54, size: 18),
                                     ),
                                   ),
                                 ],
@@ -518,7 +524,7 @@ class _ProfileHeaderState extends ConsumerState<_ProfileHeader>
                                         Row(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
-                                            const Icon(Symbols.location_on_rounded, size: 12, color: Colors.white38),
+                                            const Icon(Icons.location_on_rounded, size: 12, color: Colors.white38),
                                             const SizedBox(width: 3),
                                             Text(selectedPin.name, style: const TextStyle(fontSize: 11, color: Colors.white38)),
                                           ],
@@ -1089,7 +1095,9 @@ class _PinMapSelectionPage extends ConsumerStatefulWidget {
 class _PinMapSelectionPageState extends ConsumerState<_PinMapSelectionPage> {
   NaverMapController? _mapController;
   bool _mapReady = false;
-  NLatLng _currentLocation = const NLatLng(37.5665, 126.9780);
+  // 기본 fallback: 서울역 (위치 권한 거부 또는 GPS 미가용 시)
+  static const _seoulStation = NLatLng(37.5547, 126.9707);
+  NLatLng _currentLocation = _seoulStation;
   bool _isLocating = false;
   Pin? _selectedPin;
   List<Pin>? _lastPins;
@@ -1105,10 +1113,36 @@ class _PinMapSelectionPageState extends ConsumerState<_PinMapSelectionPage> {
     setState(() => _isLocating = true);
     try {
       final pos = await LocationUtils.getCurrentPosition();
-      if (pos == null || !mounted) return;
+      if (!mounted) return;
 
-      setState(() => _currentLocation = NLatLng(pos.latitude, pos.longitude));
-      _focusNearestPin(pos);
+      final Position effectivePos;
+      if (pos != null) {
+        effectivePos = pos;
+        setState(() => _currentLocation = NLatLng(pos.latitude, pos.longitude));
+      } else {
+        // 위치 권한 거부/실패 → 서울역으로 fallback
+        effectivePos = Position(
+          latitude: _seoulStation.latitude,
+          longitude: _seoulStation.longitude,
+          timestamp: DateTime.now(),
+          accuracy: 0,
+          altitude: 0,
+          altitudeAccuracy: 0,
+          heading: 0,
+          headingAccuracy: 0,
+          speed: 0,
+          speedAccuracy: 0,
+        );
+      }
+      // 자주 가는 핀이 있으면 그쪽 포커스, 없으면 가까운 핀
+      if (_selectedPin != null) {
+        _mapController?.updateCamera(NCameraUpdate.scrollAndZoomTo(
+          target: NLatLng(_selectedPin!.centerLatitude, _selectedPin!.centerLongitude),
+          zoom: 14,
+        ));
+      } else {
+        _focusNearestPin(effectivePos);
+      }
     } finally {
       if (mounted) setState(() => _isLocating = false);
     }
@@ -1208,18 +1242,37 @@ class _PinMapSelectionPageState extends ConsumerState<_PinMapSelectionPage> {
                 NaverMap(
                   options: NaverMapViewOptions(
                     initialCameraPosition: NCameraPosition(
-                      target: _currentLocation,
-                      zoom: 12,
+                      target: _selectedPin != null
+                          ? NLatLng(_selectedPin!.centerLatitude, _selectedPin!.centerLongitude)
+                          : _currentLocation,
+                      zoom: _selectedPin != null ? 14 : 12,
                     ),
                     mapType: NMapType.basic,
-                    locationButtonEnable: false,
+                    locationButtonEnable: true,
                   ),
-                  onMapReady: (controller) {
+                  onMapReady: (controller) async {
                     _mapController = controller;
                     _mapReady = true;
+                    // 1) 내 위치 점 표시 먼저
+                    try {
+                      if (await LocationUtils.hasPermission() && mounted) {
+                        controller.setLocationTrackingMode(NLocationTrackingMode.noFollow);
+                      }
+                    } catch (e) {
+                      debugPrint('[PinMapSelection] 위치 트래킹 설정 실패: $e');
+                    }
+                    if (!mounted) return;
+                    // 2) 마커
                     final pins = pinsAsync.valueOrNull;
                     if (pins != null && pins.isNotEmpty) {
                       _addPinMarkers(pins);
+                    }
+                    // 3) 카메라 강제 — 자주 가는 핀이 있으면 거기 (initialCameraPosition을 덮어쓰는 트래킹 모드 회피)
+                    if (_selectedPin != null) {
+                      controller.updateCamera(NCameraUpdate.scrollAndZoomTo(
+                        target: NLatLng(_selectedPin!.centerLatitude, _selectedPin!.centerLongitude),
+                        zoom: 14,
+                      ));
                     }
                   },
                 ),

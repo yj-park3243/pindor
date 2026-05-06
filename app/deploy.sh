@@ -70,8 +70,8 @@ if [ "$PLATFORM" = "android" ] || [ "$PLATFORM" = "all" ]; then
     --aab "$AAB_PATH" \
     --json_key "$PLAY_KEY" \
     --package_name "kr.pins.spots" \
-    --track "internal" \
-    --release_status draft \
+    --track "alpha" \
+    --release_status completed \
     --skip_upload_metadata \
     --skip_upload_images \
     --skip_upload_screenshots \

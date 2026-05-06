@@ -47,6 +47,7 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
   @override
   void initState() {
     super.initState();
+    debugPrint('[Match] 매칭 수락 화면 진입 — matchId=${widget.matchId}');
     _fetchMatchFromServer();
     _listenMatchStatus();
   }
@@ -64,6 +65,7 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
       final matchId = data['matchId'] as String?;
       final status = data['status'] as String?;
       if (matchId != widget.matchId) return;
+      debugPrint('[Match] 수락 화면 - 소켓 status 수신 matchId=$matchId status=$status');
 
       if (status == 'CANCELLED' && mounted && !_isNavigating) {
         _isNavigating = true;
@@ -184,12 +186,14 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
   }
 
   Future<void> _onAccept() async {
+    debugPrint('[Match] 수락 버튼 탭 — matchId=${widget.matchId}');
     final notifier = ref.read(matchAcceptProvider(widget.matchId).notifier);
     final success = await notifier.acceptMatch();
     if (!mounted) return;
 
     if (success) {
       final acceptState = ref.read(matchAcceptProvider(widget.matchId));
+      debugPrint('[Match] 수락 결과 — matchId=${widget.matchId} acceptStatus=${acceptState.acceptStatus}');
       if (acceptState.acceptStatus == 'MATCHED') {
         // 양측 수락 완료 → 축하 토스트 후 매칭 상세 화면으로 이동
         if (_isNavigating) return;
@@ -207,11 +211,13 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
       }
     } else {
       final error = ref.read(matchAcceptProvider(widget.matchId)).error ?? '';
+      debugPrint('[Match] 수락 실패 — matchId=${widget.matchId} error=$error');
       _showToast('오류: $error');
     }
   }
 
   Future<void> _onReject() async {
+    debugPrint('[Match] 거절 버튼 탭 — matchId=${widget.matchId}');
     // 거절 재확인 다이얼로그
     final confirmed = await showModalBottomSheet<bool>(
       context: context,

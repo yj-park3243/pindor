@@ -1,7 +1,9 @@
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import '../../config/router.dart';
 import '../../config/theme.dart';
 import '../../providers/auth_provider.dart';
@@ -29,16 +31,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _loginWithApple() async {
     setState(() => _isLoading = true);
     try {
-      await ref.read(authStateProvider.notifier).loginWithApple();
-      if (mounted) {
-        final authState = ref.read(authStateProvider).valueOrNull;
-        if (authState?.isNewUser == true && authState?.isVerified != true) {
-          context.go(AppRoutes.phoneVerification);
-        } else if (authState?.isNewUser == true) {
-          context.go(AppRoutes.profileSetup);
-        } else {
-          context.go(AppRoutes.home);
-        }
+      final result = await ref.read(authStateProvider.notifier).loginWithApple();
+      if (!mounted) return;
+      print('[Apple] 라우팅: isNewUser=${result.isNewUser}, isVerified=${result.isVerified}');
+      if (result.isNewUser && !result.isVerified) {
+        context.go(AppRoutes.phoneVerification);
+      } else if (result.isNewUser) {
+        context.go(AppRoutes.profileSetup);
+      } else {
+        context.go(AppRoutes.home);
       }
     } catch (e) {
       if (mounted) {
@@ -162,48 +163,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                   const SizedBox(height: 24),
 
-                  // Apple 로그인 버튼
-                  SizedBox(
-                    width: double.infinity,
-                    height: 54,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _loginWithApple,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF000000),
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
+                  // Apple 로그인 버튼 — iOS에서만 노출 (Apple HIG 준수)
+                  if (Platform.isIOS) ...[
+                    SizedBox(
+                      width: double.infinity,
+                      height: 54,
+                      child: SignInWithAppleButton(
+                        style: SignInWithAppleButtonStyle.white,
+                        borderRadius: BorderRadius.circular(14),
+                        text: 'Apple로 로그인',
+                        onPressed: _isLoading ? () {} : _loginWithApple,
                       ),
-                      child: _isLoading
-                          ? const SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.apple, size: 22, color: Colors.white),
-                                SizedBox(width: 10),
-                                Text(
-                                  'Apple로 시작하기',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ],
-                            ),
                     ),
-                  ),
-
-                  const SizedBox(height: 12),
+                    const SizedBox(height: 12),
+                  ],
 
                   // Google 로그인 버튼
                   SizedBox(

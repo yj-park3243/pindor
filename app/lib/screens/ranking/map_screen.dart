@@ -370,30 +370,35 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          NaverMap(
+          Builder(builder: (context) {
+            final favoritePin = ref.read(selectedPinProvider);
+            final initialTarget = favoritePin != null
+                ? NLatLng(favoritePin.centerLatitude, favoritePin.centerLongitude)
+                : _currentLocation;
+            final initialZoom = favoritePin != null ? 14.0 : (_hasLocation ? 13.0 : 11.0);
+            return NaverMap(
             options: NaverMapViewOptions(
-              initialCameraPosition: NCameraPosition(target: _currentLocation, zoom: _hasLocation ? 13 : 11),
+              initialCameraPosition: NCameraPosition(target: initialTarget, zoom: initialZoom),
               mapType: NMapType.navi,
               nightModeEnable: true,
-              locationButtonEnable: false,
+              locationButtonEnable: true,
             ),
-            onMapReady: (controller) {
+            onMapReady: (controller) async {
               _mapController = controller;
               _mapReady = true;
-              // 위치 권한 있을 때만 트래킹 모드 설정 (권한 없으면 PlatformException 발생)
-              LocationUtils.hasPermission().then((granted) {
-                if (granted && mounted) {
-                  try {
-                    controller.setLocationTrackingMode(NLocationTrackingMode.noFollow);
-                  } catch (e) {
-                    debugPrint('[MapScreen] 위치 트래킹 설정 실패: $e');
-                  }
+              // 1) 내 위치 점 표시 먼저
+              try {
+                if (await LocationUtils.hasPermission() && mounted) {
+                  controller.setLocationTrackingMode(NLocationTrackingMode.noFollow);
                 }
-              });
+              } catch (e) {
+                debugPrint('[MapScreen] 위치 트래킹 설정 실패: $e');
+              }
+              if (!mounted) return;
+              // 2) 마커
               final pins = pinsAsync.valueOrNull;
               if (pins != null && pins.isNotEmpty) _addPinMarkers(pins);
-              // 자주가는 핀이 이미 로드됐으면 그쪽으로, 아니면 내 위치로
-              final favoritePin = ref.read(selectedPinProvider);
+              // 3) 카메라 강제 — 자주가는 핀이 있으면 거기, 없으면 내 위치
               if (favoritePin != null && !_didAutoNavigateToFavoritePin) {
                 _didAutoNavigateToFavoritePin = true;
                 controller.updateCamera(NCameraUpdate.scrollAndZoomTo(
@@ -414,7 +419,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 if (pins != null && mounted) _addPinMarkers(pins);
               }
             },
-          ),
+            );
+          }),
 
           // 상단 오버레이
           SafeArea(

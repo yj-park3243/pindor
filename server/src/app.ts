@@ -90,6 +90,18 @@ export async function createApp(): Promise<FastifyInstance> {
   // ─────────────────────────────────────
 
   await fastify.register(fastifyFormbody); // KCP 콜백 등 x-www-form-urlencoded 파싱
+
+  // application/json 본문이 비어있어도 빈 객체로 처리 (logout 등 body 불필요한 엔드포인트 호환)
+  fastify.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+    const raw = (body as string).trim();
+    if (raw.length === 0) return done(null, {});
+    try {
+      done(null, JSON.parse(raw));
+    } catch (err) {
+      done(err as Error, undefined);
+    }
+  });
+
   await fastify.register(fastifyHelmet, {
     contentSecurityPolicy: false,
   });

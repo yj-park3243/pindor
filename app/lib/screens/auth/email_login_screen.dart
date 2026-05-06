@@ -49,9 +49,15 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
             email: _emailCtrl.text.trim(),
             password: _pwCtrl.text,
           );
-      if (mounted) {
-        // 라우터 redirect가 isVerified 상태에 따라 자동으로 이동
-      }
+      // 명시적 navigate — isVerified 상태에 따라 분기
+      await Future.delayed(const Duration(milliseconds: 50));
+      if (!mounted) return;
+      final auth = ref.read(authStateProvider).valueOrNull;
+      final next = (auth?.isVerified ?? false)
+          ? (auth?.isNewUser ?? false ? AppRoutes.profileSetup : AppRoutes.home)
+          : AppRoutes.phoneVerification;
+      GoRouter.of(context).go(next);
+      return;
     } catch (e) {
       if (mounted) {
         AppToast.error(_parseError(e));
@@ -90,7 +96,13 @@ class _EmailLoginScreenState extends ConsumerState<EmailLoginScreen> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: AppTheme.textPrimary),
-          onPressed: () => context.pop(),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go(AppRoutes.login);
+            }
+          },
         ),
         title: const Text(
           '이메일 로그인',

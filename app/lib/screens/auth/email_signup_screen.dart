@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../config/router.dart';
 import '../../config/theme.dart';
@@ -25,8 +24,6 @@ class _EmailSignupScreenState extends ConsumerState<EmailSignupScreen> {
 
   bool _obscurePw = true;
   bool _obscurePwConfirm = true;
-  bool _agreedTerms = false;
-  bool _agreedPrivacy = false;
   bool _isLoading = false;
 
   @override
@@ -35,13 +32,6 @@ class _EmailSignupScreenState extends ConsumerState<EmailSignupScreen> {
     _pwCtrl.dispose();
     _pwConfirmCtrl.dispose();
     super.dispose();
-  }
-
-  void _openUrl(String url) async {
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
   }
 
   String? _validateEmail(String? v) {
@@ -66,22 +56,36 @@ class _EmailSignupScreenState extends ConsumerState<EmailSignupScreen> {
 
   Future<void> _signup() async {
     if (!_formKey.currentState!.validate()) return;
-    if (!_agreedTerms || !_agreedPrivacy) {
-      AppToast.error('이용약관 및 개인정보 처리방침에 동의해주세요.');
-      return;
-    }
 
     setState(() => _isLoading = true);
+    debugPrint('[EmailSignup] 가입 시도: ${_emailCtrl.text.trim()}');
     try {
       await ref.read(authStateProvider.notifier).signupWithFirebase(
             email: _emailCtrl.text.trim(),
             password: _pwCtrl.text,
           );
-      if (mounted) {
-        AppToast.info('가입 완료! 본인인증을 진행해주세요.');
-        // 라우터 redirect가 isVerified=false → phoneVerification으로 자동 이동
+      debugPrint('[EmailSignup] 가입 성공');
+      // 다음 단계는 라우터 redirect가 자동 결정:
+      //  - isVerified=false → phoneVerification
+      //  - isVerified=true && isNewUser → profileSetup
+      //  - isVerified=true && !isNewUser → home
+      // state 갱신 → refreshListenable 트리거 → 자동 이동
+      await Future.delayed(const Duration(milliseconds: 50));
+      if (!mounted) return;
+      final auth = ref.read(authStateProvider).valueOrNull;
+      final next = (auth?.isVerified ?? false)
+          ? (auth?.isNewUser ?? true ? AppRoutes.profileSetup : AppRoutes.home)
+          : AppRoutes.phoneVerification;
+      debugPrint('[EmailSignup] 다음 화면: $next (isVerified=${auth?.isVerified}, isNewUser=${auth?.isNewUser})');
+      try {
+        GoRouter.of(context).go(next);
+      } catch (navErr) {
+        debugPrint('[EmailSignup] navigate 실패: $navErr');
       }
-    } catch (e) {
+      return;
+    } catch (e, st) {
+      debugPrint('[EmailSignup] 가입 실패: $e');
+      debugPrint('[EmailSignup] stack: $st');
       if (mounted) {
         AppToast.error(_parseError(e));
       }
@@ -110,7 +114,13 @@ class _EmailSignupScreenState extends ConsumerState<EmailSignupScreen> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: AppTheme.textPrimary),
-          onPressed: () => context.pop(),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go(AppRoutes.login);
+            }
+          },
         ),
         title: const Text(
           '이메일 가입',
@@ -119,6 +129,7 @@ class _EmailSignupScreenState extends ConsumerState<EmailSignupScreen> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           child: Form(
             key: _formKey,
@@ -183,22 +194,6 @@ class _EmailSignupScreenState extends ConsumerState<EmailSignupScreen> {
                   onFieldSubmitted: (_) => _signup(),
                 ),
                 const SizedBox(height: 28),
-
-                // 약관 동의
-                _AgreementRow(
-                  checked: _agreedTerms,
-                  onChanged: (v) => setState(() => _agreedTerms = v ?? false),
-                  label: '이용약관',
-                  url: 'https://pins.kr/terms.html',
-                ),
-                const SizedBox(height: 8),
-                _AgreementRow(
-                  checked: _agreedPrivacy,
-                  onChanged: (v) => setState(() => _agreedPrivacy = v ?? false),
-                  label: '개인정보 처리방침',
-                  url: 'https://pins.kr/privacy.html',
-                ),
-                const SizedBox(height: 32),
 
                 // 가입 버튼
                 SizedBox(
@@ -284,49 +279,3 @@ class _EmailSignupScreenState extends ConsumerState<EmailSignupScreen> {
   }
 }
 
-class _AgreementRow extends StatelessWidget {
-  final bool checked;
-  final ValueChanged<bool?> onChanged;
-  final String label;
-  final String url;
-
-  const _AgreementRow({
-    required this.checked,
-    required this.onChanged,
-    required this.label,
-    required this.url,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Checkbox(
-          value: checked,
-          onChanged: onChanged,
-          activeColor: AppTheme.primaryColor,
-          side: const BorderSide(color: Color(0xFF444444)),
-        ),
-        const Text('(필수) ', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
-        GestureDetector(
-          onTap: () async {
-            final uri = Uri.parse(url);
-            if (await canLaunchUrl(uri)) {
-              await launchUrl(uri, mode: LaunchMode.externalApplication);
-            }
-          },
-          child: Text(
-            label,
-            style: const TextStyle(
-              fontSize: 13,
-              color: AppTheme.primaryColor,
-              decoration: TextDecoration.underline,
-              decorationColor: AppTheme.primaryColor,
-            ),
-          ),
-        ),
-        const Text(' 동의', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
-      ],
-    );
-  }
-}

@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../config/router.dart';
 import '../../config/theme.dart';
 import '../../widgets/common/app_toast.dart';
 
@@ -80,7 +81,13 @@ class _EmailPasswordResetScreenState extends State<EmailPasswordResetScreen> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: AppTheme.textPrimary),
-          onPressed: () => context.pop(),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go(AppRoutes.login);
+            }
+          },
         ),
         title: const Text(
           '비밀번호 찾기',
@@ -221,7 +228,13 @@ class _SentView extends StatelessWidget {
           width: double.infinity,
           height: 54,
           child: OutlinedButton(
-            onPressed: () => context.pop(),
+            onPressed: () {
+              if (context.canPop()) {
+                context.pop();
+              } else {
+                context.go(AppRoutes.login);
+              }
+            },
             style: OutlinedButton.styleFrom(
               foregroundColor: AppTheme.textPrimary,
               side: const BorderSide(color: Color(0xFF2A2A2A), width: 1.5),

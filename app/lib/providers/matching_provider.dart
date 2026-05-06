@@ -252,11 +252,13 @@ class MatchRequestNotifier
       Map<String, dynamic> requestData) async {
     final repo = ref.read(matchingRepositoryProvider);
     final request = await repo.createMatchRequest(requestData);
+    debugPrint('[Match] createRequest 완료 — id=${request.id} status=${request.status}');
     ref.invalidateSelf();
 
     // WAITING 상태인 경우 소켓 룸에 입장하여 실시간 매칭 성사 알림 수신
     if (request.status == 'WAITING') {
       // 룸 등록(연결 전이라도 추적 set 에 등록됨) → 소켓 연결 보장
+      debugPrint('[Match] joinMatchRequest 룸 입장 — requestId=${request.id}');
       SocketService.instance.joinMatchRequest(request.id);
       await ensureSocketConnected();
     }
@@ -265,11 +267,13 @@ class MatchRequestNotifier
   }
 
   Future<void> cancelRequest(String requestId) async {
+    debugPrint('[Match] cancelRequest 시작 — requestId=$requestId');
     // 매칭 요청 취소 전 소켓 룸에서 퇴장
     SocketService.instance.leaveMatchRequest(requestId);
 
     final repo = ref.read(matchingRepositoryProvider);
     await repo.cancelMatchRequest(requestId);
+    debugPrint('[Match] cancelRequest 완료 — requestId=$requestId');
     ref.invalidateSelf();
   }
 
@@ -346,12 +350,14 @@ class MatchAcceptNotifier
 
   /// 매칭 수락 — 서버 응답: { status: 'WAITING_OPPONENT' | 'MATCHED', chatRoomId? }
   Future<bool> acceptMatch() async {
+    debugPrint('[Match] acceptMatch 호출 — matchId=$arg');
     state = state.copyWith(isLoading: true, error: null);
     try {
       final repo = ref.read(matchingRepositoryProvider);
       final data = await repo.acceptMatch(arg);
       final status = data['status'] as String?;
       final chatRoomId = data['chatRoomId'] as String?;
+      debugPrint('[Match] acceptMatch 응답 — matchId=$arg status=$status chatRoomId=$chatRoomId');
       state = state.copyWith(
         isLoading: false,
         acceptStatus: status,
@@ -359,6 +365,7 @@ class MatchAcceptNotifier
       );
       return true;
     } catch (e) {
+      debugPrint('[Match] acceptMatch 실패 — matchId=$arg error=$e');
       state = state.copyWith(isLoading: false, error: e.toString());
       return false;
     }
@@ -366,13 +373,16 @@ class MatchAcceptNotifier
 
   /// 매칭 거절 — 서버 응답: { status: 'CANCELLED' }
   Future<bool> rejectMatch() async {
+    debugPrint('[Match] rejectMatch 호출 — matchId=$arg');
     state = state.copyWith(isLoading: true, error: null);
     try {
       final repo = ref.read(matchingRepositoryProvider);
       await repo.rejectMatch(arg);
+      debugPrint('[Match] rejectMatch 완료 — matchId=$arg');
       state = state.copyWith(isLoading: false, acceptStatus: 'CANCELLED');
       return true;
     } catch (e) {
+      debugPrint('[Match] rejectMatch 실패 — matchId=$arg error=$e');
       String errorMsg = e.toString();
       if (e is DioException && e.response?.data is Map) {
         final serverError = e.response!.data['error'];
@@ -417,11 +427,12 @@ class MatchAcceptNotifier
       if (type == 'MATCH_BOTH_ACCEPTED' || type == 'MATCH_ACCEPTED') {
         _socketSub?.cancel();
         _pollingTimer?.cancel();
-        debugPrint('[MatchAccept] 소켓으로 $type 수신 — 상세 조회');
+        debugPrint('[Match] 상대 수락 수신 (Notifier) — matchId=$arg type=$type');
         _fetchMatchDetailAndUpdate();
       } else if (type == 'MATCH_CANCELLED' || type == 'MATCH_REJECTED' || type == 'MATCH_ACCEPT_TIMEOUT') {
         _socketSub?.cancel();
         _pollingTimer?.cancel();
+        debugPrint('[Match] 매칭 종료 수신 (Notifier) — matchId=$arg type=$type');
         state = state.copyWith(acceptStatus: 'CANCELLED');
       }
     });
@@ -437,11 +448,13 @@ class MatchAcceptNotifier
         _socketSub?.cancel();
         _matchStatusSub?.cancel();
         _pollingTimer?.cancel();
+        debugPrint('[Match] MATCH_STATUS_CHANGED CANCELLED — matchId=$arg');
         state = state.copyWith(acceptStatus: 'CANCELLED');
       } else if (status == 'CHAT') {
         _socketSub?.cancel();
         _matchStatusSub?.cancel();
         _pollingTimer?.cancel();
+        debugPrint('[Match] MATCH_STATUS_CHANGED CHAT — matchId=$arg');
         _fetchMatchDetailAndUpdate();
       }
     });

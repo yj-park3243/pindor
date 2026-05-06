@@ -7,11 +7,21 @@ import { AppError, ErrorCode } from '../errors/app-error.js';
  * 본인인증 완료 여부 확인 미들웨어
  * - `fastify.authenticate` 이후에 사용
  * - isVerified=false 인 유저는 403 + VERIFICATION_REQUIRED 반환
+ *
+ * ⚠️ App Store 심사 대응을 위해 임시로 본인인증 검증 우회 (2026-04-29)
+ *    REQUIRE_VERIFIED_ENABLED=true 설정 시에만 검증 활성화.
+ *    심사 통과 후 env 켜서 다시 활성화할 것.
  */
+const VERIFICATION_ENABLED =
+  process.env.REQUIRE_VERIFIED_ENABLED === 'true';
+
 export async function requireVerified(
   request: FastifyRequest,
   reply: FastifyReply,
 ): Promise<void> {
+  // 임시 우회 — env 비활성 시 모든 인증된 유저 통과
+  if (!VERIFICATION_ENABLED) return;
+
   const userId = request.user?.userId;
   if (!userId) {
     return reply

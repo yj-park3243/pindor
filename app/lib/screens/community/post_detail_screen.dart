@@ -14,6 +14,8 @@ import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/error_view.dart';
 
 import '../../widgets/report/report_bottom_sheet.dart';
+import '../../repositories/block_repository.dart';
+import '../home/home_screen.dart' show pinLatestPostsProvider;
 import '../../widgets/common/fullscreen_image_viewer.dart';
 import '../../widgets/common/app_toast.dart';
 
@@ -173,7 +175,15 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                 message: '게시글을 불러올 수 없습니다.',
                 onRetry: () => ref.invalidate(postDetailProvider(key)),
               ),
-              data: (post) => SingleChildScrollView(
+              data: (post) => RefreshIndicator(
+                color: AppTheme.primaryColor,
+                onRefresh: () async {
+                  ref.invalidate(commentsProvider(key));
+                  ref.invalidate(postDetailProvider(key));
+                  await ref.read(commentsProvider(key).future);
+                },
+                child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
                 keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                 controller: _scrollController,
                 padding: const EdgeInsets.all(16),
@@ -189,6 +199,15 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                             )
                           : post,
                       onLikeTap: _toggleLike,
+                      currentUserId: currentUser?.id,
+                      onAuthorMenu: post.authorId != currentUser?.id
+                          ? () => _showAuthorActionSheet(
+                                authorId: post.authorId,
+                                authorNickname: post.authorNickname,
+                                reportTargetType: 'POST',
+                                reportTargetId: widget.postId,
+                              )
+                          : null,
                     ),
                     const SizedBox(height: 24),
                     const Divider(),
@@ -265,6 +284,13 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                       .deleteComment(replyId);
                                 }
                               },
+                              onAuthorMenu: (authorId, authorNickname, commentId) =>
+                                  _showAuthorActionSheet(
+                                authorId: authorId,
+                                authorNickname: authorNickname,
+                                reportTargetType: 'COMMENT',
+                                reportTargetId: commentId,
+                              ),
                             );
                           }).toList(),
                         );
@@ -274,6 +300,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                     const SizedBox(height: 80),
                   ],
                 ),
+              ),
               ),
             ),
           ),
@@ -318,6 +345,114 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
       ),
     );
   }
+
+  /// 게시글/댓글 작성자에 대한 신고/차단 액션 시트
+  Future<void> _showAuthorActionSheet({
+    required String authorId,
+    required String authorNickname,
+    required String reportTargetType, // 'POST' | 'COMMENT'
+    required String reportTargetId,
+  }) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Text(
+                authorNickname,
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const Divider(height: 1, color: Color(0xFF2A2A2A)),
+            ListTile(
+              leading: const Icon(Icons.flag_outlined, color: AppTheme.primaryColor),
+              title: const Text('신고하기'),
+              onTap: () => Navigator.pop(ctx, 'report'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.block, color: AppTheme.errorColor),
+              title: const Text('차단하기',
+                  style: TextStyle(color: AppTheme.errorColor)),
+              onTap: () => Navigator.pop(ctx, 'block'),
+            ),
+            const SizedBox(height: 4),
+            ListTile(
+              leading: const Icon(Icons.close, color: AppTheme.textSecondary),
+              title: const Text('취소',
+                  style: TextStyle(color: AppTheme.textSecondary)),
+              onTap: () => Navigator.pop(ctx),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+
+    if (!mounted || action == null) return;
+
+    if (action == 'report') {
+      showReportBottomSheet(
+        context,
+        targetType: reportTargetType,
+        targetId: reportTargetId,
+      );
+    } else if (action == 'block') {
+      final confirmed = await showModalBottomSheet<bool>(
+        context: context,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) => _ConfirmSheet(
+          icon: Icons.block,
+          iconColor: AppTheme.errorColor,
+          title: '$authorNickname 차단',
+          subtitle: '차단하면 이 사용자의 게시글, 댓글, 매칭 요청이 더 이상 표시되지 않습니다.',
+          confirmLabel: '차단',
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+      try {
+        await ref.read(blockRepositoryProvider).blockUser(authorId);
+        if (!mounted) return;
+        AppToast.success('차단되었습니다.');
+
+        final key = PostDetailKey(pinId: widget.pinId, postId: widget.postId);
+        // 게시판 + 홈 미리보기 캐시도 무효화 → 차단 유저 글 즉시 사라짐
+        ref.invalidate(pinLatestPostsProvider);
+        ref.invalidate(postListProvider);
+
+        if (reportTargetType == 'POST') {
+          // 게시글 작성자 차단 → 게시글 자체가 안 보여야 하므로 화면 닫기
+          context.pop();
+        } else {
+          // 댓글 작성자 차단 → 댓글 목록 갱신해서 즉시 사라지게
+          ref.invalidate(commentsProvider(key));
+          ref.invalidate(postDetailProvider(key));
+        }
+      } catch (e) {
+        if (mounted) AppToast.error('차단에 실패했습니다.');
+      }
+    }
+  }
 }
 
 // ─── 게시글 본문 위젯 ─────────────────────────────────────────────────────────
@@ -325,7 +460,14 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
 class _PostContent extends StatelessWidget {
   final PinPost post;
   final Future<bool> Function(bool isLiked)? onLikeTap;
-  const _PostContent({required this.post, this.onLikeTap});
+  final String? currentUserId;
+  final VoidCallback? onAuthorMenu;
+  const _PostContent({
+    required this.post,
+    this.onLikeTap,
+    this.currentUserId,
+    this.onAuthorMenu,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -404,6 +546,17 @@ class _PostContent extends StatelessWidget {
                     color: AppTheme.textDisabled,
                   ),
                 ),
+                if (onAuthorMenu != null) ...[
+                  const SizedBox(width: 4),
+                  InkWell(
+                    onTap: onAuthorMenu,
+                    borderRadius: BorderRadius.circular(20),
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(Icons.more_horiz, size: 18, color: AppTheme.textSecondary),
+                    ),
+                  ),
+                ],
               ],
             ),
           ],
@@ -626,6 +779,7 @@ class _CommentTile extends StatelessWidget {
   final VoidCallback onReply;
   final VoidCallback onDelete;
   final void Function(String replyId) onDeleteReply;
+  final void Function(String authorId, String authorNickname, String commentId) onAuthorMenu;
 
   const _CommentTile({
     required this.comment,
@@ -633,6 +787,7 @@ class _CommentTile extends StatelessWidget {
     required this.onReply,
     required this.onDelete,
     required this.onDeleteReply,
+    required this.onAuthorMenu,
   });
 
   @override
@@ -644,6 +799,7 @@ class _CommentTile extends StatelessWidget {
           currentUserId: currentUserId,
           onReply: onReply,
           onDelete: onDelete,
+          onAuthorMenu: () => onAuthorMenu(comment.authorId, comment.authorNickname, comment.id),
         ),
 
         // 대댓글
@@ -656,6 +812,7 @@ class _CommentTile extends StatelessWidget {
               isReply: true,
               onReply: onReply,
               onDelete: () => onDeleteReply(reply.id),
+              onAuthorMenu: () => onAuthorMenu(reply.authorId, reply.authorNickname, reply.id),
             ),
           );
         }),
@@ -670,6 +827,7 @@ class _SingleComment extends StatelessWidget {
   final bool isReply;
   final VoidCallback onReply;
   final VoidCallback onDelete;
+  final VoidCallback onAuthorMenu;
 
   const _SingleComment({
     required this.comment,
@@ -677,6 +835,7 @@ class _SingleComment extends StatelessWidget {
     this.isReply = false,
     required this.onReply,
     required this.onDelete,
+    required this.onAuthorMenu,
   });
 
   @override
@@ -742,6 +901,19 @@ class _SingleComment extends StatelessWidget {
                         color: AppTheme.textDisabled,
                       ),
                     ),
+                    // 본인 댓글이 아니고 삭제되지 않은 경우만 ⋮ 메뉴 노출
+                    if (comment.authorId != currentUserId) ...[
+                      const SizedBox(width: 4),
+                      InkWell(
+                        onTap: onAuthorMenu,
+                        borderRadius: BorderRadius.circular(20),
+                        child: const Padding(
+                          padding: EdgeInsets.all(4),
+                          child: Icon(Icons.more_horiz,
+                              size: 16, color: AppTheme.textSecondary),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
                 const SizedBox(height: 3),

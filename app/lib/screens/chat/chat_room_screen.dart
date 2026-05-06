@@ -50,16 +50,29 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       final eventMatchId = data['matchId'] as String?;
 
       // 현재 채팅방의 matchId를 동적으로 확인
+      // 캐시 누락 시 매칭 목록에서도 fallback 조회
       final chatRooms = ref.read(chatRoomListProvider).valueOrNull;
       final room = chatRooms?.where((r) => r.id == widget.roomId).firstOrNull;
-      final matchId = room?.matchId;
+      String? matchId = room?.matchId;
+      if (matchId == null || matchId.isEmpty) {
+        final matches = ref.read(matchListProvider(null)).valueOrNull;
+        matchId = matches
+            ?.where((m) => m.chatRoomId == widget.roomId)
+            .firstOrNull
+            ?.id;
+      }
 
       if (matchId == null || eventMatchId != matchId) return;
 
       if (status == 'COMPLETED' && mounted) {
+        ref.read(matchListForceRefreshProvider.notifier).state = true;
         ref.invalidate(matchListProvider(null));
-        AppToast.info('매칭이 완료되었습니다.');
-        context.go('/matches/$matchId');
+        ref.invalidate(matchDetailProvider(matchId));
+        AppToast.success('매칭이 완료되었습니다!');
+        // 다음 프레임에 이동 (Navigator dispose 잠금 충돌 방지)
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) context.go('/matches', extra: {'initialTab': 1});
+        });
       }
     });
   }

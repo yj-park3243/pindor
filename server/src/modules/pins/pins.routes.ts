@@ -111,6 +111,30 @@ export async function pinsRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
+  // ─── GET /pins/favorite ───
+  // 가장 최근 활동한 핀 1개 반환 (없으면 null) — 클라가 SharedPreferences 비어있을 때 DB로 fallback 조회.
+  // raw entity 직렬화는 PostGIS geography 컬럼 때문에 클라가 파싱 못 하므로
+  // pinsService.getPin()을 거쳐 {center: {lat, lng}} 형태로 변환된 응답을 반환한다.
+  fastify.get(
+    '/pins/favorite',
+    {
+      onRequest: [fastify.authenticate],
+      schema: {
+        tags: ['Pins'],
+        summary: '자주 가는 핀 조회 (가장 최근 활동 1개)',
+        security: [{ bearerAuth: [] }],
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const pins = await pinsService.getFavoritePins(request.user.userId);
+      if (pins.length === 0) {
+        return reply.send({ success: true, data: null });
+      }
+      const transformed = await pinsService.getPin(pins[0].id);
+      return reply.send({ success: true, data: transformed });
+    },
+  );
+
   // ─── GET /pins/nearby ───
   fastify.get(
     '/pins/nearby',
@@ -160,7 +184,11 @@ export async function pinsRoutes(fastify: FastifyInstance): Promise<void> {
       reply: FastifyReply,
     ) => {
       const query = listPostsQuerySchema.parse(request.query);
-      const { items, nextCursor, hasMore } = await pinsService.getPosts(request.params.pinId, query);
+      const { items, nextCursor, hasMore } = await pinsService.getPosts(
+        request.params.pinId,
+        query,
+        request.user.userId,
+      );
       return reply.send({ success: true, data: items, meta: { cursor: nextCursor, hasMore } });
     },
   );
@@ -346,7 +374,11 @@ export async function pinsRoutes(fastify: FastifyInstance): Promise<void> {
     ) => {
       const { items, nextCursor, hasMore } = await pinsService.getComments(
         request.params.postId,
-        { cursor: request.query.cursor, limit: request.query.limit },
+        {
+          cursor: request.query.cursor,
+          limit: request.query.limit,
+          viewerId: request.user.userId,
+        },
       );
       return reply.send({ success: true, data: items, meta: { cursor: nextCursor, hasMore } });
     },

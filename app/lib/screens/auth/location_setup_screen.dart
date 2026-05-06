@@ -11,6 +11,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/pin_provider.dart';
 import '../../widgets/map/sport_marker.dart';
 import '../profile/profile_screen.dart' show selectedPinProvider;
+// Pin 모델 자체에 centerLatitude/Longitude 필드 사용
 import '../../widgets/common/app_toast.dart';
 import '../../core/network/api_client.dart';
 
@@ -27,7 +28,9 @@ class _LocationSetupScreenState extends ConsumerState<LocationSetupScreen> {
   NaverMapController? _mapController;
   bool _mapReady = false;
 
-  NLatLng _currentLocation = const NLatLng(37.5665, 126.9780);
+  // 기본 fallback: 서울역 (위치 권한 거부 또는 GPS 미가용 시)
+  static const _seoulStation = NLatLng(37.5547, 126.9707);
+  NLatLng _currentLocation = _seoulStation;
   Position? _lastPosition;
   bool _didAutoFocus = false;
 
@@ -43,12 +46,28 @@ class _LocationSetupScreenState extends ConsumerState<LocationSetupScreen> {
 
   Future<void> _initLocation() async {
     final pos = await LocationUtils.getCurrentPosition();
-    if (pos == null || !mounted) return;
+    if (!mounted) return;
 
-    _lastPosition = pos;
-    setState(() {
-      _currentLocation = NLatLng(pos.latitude, pos.longitude);
-    });
+    if (pos != null) {
+      _lastPosition = pos;
+      setState(() {
+        _currentLocation = NLatLng(pos.latitude, pos.longitude);
+      });
+    } else {
+      // 위치 권한 거부/실패 → 서울역 기준으로 fallback Position 생성
+      _lastPosition = Position(
+        latitude: _seoulStation.latitude,
+        longitude: _seoulStation.longitude,
+        timestamp: DateTime.now(),
+        accuracy: 0,
+        altitude: 0,
+        altitudeAccuracy: 0,
+        heading: 0,
+        headingAccuracy: 0,
+        speed: 0,
+        speedAccuracy: 0,
+      );
+    }
     _maybeFocusNearestPin();
   }
 
@@ -237,25 +256,51 @@ class _LocationSetupScreenState extends ConsumerState<LocationSetupScreen> {
                     topLeft: Radius.circular(16),
                     topRight: Radius.circular(16),
                   ),
-                  child: NaverMap(
+                  child: Builder(builder: (context) {
+                    final favoritePin = ref.read(selectedPinProvider);
+                    final initialTarget = favoritePin != null
+                        ? NLatLng(favoritePin.centerLatitude, favoritePin.centerLongitude)
+                        : _currentLocation;
+                    final initialZoom = favoritePin != null ? 14.0 : 12.0;
+                    return NaverMap(
                     options: NaverMapViewOptions(
                       initialCameraPosition: NCameraPosition(
-                        target: _currentLocation,
-                        zoom: 12,
+                        target: initialTarget,
+                        zoom: initialZoom,
                       ),
                       mapType: NMapType.basic,
-                      locationButtonEnable: false,
+                      locationButtonEnable: true,
                     ),
-                    onMapReady: (controller) {
+                    onMapReady: (controller) async {
                       _mapController = controller;
                       _mapReady = true;
+                      // 1) 내 위치 점 표시 (트래킹 모드 먼저 설정해야 카메라가 핀으로 고정됨)
+                      try {
+                        if (await LocationUtils.hasPermission() && mounted) {
+                          controller.setLocationTrackingMode(NLocationTrackingMode.noFollow);
+                        }
+                      } catch (e) {
+                        debugPrint('[LocationSetup] 위치 트래킹 설정 실패: $e');
+                      }
+                      // 2) 마커 추가
                       final pins = pinsAsync.valueOrNull;
                       if (pins != null && pins.isNotEmpty) {
                         _addPinMarkers(pins);
                       }
-                      _maybeFocusNearestPin();
+                      // 3) 카메라를 핀에 강제 이동 (트래킹 모드가 카메라를 옮겼을 수 있으므로 마지막에)
+                      if (!mounted) return;
+                      if (favoritePin != null) {
+                        controller.updateCamera(NCameraUpdate.scrollAndZoomTo(
+                          target: NLatLng(favoritePin.centerLatitude, favoritePin.centerLongitude),
+                          zoom: 14,
+                        ));
+                        _didAutoFocus = true;
+                      } else {
+                        _maybeFocusNearestPin();
+                      }
                     },
-                  ),
+                    );
+                  }),
                 ),
 
                 // 로딩 인디케이터

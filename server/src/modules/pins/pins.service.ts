@@ -224,12 +224,15 @@ export class PinsService {
   // 게시글 목록
   // ─────────────────────────────────────
 
-  async getPosts(pinId: string, query: ListPostsQuery) {
+  async getPosts(pinId: string, query: ListPostsQuery, viewerId?: string) {
     const pinRepo = AppDataSource.getRepository(Pin);
     const postRepo = AppDataSource.getRepository(Post);
 
     const pin = await pinRepo.findOne({ where: { id: pinId } });
     if (!pin) throw AppError.notFound(ErrorCode.PIN_NOT_FOUND);
+
+    // 차단된 작성자의 게시글 제외
+    const blockedIds = viewerId ? await this.getBlockedUserIds(viewerId) : [];
 
     const qb = postRepo
       .createQueryBuilder('post')
@@ -237,6 +240,10 @@ export class PinsService {
       .leftJoinAndSelect('post.images', 'images', 'images.sortOrder = 0')
       .where('post.pinId = :pinId', { pinId })
       .andWhere('post.isDeleted = false');
+
+    if (blockedIds.length > 0) {
+      qb.andWhere('post.authorId NOT IN (:...blockedIds)', { blockedIds });
+    }
 
     if (query.sportType) {
       qb.andWhere('post.sportType = :sportType', { sportType: query.sportType });
@@ -326,6 +333,14 @@ export class PinsService {
       .getOne();
 
     if (!post) throw AppError.notFound(ErrorCode.POST_NOT_FOUND);
+
+    // 차단된 작성자의 게시글이면 안 보이게 (404 동일 처리)
+    if (userId) {
+      const blockedIds = await this.getBlockedUserIds(userId);
+      if (blockedIds.includes(post.authorId)) {
+        throw AppError.notFound(ErrorCode.POST_NOT_FOUND);
+      }
+    }
 
     // 조회수 증가
     await postRepo
@@ -545,11 +560,14 @@ export class PinsService {
 
   async getComments(
     postId: string,
-    opts: { cursor?: string; limit?: number } = {},
+    opts: { cursor?: string; limit?: number; viewerId?: string } = {},
   ) {
-    const { cursor } = opts;
+    const { cursor, viewerId } = opts;
     const limit = Math.min(Math.max(Number(opts.limit) || 20, 1), 100);
     const commentRepo = AppDataSource.getRepository(Comment);
+
+    // 차단 양방향 ID 수집 (viewer가 차단했거나 viewer를 차단한 유저)
+    const blockedIds = viewerId ? await this.getBlockedUserIds(viewerId) : [];
 
     const qb = commentRepo
       .createQueryBuilder('comment')
@@ -566,13 +584,37 @@ export class PinsService {
       qb.andWhere('comment.createdAt > :cursor', { cursor: new Date(cursor) });
     }
 
+    if (blockedIds.length > 0) {
+      qb.andWhere('comment.authorId NOT IN (:...blockedIds)', { blockedIds });
+    }
+
     const comments = await qb.getMany();
+
+    // 대댓글도 차단된 작성자 제외
+    if (blockedIds.length > 0) {
+      for (const c of comments) {
+        if (c.replies) {
+          c.replies = c.replies.filter((r) => !blockedIds.includes(r.authorId));
+        }
+      }
+    }
 
     const hasMore = comments.length > limit;
     const items = hasMore ? comments.slice(0, limit) : comments;
     const nextCursor = hasMore ? items[items.length - 1].createdAt.toISOString() : null;
 
     return { items, nextCursor, hasMore };
+  }
+
+  /// 차단 양방향 유저 ID 조회 (viewer가 차단했거나 viewer를 차단한 유저)
+  private async getBlockedUserIds(viewerId: string): Promise<string[]> {
+    const rows = await AppDataSource.query<Array<{ id: string }>>(
+      `SELECT blocked_id AS id FROM user_blocks WHERE blocker_id = $1::uuid
+       UNION
+       SELECT blocker_id AS id FROM user_blocks WHERE blocked_id = $1::uuid`,
+      [viewerId],
+    );
+    return rows.map((r) => r.id);
   }
 
   // ─────────────────────────────────────

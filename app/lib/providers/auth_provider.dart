@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -105,24 +106,29 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
     final previousState = state;
     state = const AsyncLoading();
     try {
-      // 1. Firebase Auth로 계정 생성
+      debugPrint('[AuthProvider] Firebase createUserWithEmailAndPassword 호출');
       final credential = await fb.FirebaseAuth.instance
           .createUserWithEmailAndPassword(email: email, password: password);
+      debugPrint('[AuthProvider] Firebase 계정 생성 완료: uid=${credential.user?.uid}');
 
       final idToken = await credential.user?.getIdToken();
       if (idToken == null) throw Exception('Firebase ID 토큰을 가져올 수 없습니다.');
+      debugPrint('[AuthProvider] idToken 획득. 서버 호출 시작');
 
-      // 2. 서버에 전달
       final response = await _api.post(
         '/auth/firebase/signup',
         body: {'idToken': idToken, 'agreedTerms': true},
       );
+      debugPrint('[AuthProvider] 서버 응답 OK');
 
       await _handleAuthResponse(response, isNewUser: true);
     } on fb.FirebaseAuthException catch (e) {
+      debugPrint('[AuthProvider] FirebaseAuthException: code=${e.code} msg=${e.message}');
       state = previousState;
       rethrow;
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('[AuthProvider] signup 실패: $e');
+      debugPrint('[AuthProvider] stack: $st');
       state = previousState;
       rethrow;
     }
@@ -201,6 +207,7 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
       );
     }
 
+    debugPrint('[AuthProvider] state 갱신: isAuthenticated=true, isNewUser=$actualIsNewUser, isVerified=$isVerified');
     state = AsyncData(AuthState(
       isAuthenticated: true,
       user: user,
@@ -327,17 +334,19 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
     }
   }
 
-  /// Apple 로그인
-  Future<void> loginWithApple() async {
+  /// Apple 로그인 — 라우팅 타이밍 이슈를 피하려고 결과를 직접 반환
+  Future<({bool isNewUser, bool isVerified})> loginWithApple() async {
     final previousState = state;
     state = const AsyncLoading();
     try {
+      print('[Apple] credential 요청 시작');
       final credential = await SignInWithApple.getAppleIDCredential(
         scopes: [
           AppleIDAuthorizationScopes.email,
           AppleIDAuthorizationScopes.fullName,
         ],
       );
+      print('[Apple] credential 수신: userId=${credential.userIdentifier}, email=${credential.email}, givenName=${credential.givenName}, familyName=${credential.familyName}');
 
       final identityToken = credential.identityToken;
       final authorizationCode = credential.authorizationCode;
@@ -348,6 +357,7 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
         credential.familyName,
       ].where((s) => s != null && s.isNotEmpty).join(' ');
 
+      print('[Apple] 서버에 /auth/apple 요청 (email=${credential.email != null}, fullName=${fullName.isNotEmpty})');
       final response = await _api.post(
         '/auth/apple',
         body: {
@@ -364,6 +374,7 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
       final userData = data['user'] as Map<String, dynamic>;
       final isNewUser = userData['isNewUser'] as bool? ?? false;
       final isVerified = userData['isVerified'] as bool? ?? false;
+      print('[Apple] 서버 응답 OK: userId=${userData['id']}, isNewUser=$isNewUser, isVerified=$isVerified');
 
       // 토큰 저장
       await _storage.saveTokens(
@@ -399,11 +410,15 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
         isNewUser: isNewUser,
         isVerified: isVerified,
       ));
-    } on SignInWithAppleAuthorizationException {
-      // 유저가 취소 — 이전 상태로 복원
+      print('[Apple] 로그인 완료 → 라우팅 결정 (isNewUser=$isNewUser, isVerified=$isVerified)');
+      return (isNewUser: isNewUser, isVerified: isVerified);
+    } on SignInWithAppleAuthorizationException catch (e) {
+      print('[Apple] 사용자 취소 또는 인증 실패: code=${e.code}, message=${e.message}');
       state = previousState;
       rethrow;
     } catch (e, st) {
+      print('[Apple] 로그인 실패: $e');
+      print('[Apple] stack: $st');
       state = previousState;
       rethrow;
     }

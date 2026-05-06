@@ -183,19 +183,17 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
 
       // 인증된 사용자의 본인인증 강제
+      // 인증된 시점부터는 이메일 가입/로그인 화면 머무를 이유 없으므로 본인인증으로 강제 이동.
+      // splash/onboarding은 자체 흐름, phoneVerification은 목적지라 예외.
       if (isAuthenticated && !isVerified) {
-        // 본인인증 화면 자체 / 로그인 플로우(email 화면 포함)는 예외
-        final verificationFlowRoutes = [
+        final allowedWhileUnverified = [
           AppRoutes.phoneVerification,
           AppRoutes.splash,
-          AppRoutes.login,
-          AppRoutes.emailLogin,
-          AppRoutes.emailSignup,
-          AppRoutes.emailPasswordReset,
+          AppRoutes.onboarding,
         ];
-        final isOnVerificationFlow =
-            verificationFlowRoutes.any((r) => location.startsWith(r));
-        if (!isOnVerificationFlow) {
+        final isAllowed =
+            allowedWhileUnverified.any((r) => location.startsWith(r));
+        if (!isAllowed) {
           return AppRoutes.phoneVerification;
         }
         return null;

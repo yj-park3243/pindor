@@ -19,6 +19,15 @@ class ErrorReporter {
   static const Duration _deduplicateWindow = Duration(minutes: 5);
   static const int _maxDeduplicateEntries = 200;
 
+  // 정상 흐름이지만 uncaught error로 잡혀 노이즈가 되는 메시지들 — 서버 전송 제외
+  static const List<String> _ignoredMessageSubstrings = [
+    'no_refresh_token',
+    'SignInWithAppleAuthorizationException',
+    'sign_in_canceled',
+    'PlatformException(sign_in_canceled',
+    'kCLErrorDomain error 0', // 위치 권한 일시 실패 (iOS)
+  ];
+
   late final Dio _dio;
 
   void initialize() {
@@ -50,6 +59,14 @@ class ErrorReporter {
     try {
       final errorMessage = _extractMessage(error);
       final stackTraceStr = stackTrace?.toString();
+
+      // 노이즈 필터링 — 정상 흐름에서 발생하는 에러는 서버에 전송하지 않음
+      for (final pattern in _ignoredMessageSubstrings) {
+        if (errorMessage.contains(pattern)) {
+          debugPrint('[ErrorReporter] ignored noise: $pattern');
+          return;
+        }
+      }
 
       // 중복 에러 체크 (5분 내 동일 에러 스킵)
       final dedupeKey = _makeDedupeKey(errorMessage, screenName);

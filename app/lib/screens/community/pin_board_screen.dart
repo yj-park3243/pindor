@@ -196,24 +196,51 @@ class _PinBoardScreenState extends ConsumerState<PinBoardScreen> {
     if (state.isLoading && state.posts.isEmpty) {
       return const FullScreenLoading();
     }
+
+    final refresh = () => ref.read(postListProvider(key).notifier).refresh();
+
+    // 빈 상태(에러 / 결과 없음)에도 풀-다운 새로고침 가능하도록 RefreshIndicator로 감싼다.
     if (state.error != null && state.posts.isEmpty) {
-      return ErrorView(
-        message: '게시글을 불러올 수 없습니다.',
-        onRetry: () => ref.read(postListProvider(key).notifier).refresh(),
+      return RefreshIndicator(
+        onRefresh: refresh,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(
+              height: MediaQuery.of(context).size.height * 0.7,
+              child: ErrorView(
+                message: '게시글을 불러올 수 없습니다.',
+                onRetry: refresh,
+              ),
+            ),
+          ],
+        ),
       );
     }
     if (state.posts.isEmpty) {
-      return _EmptyBoard(
-        sport: allSports[_tabIndex].label,
-        isSearching: _searchQuery.isNotEmpty,
+      return RefreshIndicator(
+        onRefresh: refresh,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(
+              height: MediaQuery.of(context).size.height * 0.7,
+              child: _EmptyBoard(
+                sport: allSports[_tabIndex].label,
+                isSearching: _searchQuery.isNotEmpty,
+              ),
+            ),
+          ],
+        ),
       );
     }
 
     return RefreshIndicator(
-      onRefresh: () => ref.read(postListProvider(key).notifier).refresh(),
+      onRefresh: refresh,
       child: ListView.separated(
         controller: _scrollController,
         padding: const EdgeInsets.symmetric(vertical: 8),
+        physics: const AlwaysScrollableScrollPhysics(),
         itemCount: state.posts.length + (state.hasMore ? 1 : 0),
         separatorBuilder: (_, __) =>
             const Divider(height: 1, indent: 16, endIndent: 16),

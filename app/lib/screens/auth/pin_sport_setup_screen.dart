@@ -13,6 +13,7 @@ import '../../providers/sport_preference_provider.dart';
 import '../../widgets/map/sport_marker.dart';
 import '../../widgets/common/app_toast.dart';
 import '../../core/network/api_client.dart';
+import '../profile/profile_screen.dart' show selectedPinProvider;
 
 /// 자주 가는 핀 + 선호 종목 설정 화면 (온보딩 4단계)
 class PinSportSetupScreen extends ConsumerStatefulWidget {
@@ -27,7 +28,9 @@ class _PinSportSetupScreenState extends ConsumerState<PinSportSetupScreen> {
   NaverMapController? _mapController;
   bool _mapReady = false;
 
-  NLatLng _currentLocation = const NLatLng(37.5665, 126.9780); // 기본 서울
+  // 기본 fallback: 서울역 (위치 권한 거부 또는 GPS 미가용 시)
+  static const _seoulStation = NLatLng(37.5547, 126.9707);
+  NLatLng _currentLocation = _seoulStation;
   bool _isLocating = false;
 
   Pin? _selectedPin;
@@ -58,13 +61,31 @@ class _PinSportSetupScreenState extends ConsumerState<PinSportSetupScreen> {
     setState(() => _isLocating = true);
     try {
       final pos = await LocationUtils.getCurrentPosition();
-      if (pos == null || !mounted) return;
+      if (!mounted) return;
 
-      setState(() {
-        _currentLocation = NLatLng(pos.latitude, pos.longitude);
-      });
+      final Position effectivePos;
+      if (pos != null) {
+        effectivePos = pos;
+        setState(() {
+          _currentLocation = NLatLng(pos.latitude, pos.longitude);
+        });
+      } else {
+        // 위치 권한 거부/실패 → 서울역으로 fallback
+        effectivePos = Position(
+          latitude: _seoulStation.latitude,
+          longitude: _seoulStation.longitude,
+          timestamp: DateTime.now(),
+          accuracy: 0,
+          altitude: 0,
+          altitudeAccuracy: 0,
+          heading: 0,
+          headingAccuracy: 0,
+          speed: 0,
+          speedAccuracy: 0,
+        );
+      }
       // 가장 가까운 핀으로 포커스 (핀 데이터가 이미 있으면 즉시, 아니면 나중에)
-      _focusNearestPin(pos);
+      _focusNearestPin(effectivePos);
     } finally {
       if (mounted) setState(() => _isLocating = false);
     }
@@ -278,24 +299,48 @@ class _PinSportSetupScreenState extends ConsumerState<PinSportSetupScreen> {
                     topLeft: Radius.circular(16),
                     topRight: Radius.circular(16),
                   ),
-                  child: NaverMap(
+                  child: Builder(builder: (context) {
+                    final favoritePin = ref.read(selectedPinProvider);
+                    final initialTarget = favoritePin != null
+                        ? NLatLng(favoritePin.centerLatitude, favoritePin.centerLongitude)
+                        : _currentLocation;
+                    final initialZoom = favoritePin != null ? 14.0 : 12.0;
+                    return NaverMap(
                     options: NaverMapViewOptions(
                       initialCameraPosition: NCameraPosition(
-                        target: _currentLocation,
-                        zoom: 12,
+                        target: initialTarget,
+                        zoom: initialZoom,
                       ),
                       mapType: NMapType.basic,
-                      locationButtonEnable: false,
+                      locationButtonEnable: true,
                     ),
-                    onMapReady: (controller) {
+                    onMapReady: (controller) async {
                       _mapController = controller;
                       _mapReady = true;
+                      // 1) 내 위치 점 표시 먼저
+                      try {
+                        if (await LocationUtils.hasPermission() && mounted) {
+                          controller.setLocationTrackingMode(NLocationTrackingMode.noFollow);
+                        }
+                      } catch (e) {
+                        debugPrint('[PinSportSetup] 위치 트래킹 설정 실패: $e');
+                      }
+                      // 2) 마커
                       final pins = pinsAsync.valueOrNull;
                       if (pins != null && pins.isNotEmpty) {
                         _addPinMarkers(pins);
                       }
+                      // 3) 카메라 강제 — 자주 가는 핀이 있으면 거기, 아니면 _initLocation()의 _focusNearestPin이 처리
+                      if (!mounted) return;
+                      if (favoritePin != null) {
+                        controller.updateCamera(NCameraUpdate.scrollAndZoomTo(
+                          target: NLatLng(favoritePin.centerLatitude, favoritePin.centerLongitude),
+                          zoom: 14,
+                        ));
+                      }
                     },
-                  ),
+                    );
+                  }),
                 ),
 
                 // 로딩 인디케이터 (핀 불러오는 중)

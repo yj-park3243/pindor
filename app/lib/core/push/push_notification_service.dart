@@ -144,6 +144,15 @@ class PushNotificationService {
       }
     }
 
+    // 인증 토큰이 없으면 등록 시도 자체를 스킵 (401 + 에러 로그 발생 방지)
+    // 로그인 후 reregisterToken()에서 다시 호출됨.
+    final accessToken = await _storage.getAccessToken();
+    if (accessToken == null || accessToken.isEmpty) {
+      await _storage.setPendingFcmRegister(true);
+      debugPrint('[Push] 미로그인 상태 — FCM 토큰 등록 보류 (로그인 후 재시도)');
+      return;
+    }
+
     const maxRetries = 3;
     for (var attempt = 0; attempt < maxRetries; attempt++) {
       try {

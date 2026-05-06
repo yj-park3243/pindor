@@ -127,6 +127,162 @@ class _CreateMatchScreenState extends ConsumerState<CreateMatchScreen> {
     }
   }
 
+  /// 매칭 신청 확인 다이얼로그 — 정보 카드 형식 (핀/종목/날짜/시간)
+  Future<bool?> _showConfirmDialog() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final picked = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
+    final diffDays = picked.difference(today).inDays;
+    final dateLabel = diffDays == 0
+        ? '오늘 (${_selectedDate.month}/${_selectedDate.day})'
+        : diffDays == 1
+            ? '내일 (${_selectedDate.month}/${_selectedDate.day})'
+            : diffDays == 2
+                ? '모레 (${_selectedDate.month}/${_selectedDate.day})'
+                : '${_selectedDate.month}월 ${_selectedDate.day}일';
+
+    // 시간대 라벨
+    String timeRange;
+    if (_selectedTimeSlot == 'ANY') {
+      timeRange = '아무 때나';
+    } else {
+      final slot = _timeSlots.where((s) => s.$1 == _selectedTimeSlot).firstOrNull;
+      timeRange = slot != null ? '${slot.$2} (${slot.$3})' : _selectedTimeSlot;
+    }
+
+    final modeLabel = _isCasual ? '친선' : '랭크';
+
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // 타이틀
+              const Text(
+                '매칭 요청 확인',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                '아래 조건으로 매칭을 시작합니다',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppTheme.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 18),
+              // 정보 카드
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF222222),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFF2E2E2E)),
+                ),
+                child: Column(
+                  children: [
+                    _confirmRow(Icons.location_on_rounded, '장소', _pinName ?? '-'),
+                    const _ConfirmDivider(),
+                    _confirmRow(sportIcon(_selectedSport), '종목',
+                        '${sportLabel(_selectedSport)} · $modeLabel'),
+                    const _ConfirmDivider(),
+                    _confirmRow(Icons.calendar_today_rounded, '날짜', dateLabel),
+                    const _ConfirmDivider(),
+                    _confirmRow(Icons.access_time_rounded, '시간', timeRange),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              // 버튼
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.of(ctx).pop(false),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        backgroundColor: const Color(0xFF2A2A2A),
+                      ),
+                      child: const Text('취소',
+                          style: TextStyle(
+                              fontSize: 15,
+                              color: AppTheme.textSecondary,
+                              fontWeight: FontWeight.w700)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.of(ctx).pop(true),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        backgroundColor: AppTheme.primaryColor,
+                      ),
+                      child: const Text('매칭 시작',
+                          style: TextStyle(
+                              fontSize: 15,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _confirmRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: AppTheme.primaryColor),
+          const SizedBox(width: 10),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 13,
+              color: AppTheme.textSecondary,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const Spacer(),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                fontSize: 14,
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _submit() async {
     if (_pinId == null) {
       AppToast.info('핀 탭에서 핀을 선택한 후 매칭을 신청해주세요');
@@ -142,6 +298,10 @@ class _CreateMatchScreenState extends ConsumerState<CreateMatchScreen> {
       AppToast.warning('밤 11시 이후에는 당일 매칭 요청을 할 수 없습니다.');
       return;
     }
+
+    // 확인 다이얼로그 — 오늘/내일 + 시간대 + 종목 명확히 노출
+    final confirmed = await _showConfirmDialog();
+    if (confirmed != true) return;
 
     setState(() => _isLoading = true);
     try {
@@ -163,7 +323,9 @@ class _CreateMatchScreenState extends ConsumerState<CreateMatchScreen> {
         body['ageRange'] = _ageRange.toInt();
       }
 
+      debugPrint('[Match] 매칭 잡기 시작 — sport=$_selectedSport pin=$_pinId date=${body['desiredDate']} slot=$_selectedTimeSlot gender=$_genderPreference casual=$_isCasual');
       final request = await ref.read(matchRequestProvider.notifier).createRequest(body);
+      debugPrint('[Match] 매칭 요청 응답 — requestId=${request.id} status=${request.status}');
 
       if (mounted) {
         if (request.status == 'MATCHED') {
@@ -175,13 +337,16 @@ class _CreateMatchScreenState extends ConsumerState<CreateMatchScreen> {
           if (mounted) {
             final matches = await ref.read(pendingAcceptMatchesProvider.future);
             if (mounted && matches.isNotEmpty) {
+              debugPrint('[Match] 즉시 매칭 — fallback 이동 matchId=${matches.first.id}');
               context.go('/matches/${matches.first.id}/accept');
             } else if (mounted) {
+              debugPrint('[Match] 즉시 매칭 — pending 없음, 목록으로 이동');
               context.go(AppRoutes.matchList);
             }
           }
         } else {
           // 매칭 요청 등록됨 → 소켓 연결 (MATCH_FOUND 수신 필요)
+          debugPrint('[Match] 매칭 대기 등록 — 목록 화면 이동');
           unawaited(syncSocketConnection(ref));
           context.go(AppRoutes.matchList);
           Future.delayed(const Duration(milliseconds: 300), () {
@@ -190,6 +355,7 @@ class _CreateMatchScreenState extends ConsumerState<CreateMatchScreen> {
         }
       }
     } catch (e) {
+      debugPrint('[Match] 매칭 요청 실패: $e');
       if (mounted) {
         // Dio 에러에서 서버 메시지 추출, 없으면 기본 메시지 표시
         String errorMessage = '매칭 요청에 실패했습니다.';
@@ -965,6 +1131,19 @@ class _SectionCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _ConfirmDivider extends StatelessWidget {
+  const _ConfirmDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Divider(
+      height: 1,
+      thickness: 1,
+      color: Color(0xFF2A2A2A),
     );
   }
 }
