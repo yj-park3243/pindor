@@ -65,13 +65,13 @@ export interface DisputeUpdateRequest {
 }
 
 export const disputesApi = {
-  // 의의 제기 목록 조회
+  // 이의 제기 목록 조회
   list: async (params?: DisputeListParams): Promise<PaginatedResponse<Dispute>> => {
     const response = await apiClient.get('/admin/disputes', { params });
     return response.data.data;
   },
 
-  // 의의 제기 상태 업데이트
+  // 이의 제기 상태 업데이트
   update: async (id: string, data: DisputeUpdateRequest): Promise<Dispute> => {
     const response = await apiClient.patch(`/admin/disputes/${id}`, data);
     return response.data.data;

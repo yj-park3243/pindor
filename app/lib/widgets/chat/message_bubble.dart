@@ -34,68 +34,62 @@ class MessageBubble extends StatelessWidget {
         right: isMine ? 0 : 48,
         bottom: 4,
       ),
-      child: Column(
-        crossAxisAlignment:
-            isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      child: Row(
+        mainAxisAlignment:
+            isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (!isMine && showSenderInfo)
-            Padding(
-              padding: const EdgeInsets.only(left: 4, bottom: 4),
-              child: Text(
-                message.senderNickname,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: AppTheme.textSecondary,
-                ),
-              ),
-            ),
-          Row(
-            mainAxisAlignment:
-                isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
-            crossAxisAlignment: CrossAxisAlignment.end,
+          if (!isMine) ...[
+            _buildAvatar(),
+            const SizedBox(width: 8),
+          ],
+          Column(
+            crossAxisAlignment: isMine
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
             children: [
-              if (!isMine) ...[
-                _buildAvatar(),
-                const SizedBox(width: 8),
-              ],
-              Column(
-                crossAxisAlignment: isMine
-                    ? CrossAxisAlignment.end
-                    : CrossAxisAlignment.start,
+              if (!isMine && showSenderInfo)
+                Padding(
+                  padding: const EdgeInsets.only(left: 4, bottom: 4),
+                  child: Text(
+                    message.senderNickname,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                ),
+              _buildBubble(context),
+              const SizedBox(height: 2),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  _buildBubble(context),
-                  const SizedBox(height: 2),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      // 내 메시지: 안 읽음 → "1", 읽음 → 표시 없음
-                      if (isMine && message.readAt == null) ...[
-                        const Text(
-                          '1',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Color(0xFFFF6B35),
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                      ],
-                      Text(
-                        DateFormat('HH:mm').format(message.createdAt.toLocal()),
-                        style: const TextStyle(
-                          fontSize: 10,
-                          color: AppTheme.textDisabled,
-                        ),
+                  // 내 메시지: 안 읽음 → "1", 읽음 → 표시 없음
+                  if (isMine && message.readAt == null) ...[
+                    const Text(
+                      '1',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFFFF6B35),
+                        fontWeight: FontWeight.w700,
                       ),
-                    ],
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                  Text(
+                    DateFormat('HH:mm').format(message.createdAt.toLocal()),
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: AppTheme.textDisabled,
+                    ),
                   ),
                 ],
               ),
-              if (isMine) const SizedBox(width: 4),
             ],
           ),
+          if (isMine) const SizedBox(width: 4),
         ],
       ),
     );
@@ -125,13 +119,6 @@ class MessageBubble extends StatelessWidget {
   }
 
   Widget _buildBubble(BuildContext context) {
-    if (message.isVerificationCode) {
-      return _VerificationCodeBubble(
-        message: message,
-        isMine: isMine,
-      );
-    }
-
     if (message.isImage) {
       return _ImageBubble(
         imageUrl: message.imageUrl ?? message.content,
@@ -552,88 +539,3 @@ class _LocationBubble extends StatelessWidget {
   }
 }
 
-/// 인증번호 메시지 버블
-class _VerificationCodeBubble extends StatelessWidget {
-  final Message message;
-  final bool isMine;
-
-  const _VerificationCodeBubble({required this.message, required this.isMine});
-
-  @override
-  Widget build(BuildContext context) {
-    final code = message.extraData?['verificationCode'] as String? ?? '????';
-
-    return Container(
-      constraints: BoxConstraints(
-        maxWidth: MediaQuery.of(context).size.width * 0.65,
-      ),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: isMine
-            ? const Color(0xFF1A1A2E)
-            : const Color(0xFF1A2E1A),
-        borderRadius: BorderRadius.only(
-          topLeft: const Radius.circular(16),
-          topRight: const Radius.circular(16),
-          bottomLeft: Radius.circular(isMine ? 16 : 4),
-          bottomRight: Radius.circular(isMine ? 4 : 16),
-        ),
-        border: Border.all(
-          color: isMine
-              ? AppTheme.primaryColor.withOpacity(0.3)
-              : const Color(0xFF4CAF50).withOpacity(0.3),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.pin_rounded,
-                size: 16,
-                color: isMine ? AppTheme.primaryColor : const Color(0xFF4CAF50),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                isMine ? '인증번호 전송' : '인증번호 수신',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: isMine
-                      ? AppTheme.primaryColor.withOpacity(0.8)
-                      : const Color(0xFF4CAF50).withOpacity(0.8),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Center(
-            child: Text(
-              code.split('').join(' '),
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w900,
-                color: isMine ? AppTheme.primaryColor : const Color(0xFF4CAF50),
-                letterSpacing: 8,
-              ),
-            ),
-          ),
-          if (!isMine) ...[
-            const SizedBox(height: 6),
-            const Center(
-              child: Text(
-                '승부 결과 입력 시 자동으로 입력됩니다',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: Color(0xFF9CA3AF),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}

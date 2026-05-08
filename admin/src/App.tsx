@@ -123,7 +123,7 @@ export function App() {
         {/* 공지사항 관리 */}
         <Route path={ROUTES.NOTICES} element={<NoticeListPage />} />
 
-        {/* 의의 제기 관리 */}
+        {/* 이의 제기 관리 */}
         <Route path={ROUTES.DISPUTES} element={<DisputeListPage />} />
 
         {/* 노쇼 신고 */}

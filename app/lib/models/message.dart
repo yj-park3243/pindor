@@ -91,7 +91,6 @@ class Message {
   bool get isImage => messageType == 'IMAGE';
   bool get isSystem => messageType == 'SYSTEM';
   bool get isLocation => messageType == 'LOCATION';
-  bool get isVerificationCode => messageType == 'VERIFICATION_CODE';
 
   /// 위치 메시지 데이터 파싱
   LocationData? get locationData {

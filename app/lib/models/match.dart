@@ -24,7 +24,9 @@ class Match {
   final String? desiredTimeSlot; // 매칭 요청 희망 시간대
   final bool myResultSubmitted; // 내가 결과를 이미 제출했는지
   final int? myScoreChange; // 내 점수 변동 (+28, -15 등)
-  final String? myVerificationCode; // 나의 4자리 인증번호
+  final bool myMetConfirmed; // 내가 "우리 만났어요" 누름
+  final bool opponentMetConfirmed; // 상대가 "우리 만났어요" 누름
+  final bool bothMetConfirmed; // 양쪽 모두 누름 (결과 입력 가능)
 
   /// 빈 매칭 — firstWhere의 fallback용 sentinel.
   /// id가 빈 문자열이면 "없음"으로 판단.
@@ -61,7 +63,9 @@ class Match {
     this.desiredTimeSlot,
     this.myResultSubmitted = false,
     this.myScoreChange,
-    this.myVerificationCode,
+    this.myMetConfirmed = false,
+    this.opponentMetConfirmed = false,
+    this.bothMetConfirmed = false,
   });
 
   factory Match.fromJson(Map<String, dynamic> json) {
@@ -95,7 +99,9 @@ class Match {
       desiredTimeSlot: json['desiredTimeSlot'] as String?,
       myResultSubmitted: json['myResultSubmitted'] as bool? ?? false,
       myScoreChange: json['myScoreChange'] as int?,
-      myVerificationCode: json['myVerificationCode'] as String?,
+      myMetConfirmed: json['myMetConfirmed'] as bool? ?? false,
+      opponentMetConfirmed: json['opponentMetConfirmed'] as bool? ?? false,
+      bothMetConfirmed: json['bothMetConfirmed'] as bool? ?? false,
     );
   }
 
@@ -121,8 +127,10 @@ class Match {
         if (desiredDate != null) 'desiredDate': desiredDate,
         if (desiredTimeSlot != null) 'desiredTimeSlot': desiredTimeSlot,
         if (myScoreChange != null) 'myScoreChange': myScoreChange,
-        if (myVerificationCode != null) 'myVerificationCode': myVerificationCode,
         'myResultSubmitted': myResultSubmitted,
+        'myMetConfirmed': myMetConfirmed,
+        'opponentMetConfirmed': opponentMetConfirmed,
+        'bothMetConfirmed': bothMetConfirmed,
       };
 
   /// 서버 응답의 acceptances 배열 또는 myAcceptance 단일 객체 모두 처리

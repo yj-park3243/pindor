@@ -8,7 +8,7 @@ final myDisputesProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>
   return repo.getMyDisputes();
 });
 
-/// 내 의의 제기 목록 화면
+/// 내 이의 제기 목록 화면
 class DisputeListScreen extends ConsumerWidget {
   const DisputeListScreen({super.key});
 
@@ -19,7 +19,7 @@ class DisputeListScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
-        title: const Text('의의 제기 내역'),
+        title: const Text('이의 제기 내역'),
         backgroundColor: const Color(0xFF0A0A0A),
         elevation: 0,
       ),
@@ -49,7 +49,7 @@ class DisputeListScreen extends ConsumerWidget {
                   Icon(Icons.gavel, size: 56, color: AppTheme.textDisabled),
                   SizedBox(height: 16),
                   Text(
-                    '접수된 의의 제기가 없습니다.',
+                    '접수된 이의 제기가 없습니다.',
                     style: TextStyle(
                       fontSize: 16,
                       color: AppTheme.textSecondary,

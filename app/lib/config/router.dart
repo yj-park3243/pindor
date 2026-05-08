@@ -119,7 +119,7 @@ class AppRoutes {
   static const String notices = '/notices';
   static const String noticeDetail = '/notices/:id';
 
-  // 의의 제기
+  // 이의 제기
   static const String disputes = '/disputes';
   static const String createDispute = '/disputes/create';
 
@@ -275,132 +275,82 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const LocationSetupScreen(),
       ),
 
-      // ─── 메인 탭 쉘 라우트 ───
-      ShellRoute(
-        builder: (context, state, child) => MainTabScreen(child: child),
-        routes: [
-          // 홈 탭
-          GoRoute(
-            path: AppRoutes.home,
-            builder: (context, state) => const HomeScreen(),
+      // ─── 메인 탭 쉘 라우트 (StatefulShellRoute로 각 탭 상태 보존) ───
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, navigationShell) =>
+            MainTabScreen(navigationShell: navigationShell),
+        branches: [
+          // Branch 0: 홈 탭
+          StatefulShellBranch(
             routes: [
               GoRoute(
-                path: 'quick-match',
-                builder: (context, state) => const QuickMatchScreen(),
-              ),
-            ],
-          ),
-
-          // 매칭 탭
-          GoRoute(
-            path: AppRoutes.matchList,
-            builder: (context, state) {
-              final extra = state.extra as Map<String, dynamic>?;
-              final initialTab = extra?['initialTab'] as int? ?? 0;
-              return MatchListScreen(initialTab: initialTab);
-            },
-            routes: [
-              GoRoute(
-                path: 'create',
-                parentNavigatorKey: _rootNavigatorKey,
-                builder: (context, state) => const CreateMatchScreen(),
-              ),
-              GoRoute(
-                path: 'requests',
-                builder: (context, state) => const MatchRequestListScreen(),
-              ),
-              GoRoute(
-                path: ':matchId',
-                builder: (context, state) => MatchDetailScreen(
-                  matchId: state.pathParameters['matchId']!,
-                ),
+                path: AppRoutes.home,
+                builder: (context, state) => const HomeScreen(),
                 routes: [
                   GoRoute(
-                    path: 'accept',
-                    parentNavigatorKey: _rootNavigatorKey,
-                    builder: (context, state) => MatchAcceptScreen(
-                      matchId: state.pathParameters['matchId']!,
-                    ),
+                    path: 'quick-match',
+                    builder: (context, state) => const QuickMatchScreen(),
                   ),
                 ],
               ),
             ],
           ),
 
-          // 랭킹/지도 탭
-          GoRoute(
-            path: AppRoutes.map,
-            builder: (context, state) => MapScreen(
-              focusPinId: state.uri.queryParameters['focusPinId'],
-            ),
+          // Branch 1: 핀(지도) 탭
+          StatefulShellBranch(
             routes: [
               GoRoute(
-                path: 'ranking/:pinId',
-                builder: (context, state) => PinRankingScreen(
-                  pinId: state.pathParameters['pinId']!,
+                path: AppRoutes.map,
+                builder: (context, state) => MapScreen(
+                  focusPinId: state.uri.queryParameters['focusPinId'],
                 ),
-              ),
-              GoRoute(
-                path: 'my-ranking',
-                builder: (context, state) => const MyRankingScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'ranking/:pinId',
+                    builder: (context, state) => PinRankingScreen(
+                      pinId: state.pathParameters['pinId']!,
+                    ),
+                  ),
+                  GoRoute(
+                    path: 'my-ranking',
+                    builder: (context, state) => const MyRankingScreen(),
+                  ),
+                ],
               ),
             ],
           ),
 
-          // 팀 탭
-          GoRoute(
-            path: AppRoutes.teams,
-            builder: (context, state) => const TeamHomeScreen(),
+          // Branch 2: 매칭 탭
+          StatefulShellBranch(
             routes: [
               GoRoute(
-                path: 'create',
-                builder: (context, state) => const CreateTeamScreen(),
-              ),
-              GoRoute(
-                path: 'nearby',
-                builder: (context, state) => const NearbyTeamsScreen(),
-              ),
-              GoRoute(
-                path: ':id',
-                builder: (context, state) => TeamDetailScreen(
-                  teamId: state.pathParameters['id']!,
-                ),
+                path: AppRoutes.matchList,
+                builder: (context, state) {
+                  final extra = state.extra as Map<String, dynamic>?;
+                  final initialTab = extra?['initialTab'] as int? ?? 0;
+                  return MatchListScreen(initialTab: initialTab);
+                },
                 routes: [
                   GoRoute(
-                    path: 'manage',
-                    builder: (context, state) => TeamManageScreen(
-                      teamId: state.pathParameters['id']!,
-                    ),
+                    path: 'create',
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (context, state) => const CreateMatchScreen(),
                   ),
                   GoRoute(
-                    path: 'match/request',
-                    builder: (context, state) => TeamMatchRequestScreen(
-                      teamId: state.pathParameters['id']!,
-                    ),
+                    path: 'requests',
+                    builder: (context, state) => const MatchRequestListScreen(),
                   ),
                   GoRoute(
-                    path: 'matches',
-                    builder: (context, state) => TeamMatchListScreen(
-                      teamId: state.pathParameters['id']!,
-                    ),
-                  ),
-                  GoRoute(
-                    path: 'board',
-                    builder: (context, state) => TeamBoardScreen(
-                      teamId: state.pathParameters['id']!,
+                    path: ':matchId',
+                    builder: (context, state) => MatchDetailScreen(
+                      matchId: state.pathParameters['matchId']!,
                     ),
                     routes: [
                       GoRoute(
-                        path: 'write',
-                        builder: (context, state) => TeamCreatePostScreen(
-                          teamId: state.pathParameters['id']!,
-                        ),
-                      ),
-                      GoRoute(
-                        path: ':postId',
-                        builder: (context, state) => TeamPostDetailScreen(
-                          teamId: state.pathParameters['id']!,
-                          postId: state.pathParameters['postId']!,
+                        path: 'accept',
+                        parentNavigatorKey: _rootNavigatorKey,
+                        builder: (context, state) => MatchAcceptScreen(
+                          matchId: state.pathParameters['matchId']!,
                         ),
                       ),
                     ],
@@ -410,35 +360,101 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
 
-          // 프로필 탭
-          GoRoute(
-            path: AppRoutes.profile,
-            builder: (context, state) => const ProfileScreen(),
+          // Branch 3: 마이/팀 탭
+          StatefulShellBranch(
             routes: [
               GoRoute(
-                path: 'edit',
-                builder: (context, state) => const EditProfileScreen(),
+                path: AppRoutes.profile,
+                builder: (context, state) => const ProfileScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'edit',
+                    builder: (context, state) => const EditProfileScreen(),
+                  ),
+                  GoRoute(
+                    path: 'sports',
+                    builder: (context, state) => const SportsProfileScreen(),
+                  ),
+                  GoRoute(
+                    path: 'notifications',
+                    builder: (context, state) => const NotificationListScreen(),
+                  ),
+                  GoRoute(
+                    path: 'secret',
+                    builder: (context, state) => const SecretScreen(),
+                  ),
+                ],
               ),
               GoRoute(
-                path: 'sports',
-                builder: (context, state) => const SportsProfileScreen(),
-              ),
-              GoRoute(
-                path: 'notifications',
-                builder: (context, state) => const NotificationListScreen(),
-              ),
-              GoRoute(
-                path: 'secret',
-                builder: (context, state) => const SecretScreen(),
+                path: AppRoutes.teams,
+                builder: (context, state) => const TeamHomeScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'create',
+                    builder: (context, state) => const CreateTeamScreen(),
+                  ),
+                  GoRoute(
+                    path: 'nearby',
+                    builder: (context, state) => const NearbyTeamsScreen(),
+                  ),
+                  GoRoute(
+                    path: ':id',
+                    builder: (context, state) => TeamDetailScreen(
+                      teamId: state.pathParameters['id']!,
+                    ),
+                    routes: [
+                      GoRoute(
+                        path: 'manage',
+                        builder: (context, state) => TeamManageScreen(
+                          teamId: state.pathParameters['id']!,
+                        ),
+                      ),
+                      GoRoute(
+                        path: 'match/request',
+                        builder: (context, state) => TeamMatchRequestScreen(
+                          teamId: state.pathParameters['id']!,
+                        ),
+                      ),
+                      GoRoute(
+                        path: 'matches',
+                        builder: (context, state) => TeamMatchListScreen(
+                          teamId: state.pathParameters['id']!,
+                        ),
+                      ),
+                      GoRoute(
+                        path: 'board',
+                        builder: (context, state) => TeamBoardScreen(
+                          teamId: state.pathParameters['id']!,
+                        ),
+                        routes: [
+                          GoRoute(
+                            path: 'write',
+                            builder: (context, state) => TeamCreatePostScreen(
+                              teamId: state.pathParameters['id']!,
+                            ),
+                          ),
+                          GoRoute(
+                            path: ':postId',
+                            builder: (context, state) => TeamPostDetailScreen(
+                              teamId: state.pathParameters['id']!,
+                              postId: state.pathParameters['postId']!,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ],
           ),
         ],
       ),
 
-      // ─── 채팅방 (탭 외부 — 바텀 네비 없음) ───
+      // ─── 채팅방 (탭 외부 — 바텀 네비 없음, root navigator에 push) ───
       GoRoute(
         path: '/chats/:roomId',
+        parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => ChatRoomScreen(
           roomId: state.pathParameters['roomId']!,
         ),
@@ -447,6 +463,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       // ─── 설정 (탭 외부 — 바텀 네비 없음) ───
       GoRoute(
         path: '/profile/settings',
+        parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const SettingsScreen(),
         routes: [
           GoRoute(
@@ -463,12 +480,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       // ─── 신고/문의 (탭 외부 — 바텀 네비 없음) ───
       GoRoute(
         path: '/profile/inquiry',
+        parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const InquiryScreen(),
       ),
 
       // ─── 공지사항 (탭 외부 — 바텀 네비 없음) ───
       GoRoute(
         path: '/notices',
+        parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const NoticeListScreen(),
         routes: [
           GoRoute(
@@ -483,6 +502,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       // ─── 팀 매칭 상세 (탭 외부) ───
       GoRoute(
         path: '/team-matches/:id',
+        parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => TeamMatchDetailScreen(
           matchId: state.pathParameters['id']!,
         ),
@@ -491,6 +511,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       // ─── 팀 채팅 (탭 외부) ───
       GoRoute(
         path: '/team-chats/:roomId',
+        parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => TeamChatScreen(
           roomId: state.pathParameters['roomId']!,
         ),
@@ -526,6 +547,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       // ─── 게시글 상세 (독립 경로) ───
       GoRoute(
         path: '/pins/:pinId/posts/:postId',
+        parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => PostDetailScreen(
           pinId: state.pathParameters['pinId']!,
           postId: state.pathParameters['postId']!,
@@ -533,13 +555,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
 
-      // ─── 의의 제기 (탭 외부) ───
+      // ─── 이의 제기 (탭 외부) ───
       GoRoute(
         path: '/disputes',
+        parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const DisputeListScreen(),
       ),
       GoRoute(
         path: '/disputes/create',
+        parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) {
           final matchId = state.uri.queryParameters['matchId'] ?? '';
           return CreateDisputeScreen(matchId: matchId);
@@ -549,18 +573,21 @@ final routerProvider = Provider<GoRouter>((ref) {
       // ─── 경기 결과 흐름 ───
       GoRoute(
         path: '/games/:gameId/result',
+        parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => GameResultInputScreen(
           gameId: state.pathParameters['gameId']!,
         ),
       ),
       GoRoute(
         path: '/games/:gameId/confirm',
+        parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => GameConfirmScreen(
           gameId: state.pathParameters['gameId']!,
         ),
       ),
       GoRoute(
         path: '/games/:gameId/score-result',
+        parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) {
           final extra = state.extra as Map<String, dynamic>?;
           return ScoreResultScreen(

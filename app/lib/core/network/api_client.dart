@@ -187,6 +187,12 @@ class _AuthInterceptor extends Interceptor {
       return handler.next(err);
     }
 
+    // 요청에 Authorization 헤더가 없었던 경우(미로그인 상태에서 protected API 호출)
+    // 토큰 갱신 시도 + force logout 모두 스킵 — 동시 진행 중인 로그인의 토큰을 지울 수 있음
+    if (err.requestOptions.headers['Authorization'] == null) {
+      return handler.next(err);
+    }
+
     // 이미 갱신 중인 경우: Completer가 완료될 때까지 대기
     if (_client._isRefreshing) {
       if (_refreshCompleter != null) {

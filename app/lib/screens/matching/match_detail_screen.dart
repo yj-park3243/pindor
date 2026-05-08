@@ -17,6 +17,7 @@ import '../../widgets/common/error_view.dart';
 import '../../widgets/common/app_toast.dart';
 import '../../widgets/common/safe_bottom_sheet.dart';
 import '../../core/network/api_client.dart';
+import '../../core/utils/location_utils.dart';
 import 'package:pull_down_button/pull_down_button.dart';
 import 'package:bottom_picker/bottom_picker.dart';
 import 'package:bottom_picker/resources/time.dart';
@@ -637,6 +638,7 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
   bool _resultSubmitted = false;
   String? _lastKnownStatus;
   StreamSubscription<Map<String, dynamic>>? _statusSub;
+  StreamSubscription<Map<String, dynamic>>? _metSub;
 
   @override
   void initState() {
@@ -658,11 +660,19 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
         AppToast.info('상대방이 매칭을 취소했습니다.');
       }
     });
+
+    // 만남 확인 이벤트 구독 — 양쪽 confirm 상태 실시간 갱신
+    _metSub = SocketService.instance.onMatchMetUpdated
+        .where((data) => data['matchId'] == widget.matchId)
+        .listen((_) {
+      ref.invalidate(matchDetailProvider(widget.matchId));
+    });
   }
 
   @override
   void dispose() {
     _statusSub?.cancel();
+    _metSub?.cancel();
     // 활성 매칭은 룸 유지 (main_tab_screen이 COMPLETED/CANCELLED 시 퇴장 처리)
     // COMPLETED/CANCELLED일 때만 퇴장
     final status = _lastKnownStatus ?? widget.match.status;
@@ -733,32 +743,31 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
                   const SizedBox(height: 10),
                 ],
 
-                // 승부 결과 버튼 (CHAT / CONFIRMED 상태에서 표시)
+                // 우리 만났어요 + 승부 결과 버튼 (CHAT / CONFIRMED 상태에서 표시)
                 if (match.isChat || match.isConfirmed) ...[
+                  const SizedBox(height: 10),
+                  _MetConfirmButton(
+                    match: match,
+                    onMetUpdated: () => setState(() {}),
+                  ),
                   const SizedBox(height: 10),
                   SizedBox(
                     width: double.infinity,
                     height: 52,
                     child: ElevatedButton.icon(
-                      onPressed: isResultSubmitted
+                      onPressed: (!match.bothMetConfirmed || isResultSubmitted)
                           ? null
                           : () async {
-                              // 채팅방 존재 여부 체크
                               if (match.chatRoomId.isEmpty) {
                                 AppToast.info('채팅방이 아직 생성되지 않았습니다. 상대방과 먼저 채팅을 시작해주세요.');
                                 return;
                               }
                               if (!context.mounted) return;
-                              // 수신된 인증번호가 있으면 자동 입력
-                              final receivedCode = match.chatRoomId.isNotEmpty
-                                  ? ref.read(receivedVerificationCodeProvider(match.chatRoomId))
-                                  : null;
                               showGameResultSheet(
                                 context,
                                 ref: ref,
                                 matchId: match.id,
                                 opponentNickname: match.opponent.nickname,
-                                initialVerificationCode: receivedCode,
                                 insetForBottomNav: true,
                                 onSubmitted: () {
                                   setState(() => _resultSubmitted = true);
@@ -771,14 +780,21 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
                             : Icons.emoji_events_rounded,
                         size: 18,
                       ),
-                      label: Text(isResultSubmitted
-                          ? '결과 제출 완료 (상대 대기중)'
-                          : '승부 결과'),
+                      label: Text(
+                        isResultSubmitted
+                            ? '결과 제출 완료 (상대 대기중)'
+                            : !match.bothMetConfirmed
+                                ? '만남 확인 후 결과 입력 가능'
+                                : '승부 결과',
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: isResultSubmitted
+                        backgroundColor: (!match.bothMetConfirmed || isResultSubmitted)
                             ? AppTheme.borderColor
                             : AppTheme.secondaryColor,
-                        foregroundColor: isResultSubmitted
+                        foregroundColor: (!match.bothMetConfirmed || isResultSubmitted)
                             ? AppTheme.textSecondary
                             : Colors.white,
                         disabledBackgroundColor: AppTheme.borderColor,
@@ -817,7 +833,7 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
                   ),
                 ],
 
-                // 의의 제기 버튼 (COMPLETED 상태에서 맨 하단)
+                // 이의 제기 버튼 (COMPLETED 상태에서 맨 하단)
                 if (match.status == 'COMPLETED') ...[
                   const SizedBox(height: 10),
                   SizedBox(
@@ -827,7 +843,7 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
                       onPressed: () =>
                           context.push('/disputes/create?matchId=${match.id}'),
                       icon: const Icon(Icons.gavel, size: 18),
-                      label: const Text('의의 제기'),
+                      label: const Text('이의 제기'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.orange,
                         side: const BorderSide(color: Colors.orange),
@@ -1006,15 +1022,29 @@ class _MatchupCard extends ConsumerWidget {
     String label;
     Color color;
 
+    IconData icon;
     if (gameResult == 'DRAW') {
       label = '무승부';
       color = const Color(0xFF9CA3AF);
+      icon = Icons.handshake_rounded;
+    } else if (gameResult == 'DISPUTED') {
+      label = '분쟁중';
+      color = const Color(0xFFF59E0B);
+      icon = Icons.gavel_rounded;
+    } else if (gameResult == 'NO_RESULT') {
+      label = '결과없음';
+      color = const Color(0xFF9CA3AF);
+      icon = Icons.help_outline_rounded;
     } else if ((gameResult == 'WIN' && isMe) || (gameResult == 'LOSS' && !isMe)) {
       label = '승리';
       color = AppTheme.secondaryColor;
-    } else {
+      icon = Icons.emoji_events_rounded;
+    } else if ((gameResult == 'LOSS' && isMe) || (gameResult == 'WIN' && !isMe)) {
       label = '패배';
       color = AppTheme.errorColor;
+      icon = Icons.sentiment_very_dissatisfied_rounded;
+    } else {
+      return const SizedBox.shrink();
     }
 
     return Container(
@@ -1025,13 +1055,20 @@ class _MatchupCard extends ConsumerWidget {
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: color.withOpacity(0.4), width: 1),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
-          color: color,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1138,25 +1175,24 @@ class _MatchupCard extends ConsumerWidget {
                     ],
                   ),
                 ),
-                if (match.isCasual) ...[
-                  const SizedBox(width: 6),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Text(
-                      '친선',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.orange,
-                      ),
+                const SizedBox(width: 6),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: (match.isCasual ? Colors.orange : AppTheme.secondaryColor)
+                        .withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    match.isCasual ? '친선' : '랭크',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: match.isCasual ? Colors.orange : AppTheme.secondaryColor,
                     ),
                   ),
-                ],
+                ),
                 const Spacer(),
                 _buildStatusChip(match.status, match.statusDisplayName),
               ],
@@ -1516,6 +1552,138 @@ class _InfoTile extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _MetConfirmButton extends ConsumerStatefulWidget {
+  final Match match;
+  final VoidCallback onMetUpdated;
+
+  const _MetConfirmButton({required this.match, required this.onMetUpdated});
+
+  @override
+  ConsumerState<_MetConfirmButton> createState() => _MetConfirmButtonState();
+}
+
+class _MetConfirmButtonState extends ConsumerState<_MetConfirmButton> {
+  bool _submitting = false;
+
+  Future<void> _confirmMet() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text("우리 만났어요", style: TextStyle(color: Colors.white)),
+        content: const Text(
+          "한 번 누르면 취소할 수 없습니다. 정말 상대를 만나셨나요?",
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text("취소"),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryColor,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text("만났어요"),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _submitting = true);
+    try {
+      // 만남 확인 시점의 위치를 함께 전송 (실패 시 위치 없이 진행)
+      double? lat;
+      double? lng;
+      try {
+        final pos = await LocationUtils.getCurrentPosition();
+        if (pos != null) {
+          lat = pos.latitude;
+          lng = pos.longitude;
+        }
+      } catch (_) {}
+
+      await ref.read(matchingRepositoryProvider).confirmMet(
+            widget.match.id,
+            latitude: lat,
+            longitude: lng,
+          );
+      ref.invalidate(matchDetailProvider(widget.match.id));
+      widget.onMetUpdated();
+    } catch (e) {
+      if (mounted) AppToast.error("만남 확인에 실패했습니다");
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final m = widget.match;
+
+    if (m.bothMetConfirmed) {
+      // 양쪽 모두 만남 확인 후에는 별도 안내 박스 숨김 (결과 입력 버튼이 활성화되므로 중복)
+      return const SizedBox.shrink();
+    }
+
+    if (m.myMetConfirmed) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+        decoration: BoxDecoration(
+          color: AppTheme.primaryColor.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation(AppTheme.primaryColor),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              "상대 응답 기다리는 중…",
+              style: TextStyle(
+                color: AppTheme.primaryColor,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: ElevatedButton.icon(
+        onPressed: _submitting ? null : _confirmMet,
+        icon: _submitting
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              )
+            : const Icon(Icons.handshake_rounded, size: 18),
+        label: Text(m.opponentMetConfirmed ? "우리 만났어요 (상대 확인 완료)" : "우리 만났어요"),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppTheme.primaryColor,
+          foregroundColor: Colors.white,
+        ),
+      ),
     );
   }
 }

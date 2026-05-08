@@ -103,14 +103,14 @@ export class GamesService {
     const match = game.match;
     const isRequester = (match.requesterProfile as any).userId === userId;
 
-    // 인증번호 검증: 상대방의 코드를 입력해야 함
-    const expectedCode = isRequester
-      ? (match as any).opponentVerificationCode
-      : (match as any).requesterVerificationCode;
-    if (expectedCode && dto.verificationCode !== expectedCode) {
+    // 양쪽 모두 "우리 만났어요" 누른 후에만 결과 입력 허용
+    const bothMetConfirmed =
+      (match as any).requesterMetConfirmedAt != null &&
+      (match as any).opponentMetConfirmedAt != null;
+    if (!bothMetConfirmed) {
       throw AppError.badRequest(
-        ErrorCode.VALIDATION_ERROR,
-        '인증번호가 일치하지 않습니다. 상대방의 인증번호를 확인해주세요.',
+        ErrorCode.MATCH_INVALID_STATUS,
+        '양쪽 모두 만남을 확인해야 결과를 입력할 수 있습니다.',
       );
     }
 
@@ -425,6 +425,19 @@ export class GamesService {
         status: 'COMPLETED' as any,
         completedAt: new Date(),
       });
+
+      // DISPUTED여도 배치 진행 카운트는 증가 (점수/승패 통계는 변동 없음)
+      await this.sportsProfileRepo
+        .createQueryBuilder()
+        .update()
+        .set({
+          gamesPlayed: () => 'games_played + 1',
+          isPlacement: () => 'CASE WHEN games_played + 1 < 5 THEN true ELSE false END',
+        })
+        .where('id IN (:...ids)', {
+          ids: [(match.requesterProfile as any).id, (match.opponentProfile as any).id],
+        })
+        .execute();
 
       // DISPUTED여도 해당 핀에 ranking_entry 생성 (점수 변동 없이 기록만)
       if (match.pinId) {
@@ -1100,6 +1113,33 @@ export class GamesService {
     // 이미 다른 인스턴스에서 처리된 경우 알림 스킵
     if (txResult.skipped) {
       return false;
+    }
+
+    // Redis 핀 랭킹 캐시 전체 재빌드 (DB ranking_entries 최신 데이터로 동기화)
+    // 두 유저만 ZADD하면 다른 유저는 캐시에 누락되어 stale 데이터가 노출됨
+    if (!isCasual && match.pinId) {
+      const cacheKey = `ranking:${match.pinId}:${requesterProfile.sportType}`;
+      try {
+        const allEntries = await this.dataSource
+          .getRepository(RankingEntry)
+          .find({
+            where: {
+              pinId: match.pinId,
+              sportType: requesterProfile.sportType as any,
+            },
+          });
+        await redis.del(cacheKey);
+        if (allEntries.length > 0) {
+          const args: (string | number)[] = [];
+          for (const e of allEntries) {
+            args.push(e.score, e.sportsProfileId);
+          }
+          await redis.zadd(cacheKey, ...args);
+          await redis.expire(cacheKey, 86400);
+        }
+      } catch (cacheErr) {
+        console.warn('[GamesService] ranking cache rebuild failed:', cacheErr);
+      }
     }
 
     // 알림 발송

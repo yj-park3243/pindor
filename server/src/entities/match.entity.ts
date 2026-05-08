@@ -71,11 +71,23 @@ export class Match {
   @Column({ name: 'completed_at', type: 'timestamptz', nullable: true })
   completedAt!: Date | null;
 
-  @Column({ name: 'requester_verification_code', type: 'varchar', length: 4, nullable: true })
-  requesterVerificationCode!: string | null;
+  @Column({ name: 'requester_met_confirmed_at', type: 'timestamptz', nullable: true })
+  requesterMetConfirmedAt!: Date | null;
 
-  @Column({ name: 'opponent_verification_code', type: 'varchar', length: 4, nullable: true })
-  opponentVerificationCode!: string | null;
+  @Column({ name: 'opponent_met_confirmed_at', type: 'timestamptz', nullable: true })
+  opponentMetConfirmedAt!: Date | null;
+
+  @Column({ name: 'requester_met_latitude', type: 'double precision', nullable: true })
+  requesterMetLatitude!: number | null;
+
+  @Column({ name: 'requester_met_longitude', type: 'double precision', nullable: true })
+  requesterMetLongitude!: number | null;
+
+  @Column({ name: 'opponent_met_latitude', type: 'double precision', nullable: true })
+  opponentMetLatitude!: number | null;
+
+  @Column({ name: 'opponent_met_longitude', type: 'double precision', nullable: true })
+  opponentMetLongitude!: number | null;
 
   @Column({ name: 'cancelled_by', type: 'uuid', nullable: true })
   cancelledBy!: string | null;

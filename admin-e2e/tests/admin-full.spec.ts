@@ -19,7 +19,7 @@ const MENUS: MenuEntry[] = [
   { label: '핀 관리', parent: '커뮤니티', urlPattern: /\/pins/ },
   { label: '게시판 관리', parent: '커뮤니티', urlPattern: /\/posts/ },
   { label: '신고 처리', parent: '커뮤니티', urlPattern: /\/reports/ },
-  { label: '의의 제기', parent: '커뮤니티', urlPattern: /\/disputes/ },
+  { label: '이의 제기', parent: '커뮤니티', urlPattern: /\/disputes/ },
   { label: '랭킹 관리', urlPattern: /\/rankings/ },
   { label: '공지사항', urlPattern: /\/notices/ },
   { label: '알림 발송', urlPattern: /\/notifications/ },
@@ -50,7 +50,7 @@ test.describe('PINDOR Admin — 전체 스모크', () => {
     }
   });
 
-  test('의의 신청 처리 — 리스트 + 검토 드로어 표시', async ({ page }) => {
+  test('이의 신청 처리 — 리스트 + 검토 드로어 표시', async ({ page }) => {
     const disputeGameId = ensureDisputeCandidate();
     if (!disputeGameId) {
       test.skip(true, '운영 DB에 게임 레코드가 없어 dispute 시드 불가 — 실기기에서 먼저 경기 생성 필요');

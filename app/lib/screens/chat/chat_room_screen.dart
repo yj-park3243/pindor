@@ -19,6 +19,8 @@ import '../../widgets/common/app_toast.dart';
 import '../../widgets/common/game_result_sheet.dart';
 import '../../widgets/report/report_bottom_sheet.dart';
 import '../../core/network/socket_service.dart';
+import '../../core/utils/location_utils.dart';
+import '../../repositories/matching_repository.dart';
 import 'package:pull_down_button/pull_down_button.dart';
 import 'location_picker_screen.dart';
 
@@ -40,6 +42,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   final _scrollController = ScrollController();
   Timer? _typingThrottle;
   StreamSubscription<Map<String, dynamic>>? _statusSub;
+  bool _didInitialScroll = false;
+  int _lastMessageCount = 0;
 
   @override
   void initState() {
@@ -95,6 +99,37 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  /// 바닥 근처(120px 이내)면 true
+  bool _isNearBottom() {
+    if (!_scrollController.hasClients) return true;
+    final pos = _scrollController.position;
+    return pos.maxScrollExtent - pos.pixels <= 120;
+  }
+
+  /// 메시지 변화 시 자동 스크롤 결정.
+  /// - 최초 로드: 무조건 바닥으로
+  /// - 이후: 새 메시지가 추가됐고 사용자가 바닥 근처에 있을 때만
+  void _maybeAutoScroll(int messageCount) {
+    final isInitial = !_didInitialScroll;
+    final hasNew = messageCount > _lastMessageCount;
+    final wasAtBottom = _isNearBottom();
+    _lastMessageCount = messageCount;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+      if (isInitial) {
+        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+        _didInitialScroll = true;
+      } else if (hasNew && wasAtBottom) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
           duration: const Duration(milliseconds: 300),
@@ -252,8 +287,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       ),
       body: Column(
         children: [
-          // 인증번호 고정 배너
-          _VerificationCodeBanner(roomId: widget.roomId),
+          // 우리 만났어요 배너 (CHAT/CONFIRMED 상태에서만 표시)
+          _MetConfirmBanner(roomId: widget.roomId),
 
           // 메시지 목록
           Expanded(
@@ -272,7 +307,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                   );
                 }
 
-                _scrollToBottom();
+                _maybeAutoScroll(messages.length);
 
                 return ListView.builder(
                   controller: _scrollController,
@@ -431,14 +466,10 @@ class _GameResultButton extends ConsumerWidget {
 
     if (!context.mounted) return;
 
-    // 수신된 인증번호가 있으면 자동 입력
-    final receivedCode = ref.read(receivedVerificationCodeProvider(roomId));
-
     showGameResultSheet(
       context,
       ref: ref,
       matchId: matchId,
-      initialVerificationCode: receivedCode,
       onSubmitted: () {
         ref.invalidate(matchDetailProvider(matchId!));
       },
@@ -462,7 +493,7 @@ class _AttachmentOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final iconColor = color ?? AppTheme.textSecondary;
+    final iconColor = color ?? AppTheme.primaryColor;
     return GestureDetector(
       onTap: onTap,
       child: Column(
@@ -472,8 +503,9 @@ class _AttachmentOption extends StatelessWidget {
             width: 64,
             height: 64,
             decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.1),
+              color: iconColor.withOpacity(0.18),
               shape: BoxShape.circle,
+              border: Border.all(color: iconColor.withOpacity(0.5), width: 1.5),
             ),
             child: Icon(icon, color: iconColor, size: 30),
           ),
@@ -492,36 +524,194 @@ class _AttachmentOption extends StatelessWidget {
   }
 }
 
-/// 인증번호 고정 배너 (채팅방 상단)
-class _VerificationCodeBanner extends ConsumerWidget {
+/// 우리 만났어요 배너 (채팅방 상단) — CHAT/CONFIRMED 상태에서만 노출
+class _MetConfirmBanner extends ConsumerStatefulWidget {
   final String roomId;
 
-  const _VerificationCodeBanner({required this.roomId});
+  const _MetConfirmBanner({required this.roomId});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // matchId 조회
+  ConsumerState<_MetConfirmBanner> createState() => _MetConfirmBannerState();
+}
+
+class _MetConfirmBannerState extends ConsumerState<_MetConfirmBanner> {
+  bool _submitting = false;
+  StreamSubscription<Map<String, dynamic>>? _metSub;
+  String? _subscribedMatchId;
+
+  @override
+  void dispose() {
+    _metSub?.cancel();
+    if (_subscribedMatchId != null) {
+      SocketService.instance.leaveMatch(_subscribedMatchId!);
+    }
+    super.dispose();
+  }
+
+  void _ensureSubscribed(String matchId) {
+    if (_subscribedMatchId == matchId) return;
+    if (_subscribedMatchId != null) {
+      _metSub?.cancel();
+      SocketService.instance.leaveMatch(_subscribedMatchId!);
+    }
+    _subscribedMatchId = matchId;
+    SocketService.instance.joinMatch(matchId);
+    _metSub = SocketService.instance.onMatchMetUpdated
+        .where((d) => d['matchId'] == matchId)
+        .listen((_) {
+      if (mounted) ref.invalidate(matchDetailProvider(matchId));
+    });
+  }
+
+  Future<void> _confirmMet(String matchId) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('우리 만났어요', style: TextStyle(color: Colors.white)),
+        content: const Text(
+          '한 번 누르면 취소할 수 없습니다. 정말 상대를 만나셨나요?',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('취소'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryColor,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('만났어요'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _submitting = true);
+    try {
+      // 만남 확인 시점의 위치를 함께 전송 (실패 시 위치 없이 진행)
+      double? lat;
+      double? lng;
+      try {
+        final pos = await LocationUtils.getCurrentPosition();
+        if (pos != null) {
+          lat = pos.latitude;
+          lng = pos.longitude;
+        }
+      } catch (_) {}
+
+      await ref.read(matchingRepositoryProvider).confirmMet(
+            matchId,
+            latitude: lat,
+            longitude: lng,
+          );
+      ref.invalidate(matchDetailProvider(matchId));
+    } catch (_) {
+      if (mounted) AppToast.error('만남 확인에 실패했습니다');
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     String? matchId;
     final chatRooms = ref.watch(chatRoomListProvider).valueOrNull;
-    final room = chatRooms?.where((r) => r.id == roomId).firstOrNull;
+    final room = chatRooms?.where((r) => r.id == widget.roomId).firstOrNull;
     matchId = room?.matchId;
 
     if (matchId == null || matchId.isEmpty) {
       final matches = ref.watch(matchListProvider(null)).valueOrNull;
-      final match = matches?.where((m) => m.chatRoomId == roomId).firstOrNull;
+      final match = matches?.where((m) => m.chatRoomId == widget.roomId).firstOrNull;
       matchId = match?.id;
     }
 
     if (matchId == null || matchId.isEmpty) return const SizedBox.shrink();
+    _ensureSubscribed(matchId);
 
     final matchAsync = ref.watch(matchDetailProvider(matchId));
     final match = matchAsync.valueOrNull;
-    final code = match?.myVerificationCode;
+    if (match == null) return const SizedBox.shrink();
+    if (match.isCompleted || match.isCancelled) return const SizedBox.shrink();
+    if (!match.isChat && !match.isConfirmed) return const SizedBox.shrink();
 
-    if (code == null || code.isEmpty) return const SizedBox.shrink();
-
-    // 완료/취소된 매칭이면 숨김
-    if (match!.isCompleted || match.isCancelled) return const SizedBox.shrink();
+    Widget content;
+    if (match.bothMetConfirmed) {
+      content = Row(
+        children: [
+          const Icon(Icons.check_circle, color: Color(0xFF10B981), size: 18),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text(
+              '양쪽 모두 만남을 확인했습니다. 게임 후 결과를 입력해주세요.',
+              style: TextStyle(
+                color: Color(0xFF10B981),
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
+      );
+    } else if (match.myMetConfirmed) {
+      content = Row(
+        children: [
+          const SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation(AppTheme.primaryColor),
+            ),
+          ),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              '상대 응답 기다리는 중…',
+              style: TextStyle(
+                color: AppTheme.primaryColor,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
+      );
+    } else {
+      content = Row(
+        children: [
+          Expanded(
+            child: Text(
+              match.opponentMetConfirmed
+                  ? '상대가 만남 확인을 했어요. 만나셨으면 눌러주세요.'
+                  : '상대를 만나면 "우리 만났어요"를 눌러주세요.',
+              style: const TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+          ),
+          const SizedBox(width: 12),
+          ElevatedButton(
+            onPressed: _submitting ? null : () => _confirmMet(matchId!),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryColor,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            ),
+            child: _submitting
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white),
+                  )
+                : const Text('우리 만났어요',
+                    style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      );
+    }
 
     return Container(
       width: double.infinity,
@@ -532,106 +722,7 @@ class _VerificationCodeBanner extends ConsumerWidget {
           bottom: BorderSide(color: Color(0xFF2A2A3E), width: 1),
         ),
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(
-              Icons.pin_rounded,
-              size: 18,
-              color: AppTheme.primaryColor,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Text(
-                      '매칭 결과 입력 인증번호',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Color(0xFF9CA3AF),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Tooltip(
-                      message: '상대방을 만나면 이 번호를 알려주세요.\n'
-                          '상대방이 이 번호를 입력해야 매칭 결과를 제출할 수 있습니다.\n'
-                          '전송 버튼으로 채팅을 통해 보낼 수도 있습니다.',
-                      triggerMode: TooltipTriggerMode.tap,
-                      preferBelow: true,
-                      showDuration: const Duration(seconds: 5),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF2A2A3E),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      textStyle: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.white,
-                        height: 1.5,
-                      ),
-                      child: const Icon(
-                        Icons.help_outline_rounded,
-                        size: 14,
-                        color: Color(0xFF9CA3AF),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  code.split('').join(' '),
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    color: AppTheme.primaryColor,
-                    letterSpacing: 6,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          GestureDetector(
-            onTap: () {
-              ref
-                  .read(chatMessagesProvider(roomId).notifier)
-                  .sendVerificationCodeMessage(code);
-              AppToast.success('인증번호를 상대방에게 전송했습니다');
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppTheme.primaryColor,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.send_rounded, size: 14, color: Colors.white),
-                  SizedBox(width: 4),
-                  Text(
-                    '전송',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
+      child: content,
     );
   }
 }

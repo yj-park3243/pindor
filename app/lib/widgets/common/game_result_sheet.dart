@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:material_symbols_icons/symbols.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../config/theme.dart';
 import '../../core/utils/permission_helper.dart';
@@ -25,7 +24,6 @@ void showGameResultSheet(
   required WidgetRef ref,
   required String matchId,
   String? opponentNickname,
-  String? initialVerificationCode,
   VoidCallback? onSubmitted,
   bool insetForBottomNav = false,
 }) {
@@ -33,9 +31,6 @@ void showGameResultSheet(
   int mannerScore = 5; // 기본 5점, 사용자가 1~5 사이로 조정 가능
   bool isSubmitting = false;
   final List<File> photos = [];
-  final verificationCodeController = TextEditingController(
-    text: initialVerificationCode ?? '',
-  );
 
   showAppBottomSheet(
     context: context,
@@ -89,13 +84,13 @@ void showGameResultSheet(
                   Row(
                     children: [
                       _resultOptionButton('승리', 'WIN',
-                          Symbols.emoji_events_rounded, Colors.blue,
+                          Icons.emoji_events_rounded, Colors.blue,
                           selected: selectedResult,
                           onTap: (v) =>
                               setSheetState(() => selectedResult = v)),
                       const SizedBox(width: 10),
                       _resultOptionButton('무승부', 'DRAW',
-                          Symbols.handshake_rounded, const Color(0xFF6B7280),
+                          Icons.handshake_rounded, const Color(0xFF6B7280),
                           selected: selectedResult,
                           onTap: (v) =>
                               setSheetState(() => selectedResult = v)),
@@ -103,66 +98,12 @@ void showGameResultSheet(
                       _resultOptionButton(
                           '패배',
                           'LOSS',
-                          Symbols.sentiment_dissatisfied_rounded,
+                          Icons.sentiment_very_dissatisfied_rounded,
                           Colors.red,
                           selected: selectedResult,
                           onTap: (v) =>
                               setSheetState(() => selectedResult = v)),
                     ],
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // 인증번호 입력
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text('상대방 인증번호 입력',
-                        style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textSecondary)),
-                  ),
-                  const SizedBox(height: 4),
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      '상대방에게 인증번호를 확인하고 입력해주세요',
-                      style: TextStyle(fontSize: 11, color: AppTheme.textDisabled),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: verificationCodeController,
-                    keyboardType: TextInputType.number,
-                    maxLength: 4,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white,
-                      letterSpacing: 12,
-                    ),
-                    decoration: InputDecoration(
-                      counterText: '',
-                      hintText: '● ● ● ●',
-                      hintStyle: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white.withOpacity(0.15),
-                        letterSpacing: 12,
-                      ),
-                      filled: true,
-                      fillColor: const Color(0xFF2A2A2A),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(color: AppTheme.primaryColor, width: 2),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
                   ),
 
                   const SizedBox(height: 20),
@@ -227,7 +168,7 @@ void showGameResultSheet(
                                 children: [
                                   ListTile(
                                     leading: const Icon(
-                                        Symbols.photo_camera_rounded,
+                                        Icons.photo_camera_rounded,
                                         color: Colors.white),
                                     title: const Text('카메라',
                                         style:
@@ -237,7 +178,7 @@ void showGameResultSheet(
                                   ),
                                   ListTile(
                                     leading: const Icon(
-                                        Symbols.photo_library_rounded,
+                                        Icons.photo_library_rounded,
                                         color: Colors.white),
                                     title: const Text('갤러리',
                                         style:
@@ -278,7 +219,7 @@ void showGameResultSheet(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                const Icon(Symbols.add_a_photo_rounded,
+                                const Icon(Icons.add_a_photo_rounded,
                                     size: 24, color: AppTheme.textSecondary),
                                 const SizedBox(height: 2),
                                 Text('${photos.length}/2',
@@ -352,11 +293,6 @@ void showGameResultSheet(
                                 AppToast.warning('승부 결과를 선택해주세요.');
                                 return;
                               }
-                              final code = verificationCodeController.text.trim();
-                              if (code.length != 4) {
-                                AppToast.warning('상대방의 4자리 인증번호를 입력해주세요.');
-                                return;
-                              }
                               setSheetState(() => isSubmitting = true);
                               try {
                                 List<String> imageUrls = [];
@@ -407,7 +343,6 @@ void showGameResultSheet(
                                   myResult: selectedResult!,
                                   winnerId: winnerId,
                                   mannerScore: mannerScore,
-                                  verificationCode: code,
                                 );
 
                                 if (imageUrls.isNotEmpty) {

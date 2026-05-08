@@ -39,6 +39,8 @@ class SocketService {
       StreamController<Map<String, dynamic>>.broadcast();
   final _matchStatusChangedController =
       StreamController<Map<String, dynamic>>.broadcast();
+  final _matchMetUpdatedController =
+      StreamController<Map<String, dynamic>>.broadcast();
 
   // ─── 스트림 공개 인터페이스 ───
   Stream<Map<String, dynamic>> get onNotification =>
@@ -55,6 +57,10 @@ class SocketService {
   /// 매칭 상태 변경 이벤트 스트림 (match:{matchId} 룸 기반)
   Stream<Map<String, dynamic>> get onMatchStatusChanged =>
       _matchStatusChangedController.stream;
+
+  /// 우리 만났어요 confirm 변경 이벤트 스트림 (match:{matchId} 룸 기반)
+  Stream<Map<String, dynamic>> get onMatchMetUpdated =>
+      _matchMetUpdatedController.stream;
 
   bool get isConnected => _isConnected;
   String? get activeRoomId => _activeRoomId;
@@ -95,6 +101,7 @@ class SocketService {
       ..off('MESSAGES_READ')
       ..off('MATCH_FOUND')
       ..off('MATCH_STATUS_CHANGED')
+      ..off('MATCH_MET_UPDATED')
       ..off('ERROR');
 
     _socket!
@@ -179,6 +186,13 @@ class SocketService {
         final parsed = Map<String, dynamic>.from(data as Map);
         _matchStatusChangedController.add(parsed);
         debugPrint('[Socket] 매칭 상태 변경: ${parsed['matchId']} → ${parsed['status']}');
+      })
+
+      // 우리 만났어요 confirm 변경 이벤트 수신 (match:{matchId} 룸)
+      ..on('MATCH_MET_UPDATED', (data) {
+        final parsed = Map<String, dynamic>.from(data as Map);
+        _matchMetUpdatedController.add(parsed);
+        debugPrint('[Socket] 만남 확인 업데이트: ${parsed['matchId']}');
       })
 
       // 소켓 에러

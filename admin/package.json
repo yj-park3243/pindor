@@ -10,21 +10,22 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.1",
-    "antd": "^5.21.0",
-    "@ant-design/pro-components": "^2.7.14",
     "@ant-design/icons": "^5.4.0",
+    "@ant-design/pro-components": "^2.7.14",
     "@tanstack/react-query": "^5.56.2",
     "@tanstack/react-query-devtools": "^5.56.2",
+    "@types/leaflet": "^1.9.12",
+    "antd": "^5.21.0",
     "axios": "^1.7.7",
-    "recharts": "^2.12.7",
-    "react-leaflet": "^4.2.1",
-    "leaflet": "^1.9.4",
     "dayjs": "^1.11.13",
-    "zustand": "^5.0.0",
-    "@types/leaflet": "^1.9.12"
+    "leaflet": "^1.9.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-leaflet": "^4.2.1",
+    "react-naver-maps": "^0.1.5",
+    "react-router-dom": "^6.26.1",
+    "recharts": "^2.12.7",
+    "zustand": "^5.0.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.5",

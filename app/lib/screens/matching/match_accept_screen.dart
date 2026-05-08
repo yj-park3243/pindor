@@ -84,18 +84,25 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
       final match = await repo.getMatchDetail(widget.matchId);
       if (!mounted) return;
 
-      // 이미 수락했거나, PENDING_ACCEPT이 아니거나, 만료됐으면 → 매칭 목록으로
-      final alreadyAccepted = match.acceptances?.any((a) => a.accepted == true) ?? false;
+      // PENDING_ACCEPT 외 상태 처리:
+      // - 만료(EXPIRED) / 취소(CANCELLED) → 매칭 목록으로
+      // - 본인이 이미 수락 / CHAT / CONFIRMED / COMPLETED → 매칭 상세로
+      // - 상대만 수락한 PENDING_ACCEPT → 본인은 아직 수락 화면에 머물러야 함 (튕기지 않음)
+      final myUserId = ref.read(currentUserProvider)?.id;
+      final myAccepted = myUserId != null &&
+          (match.acceptances?.any((a) => a.userId == myUserId && a.accepted == true) ?? false);
       final isExpired = match.acceptances?.any((a) =>
           a.expiresAt != null && a.expiresAt!.isBefore(DateTime.now())) ?? false;
 
-      if (alreadyAccepted || !match.isPendingAccept || isExpired) {
-        // ★ stale로 인한 무한 redirect 루프 방지: 로컬 캐시 + force refresh로
-        //    매칭 목록의 stale PENDING_ACCEPT 데이터까지 같이 정리.
+      if (myAccepted || !match.isPendingAccept || isExpired) {
         ref.read(matchingRepositoryProvider).clearLocalCache();
         ref.read(matchListForceRefreshProvider.notifier).state = true;
         ref.invalidate(matchListProvider(null));
-        context.go(AppRoutes.matchList);
+        if (isExpired || match.isCancelled) {
+          context.go(AppRoutes.matchList);
+        } else {
+          context.go('/matches/${widget.matchId}');
+        }
         return;
       }
 

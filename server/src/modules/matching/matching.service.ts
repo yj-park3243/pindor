@@ -475,6 +475,8 @@ export class MatchingService {
       minAge: dto.minAge,
       maxAge: dto.maxAge,
       desiredDate: dto.desiredDate ? new Date(dto.desiredDate) : null,
+      desiredTimeSlot: dto.desiredTimeSlot ?? null,
+      isCasual,
     });
 
     // tryAutoMatch 성공 시 상태가 MATCHED로 변경될 수 있으므로 DB에서 최신 상태 재조회
@@ -545,6 +547,8 @@ export class MatchingService {
       minAge?: number;
       maxAge?: number;
       desiredDate?: Date | null;
+      desiredTimeSlot?: string | null;
+      isCasual?: boolean;
     },
   ): Promise<number> {
     // 1) 같은 Pin + 같은 종목 + WAITING 상태 + 점수 범위 내 후보 조회
@@ -586,6 +590,14 @@ export class MatchingService {
         AND sp.current_score >= $4
         AND sp.current_score <= $5
         AND mr.desired_date IS NOT DISTINCT FROM $7::date
+        AND COALESCE(mr.is_casual, false) = $8
+        AND (
+          $9::"TimeSlot" IS NULL
+          OR $9::"TimeSlot" = 'ANY'::"TimeSlot"
+          OR mr.desired_time_slot IS NULL
+          OR mr.desired_time_slot = 'ANY'::"TimeSlot"
+          OR mr.desired_time_slot = $9::"TimeSlot"
+        )
         AND NOT EXISTS (
           SELECT 1 FROM user_blocks ub
           WHERE (ub.blocker_id = $3::uuid AND ub.blocked_id = mr.requester_id)
@@ -601,6 +613,8 @@ export class MatchingService {
         opts.maxOpponentScore,
         opts.requesterScore,
         opts.desiredDate ?? null,
+        opts.isCasual === true,
+        opts.desiredTimeSlot ?? null,
       ],
     );
 
@@ -918,19 +932,10 @@ export class MatchingService {
         const savedChatRoom = await manager.save(ChatRoom, chatRoom);
         createdChatRoomId = savedChatRoom.id;
 
-        // 4자리 인증번호 생성 (각 유저에게 하나씩)
-        const genCode = () => String(Math.floor(1000 + Math.random() * 9000));
-        let requesterCode = genCode();
-        let opponentCode = genCode();
-        // 서로 같으면 재생성
-        while (opponentCode === requesterCode) opponentCode = genCode();
-
-        // Match 상태 CHAT으로 변경 + chatRoomId 연결 + 인증번호 저장
+        // Match 상태 CHAT으로 변경 + chatRoomId 연결
         await manager.update(Match, matchId, {
           status: 'CHAT' as any,
           chatRoomId: savedChatRoom.id,
-          requesterVerificationCode: requesterCode,
-          opponentVerificationCode: opponentCode,
         });
 
         // Match 정보 (알림용) 조회
@@ -1477,6 +1482,13 @@ export class MatchingService {
       const gameId = rawItems[idx]?.game_id as string | null;
       const myScoreChange = gameId ? (scoreChangeMap.get(`${gameId}_${myProfileId}`) ?? null) : null;
 
+      // 우리 만났어요 confirm 상태
+      const myMetConfirmed = isRequester
+        ? (match as any).requesterMetConfirmedAt != null
+        : (match as any).opponentMetConfirmedAt != null;
+      const opponentMetConfirmed = isRequester
+        ? (match as any).opponentMetConfirmedAt != null
+        : (match as any).requesterMetConfirmedAt != null;
 
       return {
         id: match.id,
@@ -1490,6 +1502,9 @@ export class MatchingService {
           tier: (opponent as any).tier,
           matchMessage: (opponent as any).matchMessage ?? null,
         },
+        myMetConfirmed,
+        opponentMetConfirmed,
+        bothMetConfirmed: myMetConfirmed && opponentMetConfirmed,
         scheduledDate: match.scheduledDate,
         chatRoomId: match.chatRoomId,
         createdAt: match.createdAt,
@@ -1711,10 +1726,14 @@ export class MatchingService {
       gameResult = 'NO_RESULT';
     }
 
-    // 내 인증번호 (requester이면 requesterVerificationCode, 아니면 opponentVerificationCode)
-    const myVerificationCode = isRequester
-      ? match.requesterVerificationCode
-      : match.opponentVerificationCode;
+    // 우리 만났어요 confirm 상태
+    const myMetConfirmed = isRequester
+      ? match.requesterMetConfirmedAt != null
+      : match.opponentMetConfirmedAt != null;
+    const opponentMetConfirmed = isRequester
+      ? match.opponentMetConfirmedAt != null
+      : match.requesterMetConfirmedAt != null;
+    const bothMetConfirmed = myMetConfirmed && opponentMetConfirmed;
 
     return {
       ...match,
@@ -1730,7 +1749,9 @@ export class MatchingService {
       myAcceptance,
       opponentAcceptance,
       timeRemainingSeconds,
-      myVerificationCode,
+      myMetConfirmed,
+      opponentMetConfirmed,
+      bothMetConfirmed,
       requesterProfile: isRequester
         ? myProfile
         : { ...opponentProfile, currentScore: undefined },
@@ -1889,6 +1910,144 @@ export class MatchingService {
     });
 
     return this.matchRepo.findOne({ where: { id: matchId } });
+  }
+
+  // ─────────────────────────────────────
+  // 우리 만났어요 confirm
+  // ─────────────────────────────────────
+
+  async confirmMet(
+    userId: string,
+    matchId: string,
+    location?: { latitude?: number; longitude?: number },
+  ) {
+    const match = await this.matchRepo.findOne({ where: { id: matchId } });
+    if (!match) {
+      throw AppError.notFound(ErrorCode.MATCH_NOT_FOUND);
+    }
+
+    // CHAT/CONFIRMED 상태에서만 가능
+    if (!['CHAT', 'CONFIRMED'].includes(match.status as string)) {
+      throw AppError.badRequest(
+        ErrorCode.MATCH_INVALID_STATUS,
+        '진행 중인 매칭에서만 만남 확인이 가능합니다.',
+      );
+    }
+
+    const requesterProfile = await this.sportsProfileRepo.findOne({
+      where: { id: match.requesterProfileId },
+      select: ['userId'] as any,
+    });
+    const opponentProfile = await this.sportsProfileRepo.findOne({
+      where: { id: match.opponentProfileId },
+      select: ['userId'] as any,
+    });
+    const isRequester = (requesterProfile as any)?.userId === userId;
+    const isOpponent = (opponentProfile as any)?.userId === userId;
+    if (!isRequester && !isOpponent) {
+      throw AppError.forbidden(ErrorCode.MATCH_NOT_PARTICIPANT);
+    }
+
+    // 이미 누른 경우 — 취소 불가, 멱등 처리
+    const alreadyConfirmed = isRequester
+      ? match.requesterMetConfirmedAt != null
+      : match.opponentMetConfirmedAt != null;
+
+    if (!alreadyConfirmed) {
+      const now = new Date();
+      const lat = typeof location?.latitude === 'number' ? location.latitude : null;
+      const lng = typeof location?.longitude === 'number' ? location.longitude : null;
+      const updatePayload: Record<string, any> = isRequester
+        ? {
+            requesterMetConfirmedAt: now,
+            requesterMetLatitude: lat,
+            requesterMetLongitude: lng,
+          }
+        : {
+            opponentMetConfirmedAt: now,
+            opponentMetLatitude: lat,
+            opponentMetLongitude: lng,
+          };
+      await this.matchRepo.update(matchId, updatePayload);
+    }
+
+    // 갱신된 상태 재조회
+    const updated = await this.matchRepo.findOne({ where: { id: matchId } });
+    const requesterMetConfirmed = (updated as any)?.requesterMetConfirmedAt != null;
+    const opponentMetConfirmed = (updated as any)?.opponentMetConfirmedAt != null;
+    const bothMetConfirmed = requesterMetConfirmed && opponentMetConfirmed;
+
+    // 양쪽 모두 confirm된 시점이면 채팅방에 시스템 메시지 전송
+    if (bothMetConfirmed && !alreadyConfirmed && match.chatRoomId) {
+      try {
+        const messageRepo = this.dataSource.getRepository(Message);
+        const chatRoomRepo = this.dataSource.getRepository(ChatRoom);
+        const sysMsg = messageRepo.create({
+          chatRoomId: match.chatRoomId,
+          senderId: userId,
+          messageType: 'SYSTEM' as any,
+          content: '양쪽 모두 만남을 확인했습니다. 경기 결과를 입력해 주세요.',
+          extraData: { type: 'MET_CONFIRMED' },
+        });
+        const savedMsg = await messageRepo.save(sysMsg);
+        await chatRoomRepo.update(match.chatRoomId, { lastMessageAt: new Date() });
+
+        const msgData = {
+          id: savedMsg.id,
+          roomId: match.chatRoomId,
+          sender: null,
+          content: savedMsg.content,
+          messageType: 'SYSTEM',
+          extraData: savedMsg.extraData,
+          readAt: null,
+          createdAt: savedMsg.createdAt,
+        };
+        const io = (global as any).__io;
+        if (io) {
+          io.to(`room:${match.chatRoomId}`).emit('NEW_MESSAGE', msgData);
+        } else {
+          await redis.publish('chat_room_message', JSON.stringify({ roomId: match.chatRoomId, message: msgData }));
+        }
+      } catch (e) {
+        console.warn('[MatchService] confirmMet system message failed:', e);
+      }
+    }
+
+    // 실시간 브로드캐스트: match:{matchId} 룸 + 양쪽 user 룸
+    // 매칭 룸을 떠난 상태(앱 재시작 등)에서도 user 룸을 통해 받도록 이중 발행.
+    const eventData = {
+      matchId,
+      requesterMetConfirmed,
+      opponentMetConfirmed,
+      bothMetConfirmed,
+    };
+    await this.emitMatchEvent('MATCH_MET_UPDATED', { matchId, data: eventData });
+
+    const requesterUserId = (requesterProfile as any)?.userId;
+    const opponentUserId = (opponentProfile as any)?.userId;
+    try {
+      const io = (global as any).__io;
+      for (const uid of [requesterUserId, opponentUserId]) {
+        if (!uid) continue;
+        if (io) {
+          io.to(`user:${uid}`).emit('MATCH_MET_UPDATED', eventData);
+        } else {
+          await redis.publish(
+            'match_lifecycle_user',
+            JSON.stringify({ event: 'MATCH_MET_UPDATED', userId: uid, data: eventData }),
+          );
+        }
+      }
+    } catch (e) {
+      console.warn('[MatchService] confirmMet user broadcast failed:', e);
+    }
+
+    return {
+      matchId,
+      myMetConfirmed: isRequester ? requesterMetConfirmed : opponentMetConfirmed,
+      opponentMetConfirmed: isRequester ? opponentMetConfirmed : requesterMetConfirmed,
+      bothMetConfirmed,
+    };
   }
 
   // ─────────────────────────────────────

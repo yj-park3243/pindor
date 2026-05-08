@@ -1,26 +1,25 @@
 import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
 import '../../config/theme.dart';
 
 /// 티어별 아이콘
 IconData tierIcon(String tier) {
   switch (tier.toUpperCase()) {
     case 'GRANDMASTER':
-      return Symbols.local_fire_department_rounded;
+      return Icons.local_fire_department_rounded;
     case 'MASTER':
-      return Symbols.diamond_rounded;
+      return Icons.diamond_rounded;
     case 'PLATINUM':
-      return Symbols.auto_awesome_rounded;
+      return Icons.auto_awesome_rounded;
     case 'GOLD':
-      return Symbols.emoji_events_rounded;
+      return Icons.emoji_events_rounded;
     case 'SILVER':
-      return Symbols.shield_rounded;
+      return Icons.shield_rounded;
     case 'BRONZE':
-      return Symbols.shield_rounded;
+      return Icons.shield_rounded;
     case 'IRON':
-      return Symbols.hexagon_rounded;
+      return Icons.hexagon_rounded;
     default:
-      return Symbols.hexagon_rounded;
+      return Icons.hexagon_rounded;
   }
 }
 

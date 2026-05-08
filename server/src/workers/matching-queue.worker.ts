@@ -27,6 +27,7 @@ interface WaitingRequest {
   sportType: string;
   desiredDate: string | null;
   desiredTimeSlot: string | null;
+  isCasual: boolean;
   createdAt: Date;
   expiresAt: Date;
   currentScore: number;
@@ -167,6 +168,13 @@ function findOptimalPairs(
       const blockKey = [requests[i].requesterId, requests[j].requesterId].sort().join('::');
       if (blockedPairs.has(blockKey)) continue;
 
+      // 시간대 호환성 확인: 동일 슬롯이거나 한쪽이 ANY/null 일 때만 매칭 허용
+      const slotI = requests[i].desiredTimeSlot;
+      const slotJ = requests[j].desiredTimeSlot;
+      const slotIAny = !slotI || slotI === 'ANY';
+      const slotJAny = !slotJ || slotJ === 'ANY';
+      if (!slotIAny && !slotJAny && slotI !== slotJ) continue;
+
       // 연패 조정: 3연패 이상이면 유효 레이팅 -50 적용
       const adjustedRatingI = requests[i].lossStreak >= 3
         ? requests[i].glickoRating - 50
@@ -285,6 +293,7 @@ export async function processMatchingQueue(): Promise<boolean> {
       mr.sport_type AS "sportType",
       mr.desired_date AS "desiredDate",
       mr.desired_time_slot AS "desiredTimeSlot",
+      COALESCE(mr.is_casual, false) AS "isCasual",
       mr.created_at AS "createdAt",
       mr.expires_at AS "expiresAt",
       sp.current_score AS "currentScore",
@@ -337,12 +346,14 @@ export async function processMatchingQueue(): Promise<boolean> {
     blockedPairs.add(key);
   }
 
-  // 2-c) (pinId, sportType, desiredDate) 기준으로 그룹핑
-  // 같은 날짜끼리만 매칭되도록 날짜도 그룹 키에 포함
+  // 2-c) (pinId, sportType, desiredDate, isCasual) 기준으로 그룹핑
+  // 같은 날짜+모드(랭크/친선)끼리만 매칭되도록 그룹 키에 포함
+  // 시간대는 ANY-호환 매칭이 필요하므로 페어 단계에서 검사한다.
   const groups = new Map<string, typeof waitingRequests>();
   for (const req of waitingRequests) {
     const dateKey = req.desiredDate ?? 'ANY';
-    const key = `${req.pinId}::${req.sportType}::${dateKey}`;
+    const casualKey = req.isCasual ? 'CASUAL' : 'RANKED';
+    const key = `${req.pinId}::${req.sportType}::${dateKey}::${casualKey}`;
     if (!groups.has(key)) {
       groups.set(key, []);
     }

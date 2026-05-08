@@ -191,6 +191,19 @@ class MatchingRepository {
       if (imageUrls != null) 'imageUrls': imageUrls,
     });
   }
+
+  /// 우리 만났어요 confirm
+  Future<Map<String, dynamic>> confirmMet(
+    String matchId, {
+    double? latitude,
+    double? longitude,
+  }) async {
+    final response = await _api.post('/matches/$matchId/confirm-met', body: {
+      if (latitude != null) 'latitude': latitude,
+      if (longitude != null) 'longitude': longitude,
+    });
+    return response['data'] as Map<String, dynamic>;
+  }
 }
 
 final matchingRepositoryProvider = Provider<MatchingRepository>((ref) {

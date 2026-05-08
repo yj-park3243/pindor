@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
 import '../../config/theme.dart';
 
 /// 배치 게임 여부에 따라 점수 또는 "배치 중 (N/5)" 뱃지를 표시하는 위젯.
@@ -135,8 +134,8 @@ class _ScoreDeltaBadge extends StatelessWidget {
           if (!isZero)
             Icon(
               isPositive
-                  ? Symbols.arrow_drop_up_rounded
-                  : Symbols.arrow_drop_down_rounded,
+                  ? Icons.arrow_drop_up
+                  : Icons.arrow_drop_down,
               size: 16,
               color: color,
             ),

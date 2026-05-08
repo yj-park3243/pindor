@@ -1508,18 +1508,27 @@ class _MatchListTileState extends ConsumerState<_MatchListTile>
                             ),
                           ),
                           const SizedBox(width: 8),
-                          if (match.isCasual)
-                            Padding(
-                              padding: const EdgeInsets.only(right: 4),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: Colors.orange.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(5),
+                          Padding(
+                            padding: const EdgeInsets.only(right: 4),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: (match.isCasual ? Colors.orange : AppTheme.secondaryColor)
+                                    .withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                              child: Text(
+                                match.isCasual ? '친선' : '랭크',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: match.isCasual
+                                      ? Colors.orange.shade300
+                                      : AppTheme.secondaryColor,
                                 ),
-                                child: Text('친선', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.orange.shade300)),
                               ),
                             ),
+                          ),
                           if (match.isCompleted && match.gameResult != null)
                             _GameResultChip(gameResult: match.gameResult!, scoreChange: match.myScoreChange, isCasual: match.isCasual)
                           else
@@ -1753,47 +1762,60 @@ class _GameResultChip extends StatelessWidget {
   Widget build(BuildContext context) {
     String label;
     Color color;
+    IconData icon;
 
     switch (gameResult) {
       case 'WIN':
         label = '승리';
         color = AppTheme.secondaryColor;
+        icon = Icons.emoji_events_rounded;
         break;
       case 'LOSS':
         label = '패배';
         color = AppTheme.errorColor;
+        icon = Icons.sentiment_very_dissatisfied_rounded;
         break;
       case 'DRAW':
         label = '무승부';
         color = const Color(0xFF9CA3AF);
+        icon = Icons.handshake_rounded;
         break;
       case 'DISPUTED':
         label = '이의제기';
         color = Colors.orange;
+        icon = Icons.gavel_rounded;
         break;
       case 'NO_RESULT':
         label = '미입력';
         color = const Color(0xFF6B7280);
+        icon = Icons.help_outline_rounded;
         break;
       default:
         label = '완료';
         color = const Color(0xFF9CA3AF);
+        icon = Icons.check_rounded;
     }
 
-    // 점수 변동(+18 등)은 노출하지 않음 — MMR/내부 점수와의 불일치 방지
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: color.withOpacity(0.15),
         borderRadius: BorderRadius.circular(6),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
       ),
     );
   }

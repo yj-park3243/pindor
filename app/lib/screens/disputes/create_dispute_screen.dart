@@ -8,7 +8,7 @@ import '../../repositories/dispute_repository.dart';
 import '../../repositories/upload_repository.dart';
 import '../../widgets/common/app_toast.dart';
 
-/// 의의 제기 접수 화면
+/// 이의 제기 접수 화면
 class CreateDisputeScreen extends ConsumerStatefulWidget {
   final String matchId;
 
@@ -94,7 +94,7 @@ class _CreateDisputeScreenState extends ConsumerState<CreateDisputeScreen> {
       );
 
       if (mounted) {
-        AppToast.success('의의 제기가 접수되었습니다.');
+        AppToast.success('이의 제기가 접수되었습니다.');
         Navigator.pop(context);
       }
     } catch (e) {
@@ -111,7 +111,7 @@ class _CreateDisputeScreenState extends ConsumerState<CreateDisputeScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
-        title: const Text('의의 제기'),
+        title: const Text('이의 제기'),
         backgroundColor: const Color(0xFF0A0A0A),
         elevation: 0,
       ),
@@ -152,7 +152,7 @@ class _CreateDisputeScreenState extends ConsumerState<CreateDisputeScreen> {
               controller: _titleController,
               maxLength: 200,
               decoration: const InputDecoration(
-                hintText: '의의 제기 제목을 입력해주세요',
+                hintText: '이의 제기 제목을 입력해주세요',
                 border: OutlineInputBorder(),
                 contentPadding:
                     EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -168,7 +168,7 @@ class _CreateDisputeScreenState extends ConsumerState<CreateDisputeScreen> {
               controller: _contentController,
               maxLines: 6,
               decoration: const InputDecoration(
-                hintText: '의의 제기 내용을 상세히 작성해주세요',
+                hintText: '이의 제기 내용을 상세히 작성해주세요',
                 border: OutlineInputBorder(),
                 contentPadding:
                     EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -359,7 +359,7 @@ class _CreateDisputeScreenState extends ConsumerState<CreateDisputeScreen> {
                         ),
                       )
                     : const Text(
-                        '의의 제기 접수',
+                        '이의 제기 접수',
                         style: TextStyle(fontSize: 16),
                       ),
               ),

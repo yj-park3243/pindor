@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
 import '../../config/theme.dart';
 
 /// 인앱 알림 상단 슬라이드 배너 (Material Banner 스타일)
@@ -118,7 +117,7 @@ class _InAppNotificationBannerState extends State<InAppNotificationBanner>
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
-                          widget.icon ?? Symbols.notifications_rounded,
+                          widget.icon ?? Icons.notifications_rounded,
                           color: iconColor,
                           size: 22,
                         ),
@@ -166,7 +165,7 @@ class _InAppNotificationBannerState extends State<InAppNotificationBanner>
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
-                            Symbols.close_rounded,
+                            Icons.close_rounded,
                             color: Colors.white.withOpacity(0.6),
                             size: 14,
                           ),

@@ -97,7 +97,7 @@ function buildMenuItems(role: string, noshowPendingCount: number): MenuProps['it
         { key: ROUTES.PINS, icon: <PushpinOutlined />, label: '핀 관리' },
         { key: ROUTES.POSTS, icon: <FileTextOutlined />, label: '게시판 관리' },
         { key: ROUTES.REPORTS, icon: <AlertOutlined />, label: '신고 처리' },
-        { key: ROUTES.DISPUTES, icon: <AuditOutlined />, label: '의의 제기' },
+        { key: ROUTES.DISPUTES, icon: <AuditOutlined />, label: '이의 제기' },
       ],
     },
     {

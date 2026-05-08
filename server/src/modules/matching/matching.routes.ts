@@ -345,6 +345,50 @@ export async function matchingRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
+  // ─── POST /matches/:matchId/confirm-met ───
+  fastify.post(
+    '/matches/:matchId/confirm-met',
+    {
+      onRequest: [fastify.authenticate, requireVerified],
+      schema: {
+        tags: ['Matching'],
+        summary: '우리 만났어요 confirm (양쪽 다 누르면 결과 입력 가능)',
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: 'object',
+          properties: {
+            matchId: { type: 'string', format: 'uuid' },
+          },
+          required: ['matchId'],
+        },
+        body: {
+          type: 'object',
+          properties: {
+            latitude: { type: 'number', minimum: -90, maximum: 90 },
+            longitude: { type: 'number', minimum: -180, maximum: 180 },
+          },
+        },
+      },
+    },
+    async (
+      request: FastifyRequest<{
+        Params: { matchId: string };
+        Body: { latitude?: number; longitude?: number };
+      }>,
+      reply: FastifyReply,
+    ) => {
+      const data = await matchingService.confirmMet(
+        request.user.userId,
+        request.params.matchId,
+        {
+          latitude: request.body?.latitude,
+          longitude: request.body?.longitude,
+        },
+      );
+      return reply.send({ success: true, data });
+    },
+  );
+
   // ─── POST /matches/:id/report-noshow ───
   fastify.post(
     '/matches/:id/report-noshow',

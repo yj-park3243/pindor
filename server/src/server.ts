@@ -308,7 +308,7 @@ async function start(): Promise<void> {
   // Redis pub/sub 구독 (워커→메인 서버 알림)
   // ─────────────────────────────────────
   const subClient = redis.duplicate();
-  await subClient.subscribe('system_notification', 'push_notification', 'match_lifecycle', 'chat_room_message');
+  await subClient.subscribe('system_notification', 'push_notification', 'match_lifecycle', 'match_lifecycle_user', 'chat_room_message');
 
   subClient.on('message', async (channel, message) => {
     try {
@@ -328,6 +328,17 @@ async function start(): Promise<void> {
         } else if (event === 'MATCH_STATUS_CHANGED' && matchId) {
           // 매칭 룸에 상태 변경 이벤트 전송
           io.to(`match:${matchId}`).emit('MATCH_STATUS_CHANGED', data);
+        } else if (event === 'MATCH_MET_UPDATED' && matchId) {
+          // 우리 만났어요 confirm 상태 변경 이벤트 전송
+          io.to(`match:${matchId}`).emit('MATCH_MET_UPDATED', data);
+        }
+      }
+
+      // 매칭 라이프사이클 — user 단위 발행 (매칭 룸 미참여자 보정)
+      if (channel === 'match_lifecycle_user') {
+        const { event, userId, data } = payload;
+        if (event && userId) {
+          io.to(`user:${userId}`).emit(event, data);
         }
       }
 

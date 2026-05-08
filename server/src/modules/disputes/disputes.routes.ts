@@ -51,14 +51,14 @@ export async function disputesRoutes(fastify: FastifyInstance): Promise<void> {
   const disputeRepo = AppDataSource.getRepository(Dispute);
   const matchRepo = AppDataSource.getRepository(Match);
 
-  // ─── POST /disputes — 의의 제기 접수 ───
+  // ─── POST /disputes — 이의 제기 접수 ───
   fastify.post(
     '/disputes',
     {
       onRequest: [fastify.authenticate],
       schema: {
         tags: ['Disputes'],
-        summary: '의의 제기 접수',
+        summary: '이의 제기 접수',
         security: [{ bearerAuth: [] }],
       },
     },
@@ -104,19 +104,19 @@ export async function disputesRoutes(fastify: FastifyInstance): Promise<void> {
 
       return reply.status(201).send({
         success: true,
-        data: { id: dispute.id, message: '의의 제기가 접수되었습니다.' },
+        data: { id: dispute.id, message: '이의 제기가 접수되었습니다.' },
       });
     },
   );
 
-  // ─── GET /disputes — 내 의의 제기 목록 ───
+  // ─── GET /disputes — 내 이의 제기 목록 ───
   fastify.get(
     '/disputes',
     {
       onRequest: [fastify.authenticate],
       schema: {
         tags: ['Disputes'],
-        summary: '내 의의 제기 목록',
+        summary: '내 이의 제기 목록',
         security: [{ bearerAuth: [] }],
       },
     },
@@ -149,14 +149,14 @@ export async function disputesRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
-  // ─── GET /disputes/:id — 의의 제기 상세 ───
+  // ─── GET /disputes/:id — 이의 제기 상세 ───
   fastify.get(
     '/disputes/:id',
     {
       onRequest: [fastify.authenticate],
       schema: {
         tags: ['Disputes'],
-        summary: '의의 제기 상세',
+        summary: '이의 제기 상세',
         security: [{ bearerAuth: [] }],
         params: {
           type: 'object',
@@ -176,7 +176,7 @@ export async function disputesRoutes(fastify: FastifyInstance): Promise<void> {
       if (!dispute) {
         return reply.status(404).send({
           success: false,
-          error: { code: 'NOT_FOUND', message: '의의 제기를 찾을 수 없습니다.' },
+          error: { code: 'NOT_FOUND', message: '이의 제기를 찾을 수 없습니다.' },
         });
       }
 
@@ -184,14 +184,14 @@ export async function disputesRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
-  // ─── GET /admin/disputes — 어드민: 전체 의의 제기 목록 ───
+  // ─── GET /admin/disputes — 어드민: 전체 이의 제기 목록 ───
   fastify.get(
     '/admin/disputes',
     {
       onRequest: [fastify.authenticate, requireAdmin(AdminRole.MODERATOR)],
       schema: {
         tags: ['Disputes'],
-        summary: '[어드민] 의의 제기 목록',
+        summary: '[어드민] 이의 제기 목록',
         security: [{ bearerAuth: [] }],
       },
     },
@@ -298,14 +298,14 @@ export async function disputesRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
-  // ─── PATCH /admin/disputes/:id — 어드민: 의의 제기 처리 ───
+  // ─── PATCH /admin/disputes/:id — 어드민: 이의 제기 처리 ───
   fastify.patch(
     '/admin/disputes/:id',
     {
       onRequest: [fastify.authenticate, requireAdmin(AdminRole.MODERATOR)],
       schema: {
         tags: ['Disputes'],
-        summary: '[어드민] 의의 제기 상태 업데이트',
+        summary: '[어드민] 이의 제기 상태 업데이트',
         security: [{ bearerAuth: [] }],
         params: {
           type: 'object',
@@ -323,7 +323,7 @@ export async function disputesRoutes(fastify: FastifyInstance): Promise<void> {
       if (!dispute) {
         return reply.status(404).send({
           success: false,
-          error: { code: 'NOT_FOUND', message: '의의 제기를 찾을 수 없습니다.' },
+          error: { code: 'NOT_FOUND', message: '이의 제기를 찾을 수 없습니다.' },
         });
       }
 

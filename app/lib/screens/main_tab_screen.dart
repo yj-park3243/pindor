@@ -5,13 +5,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
-import 'package:material_symbols_icons/symbols.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/router.dart';
 import '../config/theme.dart';
 import '../providers/notification_provider.dart';
 import '../providers/socket_provider.dart';
 import '../providers/matching_provider.dart';
+import '../providers/profile_provider.dart';
+import '../providers/pin_provider.dart';
+import '../providers/ranking_provider.dart';
+import '../providers/auth_provider.dart';
 import '../repositories/matching_repository.dart';
 import '../providers/chat_provider.dart';
 import '../widgets/common/in_app_notification.dart';
@@ -23,9 +26,9 @@ import 'profile/profile_screen.dart' show selectedPinProvider;
 
 /// 메인 탭 네비게이션 화면
 class MainTabScreen extends ConsumerStatefulWidget {
-  final Widget child;
+  final StatefulNavigationShell navigationShell;
 
-  const MainTabScreen({super.key, required this.child});
+  const MainTabScreen({super.key, required this.navigationShell});
 
   @override
   ConsumerState<MainTabScreen> createState() => _MainTabScreenState();
@@ -35,13 +38,6 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> with WidgetsBindi
   Timer? _pendingMatchPoller;
   StreamSubscription<bool>? _socketStateSub;
   final Set<String> _autoNavigatedMatchIds = {};
-  static const _tabRoutes = [
-    AppRoutes.home,
-    AppRoutes.map,
-    AppRoutes.matchList,
-    AppRoutes.profile,
-  ];
-
   @override
   void initState() {
     super.initState();
@@ -343,10 +339,13 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> with WidgetsBindi
           final loc = GoRouterState.of(context).matchedLocation;
           // 이미 매칭/채팅 화면에 있으면 자동 이동 X
           if (loc.startsWith('/matches/') || loc.startsWith('/chats/')) return;
+          final myUserId = ref.read(currentUserProvider)?.id;
           for (final m in matches) {
             if (m.status != 'PENDING_ACCEPT') continue;
-            // 이미 본인이 수락한 상태면 자동 이동 X (상대 응답 대기 중)
-            final myAccepted = m.acceptances?.any((a) => a.accepted == true) ?? false;
+            // 본인이 이미 수락한 상태면 자동 이동 X (상대 응답 대기 중)
+            // 상대만 수락한 경우는 myAccepted=false → 본인 수락 화면으로 이동해야 함
+            final myAccepted = myUserId != null &&
+                (m.acceptances?.any((a) => a.userId == myUserId && a.accepted == true) ?? false);
             if (myAccepted) continue;
             // 한 번 자동 이동한 ID는 중복 이동 안 함
             if (_autoNavigatedMatchIds.contains(m.id)) continue;
@@ -369,6 +368,17 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> with WidgetsBindi
             ref.read(matchListForceRefreshProvider.notifier).state = true;
             ref.invalidate(matchListProvider(null));
             ref.invalidate(matchDetailProvider(matchId));
+          }
+
+          // 매칭 완료(점수/배치 카운트 변동) 시 홈/프로필 데이터 자동 갱신
+          if (status == 'COMPLETED' && matchId != null) {
+            ref.invalidate(sportsProfilesProvider);
+            ref.invalidate(allPinsProvider);
+            // 모든 (pinId, sportType) 조합의 핀 랭킹 캐시 무효화
+            ref.invalidate(pinRankingBySportProvider);
+            try {
+              ref.read(authStateProvider.notifier).refreshUser();
+            } catch (_) {}
           }
 
           // 자동 redirect는 사용자가 매칭 화면에 있을 때만 수행 (다른 화면에서 튕김 방지).
@@ -401,28 +411,21 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> with WidgetsBindi
 
   void _onTabTap(int index) {
     syncSocketConnection(ref);
-    context.go(_tabRoutes[index]);
-  }
-
-  int _getCurrentIndex(BuildContext context) {
-    final location = GoRouterState.of(context).matchedLocation;
-    if (location.startsWith('/home')) return 0;
-    if (location.startsWith('/map')) return 1;
-    if (location.startsWith('/matches')) return 2;
-    if (location.startsWith('/profile') || location.startsWith('/teams')) {
-      return 3;
-    }
-    return 0;
+    // 같은 탭 재탭 시 해당 branch의 root로 pop, 다른 탭은 보던 화면 유지
+    widget.navigationShell.goBranch(
+      index,
+      initialLocation: index == widget.navigationShell.currentIndex,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final currentIndex = _getCurrentIndex(context);
+    final currentIndex = widget.navigationShell.currentIndex;
     final unreadCount = ref.watch(totalUnreadCountProvider);
 
     return AdaptiveScaffold(
       minimizeBehavior: TabBarMinimizeBehavior.never,
-      body: widget.child,
+      body: widget.navigationShell,
       bottomNavigationBar: AdaptiveBottomNavigationBar(
         useNativeBottomBar: true,
         selectedIndex: currentIndex,

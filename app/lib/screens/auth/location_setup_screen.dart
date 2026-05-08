@@ -73,6 +73,7 @@ class _LocationSetupScreenState extends ConsumerState<LocationSetupScreen> {
 
   /// 위치·지도·핀 3개 중 가장 늦게 준비된 시점에 가장 가까운 핀으로 카메라 이동.
   /// 한 번 자동 포커스된 이후에는 사용자 제스처를 존중해 재호출하지 않음.
+  /// 단, 핀 목록이 아직 비어있다면 _didAutoFocus를 set하지 않고 다음 호출에서 재시도.
   void _maybeFocusNearestPin({bool force = false}) {
     if (!force && _didAutoFocus) return;
     final pos = _lastPosition;
@@ -80,10 +81,8 @@ class _LocationSetupScreenState extends ConsumerState<LocationSetupScreen> {
 
     final pins = ref.read(allPinsProvider).valueOrNull;
     if (pins == null || pins.isEmpty) {
-      _mapController!.updateCamera(
-        NCameraUpdate.scrollAndZoomTo(target: _currentLocation, zoom: 13),
-      );
-      _didAutoFocus = true;
+      // 핀 데이터 미도착 — 카메라/플래그 모두 손대지 않음.
+      // ref.listen(allPinsProvider)에서 데이터 도착 시 다시 호출됨.
       return;
     }
     final nearest = pins.reduce((a, b) {

@@ -2,7 +2,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:material_symbols_icons/symbols.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../config/router.dart';
 import '../../config/sports.dart';
@@ -121,7 +120,7 @@ class HomeScreen extends ConsumerWidget {
                     ),
                     child: const Row(
                       children: [
-                        Icon(Symbols.bolt_rounded,
+                        Icon(Icons.bolt_rounded,
                             color: Colors.white, size: 28),
                         SizedBox(width: 12),
                         Expanded(
@@ -147,7 +146,7 @@ class HomeScreen extends ConsumerWidget {
                             ],
                           ),
                         ),
-                        Icon(Symbols.arrow_forward_ios_rounded,
+                        Icon(Icons.arrow_forward_ios_rounded,
                             color: Colors.white70, size: 16),
                       ],
                     ),
@@ -463,7 +462,7 @@ class _MyPinStatusCard extends ConsumerWidget {
                             ),
                             SizedBox(width: 3),
                             Icon(
-                              Symbols.arrow_forward_ios_rounded,
+                              Icons.arrow_forward_ios_rounded,
                               size: 11,
                               color: AppTheme.primaryColor,
                             ),
@@ -770,7 +769,7 @@ class _PendingAcceptBanner extends ConsumerWidget {
                   ),
                 ),
                 const Icon(
-                  Symbols.arrow_forward_ios_rounded,
+                  Icons.arrow_forward_ios_rounded,
                   color: Colors.white70,
                   size: 14,
                 ),
@@ -897,7 +896,7 @@ class _ActiveMatchCard extends StatelessWidget {
                 ],
               ),
             ),
-            const Icon(Symbols.arrow_forward_ios_rounded,
+            const Icon(Icons.arrow_forward_ios_rounded,
                 color: AppTheme.textDisabled, size: 14),
           ],
         ),
@@ -937,7 +936,7 @@ class _WaitingRequestSummaryCard extends StatelessWidget {
                 color: Colors.amber.shade600.withOpacity(0.18),
                 shape: BoxShape.circle,
               ),
-              child: Icon(Symbols.search_rounded,
+              child: Icon(Icons.search_rounded,
                   color: Colors.amber.shade600, size: 20),
             ),
             const SizedBox(width: 12),
@@ -982,7 +981,7 @@ class _WaitingRequestSummaryCard extends StatelessWidget {
                 ],
               ),
             ),
-            const Icon(Symbols.arrow_forward_ios_rounded,
+            const Icon(Icons.arrow_forward_ios_rounded,
                 color: AppTheme.textDisabled, size: 14),
           ],
         ),
@@ -1036,7 +1035,7 @@ class _PinnedNoticeBanner extends ConsumerWidget {
                 ),
                 const SizedBox(width: 6),
                 const Icon(
-                  Symbols.arrow_forward_ios_rounded,
+                  Icons.arrow_forward_ios_rounded,
                   size: 12,
                   color: Color(0xFFD97706),
                 ),
@@ -1436,6 +1435,14 @@ class _MatchHistoryTile extends StatelessWidget {
       resultText = '무승부';
       resultBgColor = const Color(0xFF6B7280).withValues(alpha: 0.15);
       resultTextColor = const Color(0xFF6B7280);
+    } else if (result == 'DISPUTED') {
+      resultText = '분쟁중';
+      resultBgColor = const Color(0xFFF59E0B).withValues(alpha: 0.15);
+      resultTextColor = const Color(0xFFF59E0B);
+    } else if (result == 'NO_RESULT') {
+      resultText = '결과없음';
+      resultBgColor = const Color(0xFF6B7280).withValues(alpha: 0.15);
+      resultTextColor = const Color(0xFF6B7280);
     } else {
       resultText = '진행중';
       resultBgColor = AppTheme.primaryColor.withValues(alpha: 0.15);
@@ -1516,9 +1523,28 @@ class _MatchHistoryTile extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 5),
-                    // 종목 + 날짜 + 핀
+                    // 종목 + 날짜 + 핀 + 랭크/친선 칩
                     Row(
                       children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: (match.isCasual ? Colors.orange : AppTheme.secondaryColor)
+                                .withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                          child: Text(
+                            match.isCasual ? '친선' : '랭크',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: match.isCasual
+                                  ? Colors.orange.shade300
+                                  : AppTheme.secondaryColor,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
                         Icon(sportIcon(match.sportType), size: 12, color: AppTheme.textSecondary),
                         const SizedBox(width: 3),
                         Text(match.sportTypeDisplayName, style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
