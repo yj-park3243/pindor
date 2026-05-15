@@ -443,6 +443,8 @@ void _showForfeitConfirmDialog(
                       if (context.mounted) {
                         AppToast.info('경기를 포기했습니다. 패배로 기록됩니다.');
                         ref.invalidate(matchListProvider(null));
+                        // 포기 직후 본인 점수 즉시 갱신 (소켓 이벤트 도착 전 stale 방지)
+                        ref.invalidate(sportsProfilesProvider);
                         context.go('/matches');
                       }
                     } catch (e) {

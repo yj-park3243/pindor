@@ -479,6 +479,14 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> with WidgetsBindi
 
           if (status == 'CANCELLED' && matchId != null) {
             SocketService.instance.leaveMatch(matchId);
+            // 거절(REJECTED)은 -5점 페널티가 있으므로 점수/랭킹도 새로고침 없이 갱신
+            if (data['reason'] == 'REJECTED') {
+              ref.invalidate(sportsProfilesProvider);
+              ref.invalidate(pinRankingBySportProvider);
+              try {
+                ref.read(authStateProvider.notifier).refreshUser();
+              } catch (_) {}
+            }
           }
         });
       });

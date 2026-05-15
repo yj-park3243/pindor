@@ -62,10 +62,16 @@ class HomeScreen extends ConsumerWidget {
         final type = data['type'] as String?;
         if (type == 'MATCH_PENDING_ACCEPT') {
           ref.invalidate(pendingAcceptMatchesProvider);
-        } else if (type == 'MATCH_COMPLETED') {
-          // 경기 완료 → 점수/순위/전적 즉시 갱신
+        } else if (type == 'MATCH_COMPLETED' ||
+            type == 'MATCH_FORFEIT' ||
+            type == 'MATCH_FORFEIT_WIN') {
+          // 경기 완료/포기 → 점수/순위/전적 즉시 갱신
           ref.invalidate(myRankingHistoryProvider);
           ref.invalidate(recentCompletedMatchesProvider);
+          ref.invalidate(pinRankingBySportProvider);
+        } else if (type == 'MATCH_REJECTED') {
+          // 거절 -5점 페널티 → 점수/순위 갱신 (경기 기록은 아님)
+          ref.invalidate(myRankingHistoryProvider);
           ref.invalidate(pinRankingBySportProvider);
         }
       });

@@ -2502,19 +2502,11 @@ export class MatchingService {
       throw AppError.forbidden(ErrorCode.MATCH_NOT_PARTICIPANT);
     }
 
-    // 2) CHAT/CONFIRMED 상태에서는 포기 불가 — 경기 결과(승/패/무)만 가능
-    if (['CHAT', 'CONFIRMED'].includes(match.status as string)) {
+    // 2) 진행 중(PENDING_ACCEPT/CHAT/CONFIRMED) 매칭에서만 포기 가능 — 포기 = 즉시 패배.
+    if (!['PENDING_ACCEPT', 'CHAT', 'CONFIRMED'].includes(match.status as string)) {
       throw AppError.badRequest(
         ErrorCode.MATCH_INVALID_STATUS,
-        '매칭 성사 후에는 포기할 수 없습니다. 승리/패배/무승부만 가능합니다.',
-      );
-    }
-
-    // PENDING_ACCEPT 상태에서만 포기 가능
-    if ((match.status as string) !== 'PENDING_ACCEPT') {
-      throw AppError.badRequest(
-        ErrorCode.MATCH_INVALID_STATUS,
-        '수락 대기 상태의 매칭에서만 포기할 수 있습니다.',
+        '진행 중인 매칭에서만 포기할 수 있습니다.',
       );
     }
 
@@ -2553,6 +2545,7 @@ export class MatchingService {
     const forfeitScoreBefore = (forfeitProfile as any).currentScore ?? 1000;
     const winnerScoreBefore = (winnerProfile as any).currentScore ?? 1000;
 
+    let gameId = '';
     await this.dataSource.transaction(async (manager) => {
       // 4) 포기자 패배 처리 (Glicko-2 반영)
       await manager
@@ -2594,17 +2587,35 @@ export class MatchingService {
         .where('id = :id', { id: winnerProfileId })
         .execute();
 
-      // 6) Game 레코드 생성 (VERIFIED 상태로 직접 저장)
-      const game = manager.create(Game, {
-        matchId,
-        sportType: match.sportType,
-        resultStatus: 'VERIFIED' as any,
-        winnerProfileId,
-        playedAt: new Date(),
-        verifiedAt: new Date(),
-        scoreData: { forfeit: true, forfeitUserId: userId },
-      });
-      const savedGame = await manager.save(Game, game);
+      // 6) Game 레코드 — CHAT/CONFIRMED 에서는 이미 game 이 있을 수 있으므로
+      //    있으면 forfeit 으로 덮어쓰고, 없으면 새로 생성한다.
+      const existingGame = await manager.findOne(Game, { where: { matchId } });
+      let savedGame: Game;
+      if (existingGame) {
+        await manager.update(Game, existingGame.id, {
+          resultStatus: 'VERIFIED' as any,
+          winnerProfileId,
+          playedAt: existingGame.playedAt ?? new Date(),
+          verifiedAt: new Date(),
+          scoreData: {
+            ...(existingGame.scoreData ?? {}),
+            forfeit: true,
+            forfeitUserId: userId,
+          },
+        });
+        savedGame = (await manager.findOne(Game, { where: { id: existingGame.id } }))!;
+      } else {
+        const game = manager.create(Game, {
+          matchId,
+          sportType: match.sportType,
+          resultStatus: 'VERIFIED' as any,
+          winnerProfileId,
+          playedAt: new Date(),
+          verifiedAt: new Date(),
+          scoreData: { forfeit: true, forfeitUserId: userId },
+        });
+        savedGame = await manager.save(Game, game);
+      }
 
       // 7) 점수 히스토리 기록
       await manager.save(ScoreHistory, [
@@ -2639,9 +2650,17 @@ export class MatchingService {
         status: 'COMPLETED' as any,
         completedAt: new Date(),
       });
+
+      gameId = savedGame.id;
     });
 
-    // 9) 알림 발송
+    // 9) 소켓 이벤트 — 양쪽 화면이 새로고침 없이 갱신되도록 (점수/랭킹/매칭목록)
+    await this.emitMatchEvent('MATCH_STATUS_CHANGED', {
+      matchId,
+      data: { matchId, status: 'COMPLETED', gameId, reason: 'FORFEIT' },
+    });
+
+    // 10) 알림 발송
     const winnerUserId = (winnerProfile as any).userId as string;
     if (this.notificationService) {
       await this.notificationService.sendBulk([

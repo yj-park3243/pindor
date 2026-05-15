@@ -233,6 +233,38 @@ class ApiHelper {
     return response.data['data'] as Map<String, dynamic>;
   }
 
+  /// 매칭 거절 (PENDING_ACCEPT 상태 — -5점 페널티)
+  Future<Map<String, dynamic>> rejectMatch(
+      String token, String matchId) async {
+    final response = await _dio.post(
+      '/matches/$matchId/reject',
+      data: {},
+      options: _authOptions(token),
+    );
+    return response.data['data'] as Map<String, dynamic>;
+  }
+
+  /// 경기 포기 (PENDING_ACCEPT/CHAT/CONFIRMED — 즉시 패배)
+  Future<Map<String, dynamic>> forfeitMatch(
+      String token, String matchId) async {
+    final response = await _dio.post(
+      '/matches/$matchId/forfeit',
+      data: {},
+      options: _authOptions(token),
+    );
+    return response.data['data'] as Map<String, dynamic>;
+  }
+
+  /// 내 스포츠 프로필 목록 (점수/전적 검증용)
+  Future<List<Map<String, dynamic>>> getSportsProfiles(String token) async {
+    final response = await _dio.get(
+      '/sports-profiles',
+      options: _authOptions(token),
+    );
+    final data = response.data['data'] as List<dynamic>;
+    return data.cast<Map<String, dynamic>>();
+  }
+
   /// 경기 확정 (날짜/장소 입력)
   Future<Map<String, dynamic>> confirmMatch(
     String token,

@@ -315,7 +315,7 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
             ),
             const SizedBox(height: 8),
             const Text(
-              '거절하면 -15점 패널티가 적용됩니다.\n정말 거절하시겠습니까?',
+              '거절하면 -5점 패널티가 적용됩니다.\n정말 거절하시겠습니까?',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 14,
@@ -374,7 +374,7 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
 
     if (success) {
       _isNavigating = true;
-      _showToast('매칭이 거절되었습니다. (-15점)');
+      _showToast('매칭이 거절되었습니다. (-5점)');
       context.go(AppRoutes.matchList);
     } else {
       final error = ref.read(matchAcceptProvider(widget.matchId)).error ?? '';
@@ -732,7 +732,7 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
                                 key: const Key('match_accept_reject_btn'),
                                 onPressed: acceptState.isLoading ? null : _onReject,
                                 style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorColor, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-                                child: const Text('거절 (-15점)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                                child: const Text('거절 (-5점)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                               ),
                             ),
                           ),
@@ -1150,7 +1150,7 @@ class _AcceptRejectButtons extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        // 거절 버튼 — 빨간색, -15점 패널티 표시
+        // 거절 버튼 — 빨간색, -5점 패널티 표시
         Expanded(
           child: ElevatedButton(
             onPressed: isLoading ? null : onReject,
@@ -1173,7 +1173,7 @@ class _AcceptRejectButtons extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '(-15점)',
+                  '(-5점)',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
