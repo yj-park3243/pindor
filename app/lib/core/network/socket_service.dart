@@ -393,6 +393,14 @@ class SocketService {
     _connectionStateController.add(false);
   }
 
+  /// 테스트/디버그용 — 실제 네트워크 끊김처럼 transport 만 끊었다 재연결한다.
+  /// disconnect()(로그아웃 수준의 전체 종료)와 달리 소켓 객체·추적 룸·토큰을
+  /// 유지하므로 socket.io 가 스스로 재연결하고 onConnect 핸들러가 룸을 재입장한다.
+  void debugSimulateReconnect() {
+    _socket?.disconnect();
+    _socket?.connect();
+  }
+
   void _disconnect() {
     if (_socket != null) {
       // clearListeners() 는 socket.io 의 공유 Manager 내부 상태를 망가뜨려

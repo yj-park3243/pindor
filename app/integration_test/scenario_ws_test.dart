@@ -271,12 +271,12 @@ void main() {
       );
       debugPrint('[WS-$role] OK NEW_MESSAGE — 상대 메시지 수신');
 
-      // ── phase 4: 소켓 강제 끊김 → 룸 재입장 복구 검증 ──
-      // 채팅방을 떠나지 않는다 — chat_provider 의 _connStateSubscription 이
-      // 끊김을 감지해 재연결 + joinRoom 을 트리거한다. 라우트 전환을 하면
-      // StatefulShell 재구성으로 GlobalKey 충돌이 발생한다.
-      SocketService.instance.disconnect();
-      debugPrint('[WS-$role] 소켓 강제 disconnect');
+      // ── phase 4: 네트워크 끊김 → socket.io 자동재연결 복구 검증 ──
+      // 실제 시나리오: transport 만 끊겼다 재연결 (지하철 진입, 와이파이 전환 등).
+      // disconnect()(로그아웃 수준)가 아니라 debugSimulateReconnect() 로
+      // 소켓 객체를 유지한 채 재연결하여 onConnect 의 룸 재입장을 검증한다.
+      SocketService.instance.debugSimulateReconnect();
+      debugPrint('[WS-$role] 네트워크 끊김 시뮬레이션 (자동재연결)');
       await _settle(tester, const Duration(seconds: 5));
       await _shot(role, '07_chat_rejoined');
 
