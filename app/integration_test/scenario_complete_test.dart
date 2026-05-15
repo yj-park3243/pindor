@@ -292,8 +292,143 @@ void main() {
       expect(stillActive, false,
           reason: '완료된 매칭이 아직 진행중 상태로 남아있음');
 
+      // ── phase 10: 모든 페이지 순회 + 우측 상단 메뉴 펼침 + 메뉴 아이템 탭 ──
+      // 각 페이지가 에러 없이 렌더되고 메뉴가 정상 작동하는지(크래시·RenderFlex 등) 확인.
+      // 메뉴 아이템 탭 시 다이얼로그/시트가 뜨면 화면 떠 있는 상태 스크린샷 후 닫는다.
+      final chatRoomId = completedMatch['chatRoomId'] as String?;
+      final pagesToVisit = <_PageVisit>[
+        _PageVisit('/home', '10a_home'),
+        _PageVisit('/matches', '10b_matches'),
+        _PageVisit('/matches/$matchId', '10c_match_detail'),
+        if (chatRoomId != null && chatRoomId.isNotEmpty)
+          _PageVisit('/chats/$chatRoomId', '10c2_chat_room'),
+        _PageVisit('/map', '10d_map'),
+        _PageVisit('/profile', '10e_profile'),
+        _PageVisit('/profile/edit', '10f_profile_edit'),
+        _PageVisit('/profile/notifications', '10g_profile_notifications'),
+        _PageVisit('/profile/settings', '10h_settings'),
+        _PageVisit('/profile/settings/notifications', '10i_settings_notifications'),
+        _PageVisit('/profile/settings/blocked-users', '10j_blocked_users'),
+        _PageVisit('/profile/inquiry', '10k_inquiry'),
+        _PageVisit('/notices', '10l_notices'),
+        _PageVisit('/disputes', '10m_disputes'),
+      ];
+
+      for (final p in pagesToVisit) {
+        try {
+          _forceGo(p.path);
+          await _settle(tester, const Duration(seconds: 2));
+          await _shot(role, p.label);
+          await _exploreMenu(tester, role, p.label);
+        } catch (e) {
+          debugPrint('[CP-$role] page 순회 에러 ${p.path}: $e');
+        }
+      }
+      debugPrint('[CP-$role] phase 10: 페이지 순회 + 메뉴 탐색 완료');
+
       debugPrint('[CP-$role] === 전체 통과 ===');
     },
-    timeout: const Timeout(Duration(minutes: 8)),
+    timeout: const Timeout(Duration(minutes: 14)),
   );
+}
+
+class _PageVisit {
+  final String path;
+  final String label;
+  _PageVisit(this.path, this.label);
+}
+
+/// 현재 화면의 우측 상단 메뉴(`Icons.more_vert`/`more_horiz`)를 펼치고
+/// 모든 메뉴 아이템을 순서대로 한 번씩 탭한다.
+/// - 다이얼로그가 뜨면 마지막 ElevatedButton(확정/destructive) 탭 → 실제 액션 실행
+/// - BottomSheet 가 뜨면 외부 영역 탭(또는 ESC)으로 dismiss
+/// - 화면이 다른 라우트로 전환되면 더 이상 탐색하지 않고 종료
+Future<void> _exploreMenu(WidgetTester tester, String role, String label) async {
+  // 메뉴 트리거 찾기 — Icons.more_vert 우선, 없으면 more_horiz
+  Finder? trigger;
+  for (final icon in const [Icons.more_vert, Icons.more_horiz]) {
+    final f = find.byIcon(icon);
+    if (f.evaluate().isNotEmpty) {
+      trigger = f.first;
+      break;
+    }
+  }
+  if (trigger == null) return;
+
+  // 1) 펼치기 전 텍스트 스냅샷 — 페이지 본문 텍스트
+  final beforeTexts = <String>{};
+  for (final el in find.byType(Text).evaluate()) {
+    final t = (el.widget as Text).data;
+    if (t != null && t.isNotEmpty) beforeTexts.add(t);
+  }
+
+  // 2) 메뉴 펼침 — 메뉴 열림 스크린샷
+  try {
+    await tester.tap(trigger);
+  } catch (e) {
+    debugPrint('[CP-$role] 메뉴 트리거 tap 실패 ($label): $e');
+    return;
+  }
+  await _settle(tester, const Duration(milliseconds: 700));
+  await _shot(role, '${label}_menu_open');
+
+  // 3) 펼친 후 텍스트 — diff 가 메뉴 아이템 (페이지 본문 노이즈 제거)
+  final afterTexts = <String>{};
+  for (final el in find.byType(Text).evaluate()) {
+    final t = (el.widget as Text).data;
+    if (t != null && t.isNotEmpty) afterTexts.add(t);
+  }
+  final itemTexts = afterTexts.difference(beforeTexts);
+  debugPrint('[CP-$role] $label 메뉴 아이템: ${itemTexts.join(", ")}');
+
+  // 외부 영역 탭으로 메뉴 닫기
+  try {
+    await tester.tapAt(const Offset(20, 20));
+  } catch (_) {}
+  await _settle(tester, const Duration(milliseconds: 500));
+
+  // 3) 각 후보 텍스트에 대해 — 메뉴 재펼침 → 그 텍스트 탭 → 다이얼로그/시트 처리
+  for (final text in itemTexts) {
+    try {
+      if (find.byIcon(Icons.more_vert).evaluate().isEmpty &&
+          find.byIcon(Icons.more_horiz).evaluate().isEmpty) {
+        // 화면이 전환됨 — 더 진행 안 함
+        return;
+      }
+      final reopenTrigger = find.byIcon(Icons.more_vert).evaluate().isNotEmpty
+          ? find.byIcon(Icons.more_vert).first
+          : find.byIcon(Icons.more_horiz).first;
+      await tester.tap(reopenTrigger);
+      await _settle(tester, const Duration(milliseconds: 500));
+
+      final item = find.text(text);
+      if (item.evaluate().isEmpty) {
+        // 메뉴 아이템이 아니라 페이지 내 다른 텍스트였음 — skip
+        await tester.tapAt(const Offset(20, 20));
+        await _settle(tester, const Duration(milliseconds: 300));
+        continue;
+      }
+      await tester.tap(item.first);
+      await _settle(tester, const Duration(seconds: 1));
+      await _shot(role, '${label}_item_${text.replaceAll(' ', '_')}');
+
+      // 다이얼로그가 뜨면 마지막 ElevatedButton(확정/destructive) 탭
+      final confirmBtns = find.byType(ElevatedButton);
+      if (confirmBtns.evaluate().isNotEmpty) {
+        try {
+          await tester.tap(confirmBtns.last);
+          await _settle(tester, const Duration(seconds: 2));
+          await _shot(role, '${label}_item_${text.replaceAll(' ', '_')}_confirmed');
+        } catch (_) {}
+      } else {
+        // 시트 등 — 외부 탭으로 닫음
+        try {
+          await tester.tapAt(const Offset(20, 20));
+        } catch (_) {}
+        await _settle(tester, const Duration(milliseconds: 500));
+      }
+    } catch (e) {
+      debugPrint('[CP-$role] menu item "$text" tap 에러 ($label): $e');
+    }
+  }
 }
