@@ -32,6 +32,12 @@ export class AppVersion {
   @Column({ name: 'store_url', type: 'text', nullable: true })
   storeUrl!: string | null;
 
+  @Column({ name: 'show_ad', type: 'boolean', default: false })
+  showAd!: boolean; // 광고 표시 여부 (원격 토글)
+
+  @Column({ name: 'require_phone_verification', type: 'boolean', default: true })
+  requirePhoneVerification!: boolean; // 핸드폰(KCP) 본인인증 강제 여부 (원격 토글)
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 

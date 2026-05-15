@@ -1,9 +1,10 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { AppDataSource } from '../../config/database.js';
-import { Report, Inquiry, UserSanction, User } from '../../entities/index.js';
+import { Report, Inquiry, UserSanction, User, AdminRole } from '../../entities/index.js';
 import { ReportTargetType, UserStatus } from '../../entities/enums.js';
 import { sendAdminAlert, escapeHtml } from '../../shared/services/telegram.service.js';
+import { requireAdmin } from '../admin/admin.middleware.js';
 
 // ─── 입력 스키마 ───
 
@@ -19,6 +20,22 @@ const createInquirySchema = z.object({
   title: z.string().min(1).max(200),
   content: z.string().min(1),
   imageUrl: z.string().url().optional(),
+});
+
+const INQUIRY_STATUSES = ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'] as const;
+
+const adminListInquiriesQuerySchema = z.object({
+  status: z.enum(INQUIRY_STATUSES).optional(),
+  category: z.enum(['ACCOUNT', 'MATCH', 'SCORE', 'BUG', 'SUGGESTION', 'OTHER']).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+const adminUpdateInquirySchema = z.object({
+  status: z.enum(INQUIRY_STATUSES).optional(),
+  adminReply: z.string().max(5000).optional(),
+}).refine((d) => d.status !== undefined || d.adminReply !== undefined, {
+  message: 'status 또는 adminReply 중 최소 하나는 필요합니다.',
 });
 
 type CreateReportDto = z.infer<typeof createReportSchema>;
@@ -227,6 +244,115 @@ export async function reportsRoutes(fastify: FastifyInstance): Promise<void> {
           error: { code: 'NOT_FOUND', message: '문의를 찾을 수 없습니다.' },
         });
       }
+
+      return reply.send({ success: true, data: inquiry });
+    },
+  );
+
+  // ─── GET /admin/inquiries — 어드민: 문의 목록 ───
+  fastify.get(
+    '/admin/inquiries',
+    {
+      onRequest: [fastify.authenticate, requireAdmin(AdminRole.MODERATOR)],
+      schema: {
+        tags: ['Inquiries'],
+        summary: '[어드민] 문의 목록',
+        security: [{ bearerAuth: [] }],
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { status, category, page, pageSize } = adminListInquiriesQuerySchema.parse(request.query);
+
+      const qb = inquiryRepo
+        .createQueryBuilder('inq')
+        .leftJoin('inq.user', 'u')
+        .addSelect(['u.id', 'u.nickname', 'u.email'])
+        .orderBy('inq.createdAt', 'DESC')
+        .skip((page - 1) * pageSize)
+        .take(pageSize);
+
+      if (status) qb.andWhere('inq.status = :status', { status });
+      if (category) qb.andWhere('inq.category = :category', { category });
+
+      const [items, total] = await qb.getManyAndCount();
+
+      return reply.send({
+        success: true,
+        data: items,
+        meta: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) },
+      });
+    },
+  );
+
+  // ─── GET /admin/inquiries/:id — 어드민: 문의 상세 ───
+  fastify.get(
+    '/admin/inquiries/:id',
+    {
+      onRequest: [fastify.authenticate, requireAdmin(AdminRole.MODERATOR)],
+      schema: {
+        tags: ['Inquiries'],
+        summary: '[어드민] 문의 상세',
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: 'object',
+          properties: { id: { type: 'string', format: 'uuid' } },
+          required: ['id'],
+        },
+      },
+    },
+    async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const inquiry = await inquiryRepo
+        .createQueryBuilder('inq')
+        .leftJoin('inq.user', 'u')
+        .addSelect(['u.id', 'u.nickname', 'u.email'])
+        .where('inq.id = :id', { id: request.params.id })
+        .getOne();
+
+      if (!inquiry) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'NOT_FOUND', message: '문의를 찾을 수 없습니다.' },
+        });
+      }
+      return reply.send({ success: true, data: inquiry });
+    },
+  );
+
+  // ─── PATCH /admin/inquiries/:id — 어드민: 상태/답변 ───
+  fastify.patch(
+    '/admin/inquiries/:id',
+    {
+      onRequest: [fastify.authenticate, requireAdmin(AdminRole.MODERATOR)],
+      schema: {
+        tags: ['Inquiries'],
+        summary: '[어드민] 문의 상태/답변 업데이트',
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: 'object',
+          properties: { id: { type: 'string', format: 'uuid' } },
+          required: ['id'],
+        },
+      },
+    },
+    async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const dto = adminUpdateInquirySchema.parse(request.body);
+
+      const inquiry = await inquiryRepo.findOne({ where: { id: request.params.id } });
+      if (!inquiry) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'NOT_FOUND', message: '문의를 찾을 수 없습니다.' },
+        });
+      }
+
+      if (dto.status !== undefined) inquiry.status = dto.status;
+      if (dto.adminReply !== undefined) inquiry.adminReply = dto.adminReply;
+      // RESOLVED/CLOSED 전환 시 resolvedAt 자동 기록 (이전 값 있으면 유지)
+      if ((dto.status === 'RESOLVED' || dto.status === 'CLOSED') && !inquiry.resolvedAt) {
+        inquiry.resolvedAt = new Date();
+      }
+
+      await inquiryRepo.save(inquiry);
 
       return reply.send({ success: true, data: inquiry });
     },

@@ -44,6 +44,7 @@ export { AppVersion } from './app-version.entity.js';
 export { Notice } from './notice.entity.js';
 export { Dispute } from './dispute.entity.js';
 export { AppErrorLog } from './app-error-log.entity.js';
+export { AppVersionCheckLog } from './app-version-check-log.entity.js';
 export { UserBlock } from './user-block.entity.js';
 export { NotificationCampaignLog } from './notification-campaign-log.entity.js';
 export { PinRankingSnapshot } from './pin-ranking-snapshot.entity.js';

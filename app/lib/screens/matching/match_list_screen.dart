@@ -15,13 +15,13 @@ import '../../repositories/matching_repository.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/error_view.dart';
 import '../../widgets/common/app_toast.dart';
+import '../../widgets/common/native_ad_card.dart';
 import '../../widgets/common/safe_bottom_sheet.dart';
 import '../../core/network/api_client.dart';
 import '../../widgets/common/user_avatar.dart';
 import '../../widgets/common/score_display.dart';
 import '../../providers/chat_provider.dart';
 import '../../core/network/socket_service.dart';
-import 'package:bottom_picker/bottom_picker.dart';
 
 
 /// 매칭 목록 화면 (PRD SCREEN-020)
@@ -40,7 +40,6 @@ class _MatchListScreenState extends ConsumerState<MatchListScreen> {
   // 같은 매칭 ID로 accept 페이지에 보낸 적 있으면 다시 자동 redirect 안 함
   // (accept 페이지가 stale로 인해 매칭 목록으로 돌려보낼 때 무한 루프 방지)
   final Set<String> _redirectedAcceptIds = {};
-  final Set<String> _joinedMatchRooms = {};
 
   // 검색 필터
   bool _showFilters = false;
@@ -60,37 +59,11 @@ class _MatchListScreenState extends ConsumerState<MatchListScreen> {
     });
   }
 
-  /// 활성 상태(PENDING_ACCEPT, CHAT, CONFIRMED)의 매칭 룸에 소켓 입장
-  void _joinActiveMatchRooms() {
-    final matches = ref.read(matchListProvider(null)).valueOrNull;
-    if (matches == null) return;
-
-    for (final match in matches) {
-      final status = match.status;
-      if (status == 'PENDING_ACCEPT' || status == 'CHAT' || status == 'CONFIRMED') {
-        if (!_joinedMatchRooms.contains(match.id)) {
-          _joinedMatchRooms.add(match.id);
-          SocketService.instance.joinMatch(match.id);
-        }
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    // 룸 퇴장은 main_tab_screen의 글로벌 리스너가 COMPLETED/CANCELLED 시 담당
-    _joinedMatchRooms.clear();
-    super.dispose();
-  }
+  // 매칭 룸 join/leave는 글로벌 activeMatchRoomsProvider 가 main_tab_screen 에서 관리.
 
   @override
   Widget build(BuildContext context) {
     final allMatchesAsync = ref.watch(matchListProvider(null));
-
-    // 매칭 목록 로드 완료 시 활성 매칭 룸 조인 (소켓 이벤트 처리는 main_tab_screen에서 담당)
-    ref.listen(matchListProvider(null), (prev, next) {
-      if (next.hasValue) _joinActiveMatchRooms();
-    });
 
     // PENDING_ACCEPT 중 내가 아직 수락 안 한 매칭만 잠금 대상
     final myId = ref.watch(currentUserProvider)?.id;
@@ -299,8 +272,37 @@ class _MatchListScreenState extends ConsumerState<MatchListScreen> {
             );
           }
 
-          // 진행중 매칭 → 대기 요청 → 완료된 매칭
-          final totalItems = activeMatches.length + waitingCount + completedMatches.length;
+          // 3단(진행중 → 대기 → 완료)을 단순 슬롯 배열로 평탄화 후
+          // 섹션 경계 + 완료 매칭 8개마다 광고 슬롯을 삽입한다.
+          final slots = <_MatchSlot>[
+            for (final m in activeMatches) _MatchSlot.active(m),
+            for (final r in waitingRequests) _MatchSlot.waiting(r),
+            for (final m in completedMatches) _MatchSlot.completed(m),
+          ];
+
+          final items = <_MatchSlot>[];
+          int completedRun = 0;
+          for (int i = 0; i < slots.length; i++) {
+            final cur = slots[i];
+            items.add(cur);
+            if (cur.kind == _MatchSlotKind.completed) {
+              completedRun++;
+            } else {
+              completedRun = 0;
+            }
+            // 광고 삽입 규칙:
+            //  - 진행중→대기 또는 진행중/대기→완료 섹션 경계 직후 1회
+            //  - 완료 매칭이 연속 8개마다 (마지막 슬롯엔 광고 안 붙임)
+            final next = i + 1 < slots.length ? slots[i + 1] : null;
+            final isBoundary = next != null && cur.kind != next.kind;
+            final isPeriodic = cur.kind == _MatchSlotKind.completed &&
+                completedRun == 8 &&
+                next != null;
+            if (isBoundary || isPeriodic) {
+              items.add(_MatchSlot.ad());
+              if (isPeriodic) completedRun = 0;
+            }
+          }
 
           return RefreshIndicator(
             onRefresh: () async {
@@ -309,34 +311,25 @@ class _MatchListScreenState extends ConsumerState<MatchListScreen> {
             },
             child: ListView.builder(
               padding: const EdgeInsets.only(top: 4, bottom: 100),
-              itemCount: totalItems,
+              itemCount: items.length,
               itemBuilder: (context, index) {
-                // 1) 진행중 매칭
-                if (index < activeMatches.length) {
-                  final match = activeMatches[index];
-                  return _MatchListTile(
-                    match: match,
-                    onTap: () {
-                      if (match.status == 'PENDING_ACCEPT') {
-                        AppToast.info('상대 응답을 기다리고 있습니다.');
-                        return;
-                      }
-                      context.go('${AppRoutes.matchList}/${match.id}');
-                    },
-                  );
+                final slot = items[index];
+                switch (slot.kind) {
+                  case _MatchSlotKind.active:
+                  case _MatchSlotKind.completed:
+                    final match = slot.match!;
+                    return _MatchListTile(
+                      match: match,
+                      onTap: () => context.go('${AppRoutes.matchList}/${match.id}'),
+                    );
+                  case _MatchSlotKind.waiting:
+                    return _WaitingRequestCard(request: slot.request!);
+                  case _MatchSlotKind.ad:
+                    return const NativeAdCard(
+                      highlightAdLabel: true,
+                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    );
                 }
-                // 2) 대기 요청
-                final afterActive = index - activeMatches.length;
-                if (afterActive < waitingCount) {
-                  return _WaitingRequestCard(request: waitingRequests[afterActive]);
-                }
-                // 3) 완료된 매칭
-                final completedIndex = afterActive - waitingCount;
-                final match = completedMatches[completedIndex];
-                return _MatchListTile(
-                  match: match,
-                  onTap: () => context.go('${AppRoutes.matchList}/${match.id}'),
-                );
               },
             ),
           );
@@ -469,29 +462,97 @@ class _MatchListScreenState extends ConsumerState<MatchListScreen> {
     required T selected,
     required void Function(T) onSelected,
   }) {
-    final selectedIndex = items.indexOf(selected).clamp(0, items.length - 1);
-
-    BottomPicker(
-      items: items.map((item) => Text(
-        labelBuilder(item),
-        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.white),
-      )).toList(),
-      selectedItemIndex: selectedIndex,
-      backgroundColor: AppTheme.cardDark,
-      headerBuilder: (_) => Padding(
-        padding: const EdgeInsets.only(top: 8, bottom: 4),
-        child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
-      ),
-      buttonSingleColor: AppTheme.primaryColor,
-      buttonContent: const Center(
-        child: Text('선택', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
-      ),
-      pickerTextStyle: const TextStyle(fontSize: 16, color: Colors.white),
-      onSubmit: (index) {
-        onSelected(items[index]);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      useRootNavigator: true,
+      builder: (ctx) {
+        final maxHeight = MediaQuery.of(ctx).size.height * 0.7;
+        return SafeArea(
+          top: false,
+          child: Container(
+            constraints: BoxConstraints(maxHeight: maxHeight),
+            decoration: const BoxDecoration(
+              color: AppTheme.cardDark,
+              borderRadius:
+                  BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // drag handle
+                Padding(
+                  padding: const EdgeInsets.only(top: 8, bottom: 4),
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 20, vertical: 12),
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                Divider(
+                    height: 1,
+                    color: Colors.white.withValues(alpha: 0.06)),
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    itemCount: items.length,
+                    separatorBuilder: (_, __) => Divider(
+                      height: 1,
+                      color: Colors.white.withValues(alpha: 0.04),
+                      indent: 20,
+                      endIndent: 20,
+                    ),
+                    itemBuilder: (_, idx) {
+                      final item = items[idx];
+                      final isSelected = item == selected;
+                      return ListTile(
+                        title: Text(
+                          labelBuilder(item),
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: isSelected
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                            color: isSelected
+                                ? AppTheme.primaryColor
+                                : Colors.white,
+                          ),
+                        ),
+                        trailing: isSelected
+                            ? const Icon(Icons.check_rounded,
+                                color: AppTheme.primaryColor, size: 20)
+                            : null,
+                        onTap: () {
+                          onSelected(item);
+                          Navigator.of(ctx).pop();
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
       },
-      dismissable: true,
-    ).show(context);
+    );
   }
 }
 
@@ -1530,7 +1591,14 @@ class _MatchListTileState extends ConsumerState<_MatchListTile>
                             ),
                           ),
                           if (match.isCompleted && match.gameResult != null)
-                            _GameResultChip(gameResult: match.gameResult!, scoreChange: match.myScoreChange, isCasual: match.isCasual)
+                            _GameResultChip(
+                              gameResult: match.gameResult!,
+                              scoreChange: match.myScoreChange,
+                              isCasual: match.isCasual,
+                              noshowReportedByMe: match.noshowReportedByMe,
+                              noshowReportedAgainstMe:
+                                  match.noshowReportedAgainstMe,
+                            )
                           else
                             _StatusChip(status: match.status),
                         ],
@@ -1602,6 +1670,11 @@ class _MatchListTileState extends ConsumerState<_MatchListTile>
                     ],
                   ),
                 ),
+                // 진행중 매치만 [상세]/[채팅방] 액션 버튼
+                if (match.isPendingAccept || match.isChat || match.isConfirmed) ...[
+                  const SizedBox(width: 8),
+                  _MatchCardActions(match: match),
+                ],
               ],
             ),
           ),
@@ -1635,6 +1708,75 @@ class _MatchListTileState extends ConsumerState<_MatchListTile>
     );
   }
 
+}
+
+/// 진행중 매치 카드 오른쪽 액션 버튼 (상세 / 채팅방)
+class _MatchCardActions extends StatelessWidget {
+  final Match match;
+
+  const _MatchCardActions({required this.match});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasChat = match.chatRoomId.isNotEmpty;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _CardActionButton(
+          icon: Icons.info_outline_rounded,
+          tooltip: '매칭 상세',
+          color: AppTheme.primaryColor,
+          onTap: () => context.go('${AppRoutes.matchList}/${match.id}'),
+        ),
+        if (hasChat) ...[
+          const SizedBox(height: 8),
+          _CardActionButton(
+            icon: Icons.chat_bubble_outline_rounded,
+            tooltip: '채팅방',
+            color: AppTheme.secondaryColor,
+            onTap: () => context.push('/chats/${match.chatRoomId}'),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _CardActionButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _CardActionButton({
+    required this.icon,
+    required this.tooltip,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // GestureDetector로 감싸 부모 카드 onTap으로 이벤트 전파 차단
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Tooltip(
+        message: tooltip,
+        child: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.15),
+            shape: BoxShape.circle,
+            border: Border.all(color: color.withValues(alpha: 0.4), width: 1),
+          ),
+          child: Icon(icon, size: 18, color: color),
+        ),
+      ),
+    );
+  }
 }
 
 /// PENDING_ACCEPT 카드용 정보 칩
@@ -1751,11 +1893,15 @@ class _GameResultChip extends StatelessWidget {
   final String gameResult;
   final int? scoreChange;
   final bool isCasual;
+  final bool noshowReportedByMe;
+  final bool noshowReportedAgainstMe;
 
   const _GameResultChip({
     required this.gameResult,
     this.scoreChange,
     this.isCasual = false,
+    this.noshowReportedByMe = false,
+    this.noshowReportedAgainstMe = false,
   });
 
   @override
@@ -1764,36 +1910,47 @@ class _GameResultChip extends StatelessWidget {
     Color color;
     IconData icon;
 
-    switch (gameResult) {
-      case 'WIN':
-        label = '승리';
-        color = AppTheme.secondaryColor;
-        icon = Icons.emoji_events_rounded;
-        break;
-      case 'LOSS':
-        label = '패배';
-        color = AppTheme.errorColor;
-        icon = Icons.sentiment_very_dissatisfied_rounded;
-        break;
-      case 'DRAW':
-        label = '무승부';
-        color = const Color(0xFF9CA3AF);
-        icon = Icons.handshake_rounded;
-        break;
-      case 'DISPUTED':
-        label = '이의제기';
-        color = Colors.orange;
-        icon = Icons.gavel_rounded;
-        break;
-      case 'NO_RESULT':
-        label = '미입력';
-        color = const Color(0xFF6B7280);
-        icon = Icons.help_outline_rounded;
-        break;
-      default:
-        label = '완료';
-        color = const Color(0xFF9CA3AF);
-        icon = Icons.check_rounded;
+    // NO_RESULT인데 노쇼 신고가 있으면 노쇼 라벨로 표시
+    if (gameResult == 'NO_RESULT' && noshowReportedByMe) {
+      label = '상대 노쇼';
+      color = Colors.deepOrange;
+      icon = Icons.report_rounded;
+    } else if (gameResult == 'NO_RESULT' && noshowReportedAgainstMe) {
+      label = '노쇼 신고 받음';
+      color = Colors.red;
+      icon = Icons.warning_amber_rounded;
+    } else {
+      switch (gameResult) {
+        case 'WIN':
+          label = '승리';
+          color = AppTheme.secondaryColor;
+          icon = Icons.emoji_events_rounded;
+          break;
+        case 'LOSS':
+          label = '패배';
+          color = AppTheme.errorColor;
+          icon = Icons.sentiment_very_dissatisfied_rounded;
+          break;
+        case 'DRAW':
+          label = '무승부';
+          color = const Color(0xFF9CA3AF);
+          icon = Icons.handshake_rounded;
+          break;
+        case 'DISPUTED':
+          label = '이의제기';
+          color = Colors.orange;
+          icon = Icons.gavel_rounded;
+          break;
+        case 'NO_RESULT':
+          label = '미입력';
+          color = const Color(0xFF6B7280);
+          icon = Icons.help_outline_rounded;
+          break;
+        default:
+          label = '완료';
+          color = const Color(0xFF9CA3AF);
+          icon = Icons.check_rounded;
+      }
     }
 
     return Container(
@@ -1978,3 +2135,20 @@ Future<bool?> _showConfirmSheet({
   );
 }
 
+enum _MatchSlotKind { active, waiting, completed, ad }
+
+class _MatchSlot {
+  final _MatchSlotKind kind;
+  final Match? match;
+  final MatchRequest? request;
+
+  const _MatchSlot._(this.kind, {this.match, this.request});
+
+  factory _MatchSlot.active(Match m) =>
+      _MatchSlot._(_MatchSlotKind.active, match: m);
+  factory _MatchSlot.completed(Match m) =>
+      _MatchSlot._(_MatchSlotKind.completed, match: m);
+  factory _MatchSlot.waiting(MatchRequest r) =>
+      _MatchSlot._(_MatchSlotKind.waiting, request: r);
+  factory _MatchSlot.ad() => const _MatchSlot._(_MatchSlotKind.ad);
+}

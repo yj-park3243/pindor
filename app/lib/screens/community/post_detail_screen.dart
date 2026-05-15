@@ -12,6 +12,7 @@ import '../../providers/community_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/error_view.dart';
+import '../../widgets/common/native_ad_card.dart';
 
 import '../../widgets/report/report_bottom_sheet.dart';
 import '../../repositories/block_repository.dart';
@@ -210,6 +211,12 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                           : null,
                     ),
                     const SizedBox(height: 24),
+
+                    // 게시글 본문 ↔ 댓글 사이 네이티브 광고
+                    const NativeAdCard(
+                      padding: EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+                    ),
+
                     const Divider(),
                     const SizedBox(height: 8),
 

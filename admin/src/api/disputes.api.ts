@@ -66,9 +66,19 @@ export interface DisputeUpdateRequest {
 
 export const disputesApi = {
   // 이의 제기 목록 조회
+  // 서버 응답: { success, data: Dispute[], meta: { page, pageSize, total, totalPages } }
+  // UI는 { items, total, page, pageSize } 형태를 기대하므로 normalize.
   list: async (params?: DisputeListParams): Promise<PaginatedResponse<Dispute>> => {
     const response = await apiClient.get('/admin/disputes', { params });
-    return response.data.data;
+    const items = (response.data?.data ?? []) as Dispute[];
+    const meta = response.data?.meta ?? {};
+    return {
+      items,
+      total: meta.total ?? items.length,
+      page: meta.page ?? 1,
+      pageSize: meta.pageSize ?? items.length,
+      totalPages: meta.totalPages ?? 1,
+    } as PaginatedResponse<Dispute>;
   },
 
   // 이의 제기 상태 업데이트

@@ -69,6 +69,7 @@ class _CreateDisputeScreenState extends ConsumerState<CreateDisputeScreen> {
   Future<void> _submit() async {
     final title = _titleController.text.trim();
     final content = _contentController.text.trim();
+    final phone = _phoneController.text.trim();
 
     if (title.isEmpty) {
       AppToast.warning('제목을 입력해주세요.');
@@ -80,6 +81,11 @@ class _CreateDisputeScreenState extends ConsumerState<CreateDisputeScreen> {
       return;
     }
 
+    if (phone.isEmpty) {
+      AppToast.warning('연락처를 입력해주세요.');
+      return;
+    }
+
     setState(() => _isLoading = true);
     try {
       final repo = ref.read(disputeRepositoryProvider);
@@ -88,9 +94,7 @@ class _CreateDisputeScreenState extends ConsumerState<CreateDisputeScreen> {
         title: title,
         content: content,
         imageUrls: _imageUrls,
-        phoneNumber: _phoneController.text.trim().isEmpty
-            ? null
-            : _phoneController.text.trim(),
+        phoneNumber: phone,
       );
 
       if (mounted) {
@@ -324,14 +328,14 @@ class _CreateDisputeScreenState extends ConsumerState<CreateDisputeScreen> {
 
             const SizedBox(height: 20),
 
-            // 연락처 (선택)
-            _SectionLabel(text: '연락처 (선택)'),
+            // 연락처 (필수)
+            _SectionLabel(text: '연락처'),
             const SizedBox(height: 8),
             TextField(
               controller: _phoneController,
               keyboardType: TextInputType.phone,
               decoration: const InputDecoration(
-                hintText: '010-0000-0000',
+                hintText: '010-0000-0000 (필수)',
                 border: OutlineInputBorder(),
                 contentPadding:
                     EdgeInsets.symmetric(horizontal: 14, vertical: 12),

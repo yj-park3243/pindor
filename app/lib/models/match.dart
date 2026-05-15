@@ -20,6 +20,7 @@ class Match {
   final String? gameResult; // WIN | LOSS | DRAW (완료된 매칭만)
   final String? pinName; // 매칭 핀 지역명
   final int encounterCount; // 상대와의 이전 만남 횟수
+  final HeadToHead? headToHead; // 상대전적 (누적 승/패/무 + 최근 폼)
   final String? desiredDate; // 매칭 요청 희망 날짜
   final String? desiredTimeSlot; // 매칭 요청 희망 시간대
   final bool myResultSubmitted; // 내가 결과를 이미 제출했는지
@@ -27,6 +28,8 @@ class Match {
   final bool myMetConfirmed; // 내가 "우리 만났어요" 누름
   final bool opponentMetConfirmed; // 상대가 "우리 만났어요" 누름
   final bool bothMetConfirmed; // 양쪽 모두 누름 (결과 입력 가능)
+  final bool noshowReportedByMe; // 내가 상대를 노쇼 신고함 (PENDING/APPROVED)
+  final bool noshowReportedAgainstMe; // 내가 노쇼 신고당함 (PENDING/APPROVED)
 
   /// 빈 매칭 — firstWhere의 fallback용 sentinel.
   /// id가 빈 문자열이면 "없음"으로 판단.
@@ -59,6 +62,7 @@ class Match {
     this.gameResult,
     this.pinName,
     this.encounterCount = 0,
+    this.headToHead,
     this.desiredDate,
     this.desiredTimeSlot,
     this.myResultSubmitted = false,
@@ -66,6 +70,8 @@ class Match {
     this.myMetConfirmed = false,
     this.opponentMetConfirmed = false,
     this.bothMetConfirmed = false,
+    this.noshowReportedByMe = false,
+    this.noshowReportedAgainstMe = false,
   });
 
   factory Match.fromJson(Map<String, dynamic> json) {
@@ -95,6 +101,9 @@ class Match {
       gameResult: json['gameResult'] as String?,
       pinName: json['pinName'] as String?,
       encounterCount: json['encounterCount'] as int? ?? 0,
+      headToHead: json['headToHead'] != null
+          ? HeadToHead.fromJson(json['headToHead'] as Map<String, dynamic>)
+          : null,
       desiredDate: json['desiredDate'] as String?,
       desiredTimeSlot: json['desiredTimeSlot'] as String?,
       myResultSubmitted: json['myResultSubmitted'] as bool? ?? false,
@@ -102,6 +111,9 @@ class Match {
       myMetConfirmed: json['myMetConfirmed'] as bool? ?? false,
       opponentMetConfirmed: json['opponentMetConfirmed'] as bool? ?? false,
       bothMetConfirmed: json['bothMetConfirmed'] as bool? ?? false,
+      noshowReportedByMe: json['noshowReportedByMe'] as bool? ?? false,
+      noshowReportedAgainstMe:
+          json['noshowReportedAgainstMe'] as bool? ?? false,
     );
   }
 
@@ -131,6 +143,8 @@ class Match {
         'myMetConfirmed': myMetConfirmed,
         'opponentMetConfirmed': opponentMetConfirmed,
         'bothMetConfirmed': bothMetConfirmed,
+        'noshowReportedByMe': noshowReportedByMe,
+        'noshowReportedAgainstMe': noshowReportedAgainstMe,
       };
 
   /// 서버 응답의 acceptances 배열 또는 myAcceptance 단일 객체 모두 처리
@@ -317,4 +331,42 @@ class MatchAcceptance {
         'respondedAt': respondedAt?.toIso8601String(),
         'expiresAt': expiresAt?.toIso8601String(),
       };
+}
+
+/// 상대전적 (head-to-head)
+class HeadToHead {
+  final int totalGames;
+  final int wins;
+  final int losses;
+  final int draws;
+  final int winRate; // 0~100
+  final DateTime? lastMetAt;
+  final List<String> recentForm; // ['W','L','D',...] 최근 10건, 가장 최근이 첫번째
+
+  const HeadToHead({
+    required this.totalGames,
+    required this.wins,
+    required this.losses,
+    required this.draws,
+    required this.winRate,
+    this.lastMetAt,
+    required this.recentForm,
+  });
+
+  factory HeadToHead.fromJson(Map<String, dynamic> json) {
+    return HeadToHead(
+      totalGames: json['totalGames'] as int? ?? 0,
+      wins: json['wins'] as int? ?? 0,
+      losses: json['losses'] as int? ?? 0,
+      draws: json['draws'] as int? ?? 0,
+      winRate: json['winRate'] as int? ?? 0,
+      lastMetAt: json['lastMetAt'] != null
+          ? DateTime.tryParse(json['lastMetAt'] as String)
+          : null,
+      recentForm: (json['recentForm'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const [],
+    );
+  }
 }

@@ -10,12 +10,16 @@ import {
   Alert,
   Spin,
   Tabs,
+  Switch,
+  Space,
+  Tag,
 } from 'antd';
 import { SaveOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { message } from 'antd';
 import { settingsApi } from '@/api/settings.api';
 import type { SystemSettings } from '@/api/settings.api';
+import { appVersionsApi } from '@/api/app-versions.api';
 
 const { Title, Text } = Typography;
 
@@ -46,6 +50,22 @@ export function SystemSettingsPage() {
       queryClient.invalidateQueries({ queryKey: ['settings', 'system'] });
     },
     onError: () => message.error('설정 저장에 실패했습니다.'),
+  });
+
+  // 앱 버전(광고 토글 등)
+  const { data: appVersions, isLoading: versionsLoading } = useQuery({
+    queryKey: ['app-versions'],
+    queryFn: appVersionsApi.list,
+  });
+
+  const adToggleMutation = useMutation({
+    mutationFn: ({ id, showAd }: { id: string; showAd: boolean }) =>
+      appVersionsApi.update(id, { showAd }),
+    onSuccess: () => {
+      message.success('광고 설정이 저장되었습니다.');
+      queryClient.invalidateQueries({ queryKey: ['app-versions'] });
+    },
+    onError: () => message.error('광고 설정 저장에 실패했습니다.'),
   });
 
   if (isLoading) {
@@ -281,6 +301,53 @@ export function SystemSettingsPage() {
                     매칭 설정 저장
                   </Button>
                 </Form>
+              </Card>
+            ),
+          },
+          {
+            key: 'ads',
+            label: '광고',
+            children: (
+              <Card style={{ borderRadius: 8 }}>
+                <Alert
+                  message="앱 광고 표시 토글"
+                  description="플랫폼별로 네이티브 광고 표시 여부를 즉시 제어합니다. OFF일 경우 앱은 광고 로드 자체를 하지 않습니다. (앱이 다음 버전 체크 시점에 반영)"
+                  type="info"
+                  showIcon
+                  style={{ marginBottom: 20 }}
+                />
+                {versionsLoading ? (
+                  <Spin />
+                ) : (
+                  <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                    {(appVersions ?? []).map((v) => (
+                      <Card key={v.id} size="small">
+                        <Row align="middle" justify="space-between">
+                          <Col>
+                            <Space size={12}>
+                              <Tag color={v.platform === 'IOS' ? 'blue' : 'green'}>
+                                {v.platform}
+                              </Tag>
+                              <Text>현재 버전: {v.latestVersion}</Text>
+                            </Space>
+                          </Col>
+                          <Col>
+                            <Space>
+                              <Text type="secondary">광고 표시</Text>
+                              <Switch
+                                checked={v.showAd}
+                                loading={adToggleMutation.isPending}
+                                onChange={(checked) =>
+                                  adToggleMutation.mutate({ id: v.id, showAd: checked })
+                                }
+                              />
+                            </Space>
+                          </Col>
+                        </Row>
+                      </Card>
+                    ))}
+                  </Space>
+                )}
               </Card>
             ),
           },

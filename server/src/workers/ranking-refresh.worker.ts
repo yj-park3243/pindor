@@ -61,7 +61,6 @@ async function refreshPinRanking(pinId: string, sportType: string): Promise<void
     .createQueryBuilder('re')
     .innerJoinAndSelect('re.sportsProfile', 'sp')
     .innerJoin('sp.user', 'u')
-    .innerJoin('u.userPins', 'up', 'up.pinId = :pinId', { pinId })
     .where('re.pinId = :pinId', { pinId })
     .andWhere('re.sportType = :sportType', { sportType })
     .andWhere('sp.isActive = true')
@@ -74,32 +73,43 @@ async function refreshPinRanking(pinId: string, sportType: string): Promise<void
   // ranking_entries가 없는 유저 중 조건을 만족하는 유저도 포함 (신규 진입자)
   const existingProfileIds = new Set(entriesWithProfiles.map((e) => e.sportsProfileId));
 
+  // 신규 진입자: 해당 핀에서 매칭(matches) 또는 활동(pin_activities) 기록이 있는 유저로 한정.
+  // 이전엔 user_pins INNER JOIN으로 필터링했으나 user_pins 테이블이 INSERT 경로가 없는 dead table이라
+  // 모든 row가 toDelete 처리되어 ranking_entries가 통째로 삭제되던 문제 해결.
+  const pinUserIdsRows = await AppDataSource.query<Array<{ user_id: string }>>(
+    `SELECT DISTINCT user_id FROM (
+      SELECT user_id FROM pin_activities WHERE pin_id = $1
+      UNION
+      SELECT sp.user_id FROM matches m
+        JOIN sports_profiles sp ON sp.id = m.requester_profile_id
+        WHERE m.pin_id = $1
+      UNION
+      SELECT sp.user_id FROM matches m
+        JOIN sports_profiles sp ON sp.id = m.opponent_profile_id
+        WHERE m.pin_id = $1
+    ) u`,
+    [pinId],
+  );
+  const pinUserIds = pinUserIdsRows.map((r) => r.user_id);
+
   let newProfiles: SportsProfile[] = [];
-  if (existingProfileIds.size > 0) {
-    newProfiles = await sportsProfileRepo
+  if (pinUserIds.length > 0) {
+    const qb = sportsProfileRepo
       .createQueryBuilder('sp')
       .innerJoin('sp.user', 'u')
-      .innerJoin('u.userPins', 'up', 'up.pinId = :pinId', { pinId })
       .where('sp.sportType = :sportType', { sportType })
       .andWhere('sp.isActive = true')
       .andWhere('sp.gamesPlayed >= 3')
       .andWhere('u.status = :status', { status: 'ACTIVE' })
       .andWhere('u.lastLoginAt >= :since', { since: thirtyDaysAgo })
-      .andWhere('sp.id NOT IN (:...existingIds)', {
+      .andWhere('sp.userId IN (:...pinUserIds)', { pinUserIds });
+
+    if (existingProfileIds.size > 0) {
+      qb.andWhere('sp.id NOT IN (:...existingIds)', {
         existingIds: [...existingProfileIds],
-      })
-      .getMany();
-  } else {
-    newProfiles = await sportsProfileRepo
-      .createQueryBuilder('sp')
-      .innerJoin('sp.user', 'u')
-      .innerJoin('u.userPins', 'up', 'up.pinId = :pinId', { pinId })
-      .where('sp.sportType = :sportType', { sportType })
-      .andWhere('sp.isActive = true')
-      .andWhere('sp.gamesPlayed >= 3')
-      .andWhere('u.status = :status', { status: 'ACTIVE' })
-      .andWhere('u.lastLoginAt >= :since', { since: thirtyDaysAgo })
-      .getMany();
+      });
+    }
+    newProfiles = await qb.getMany();
   }
 
   // profiles: ranking_entries 기반 순서 유지 + 신규 진입자 추가
@@ -161,10 +171,10 @@ async function refreshPinRanking(pinId: string, sportType: string): Promise<void
     }
   }
 
-  // 핀 userCount 업데이트: 해당 핀에서 매칭한 사람 + 자주 가는 핀으로 등록한 사람의 고유 사용자 수
+  // 핀 userCount 업데이트: 해당 핀에서 매칭한 사람 + 핀 활동(자주가는핀 등록 등) 기록 있는 사람의 고유 사용자 수
   const [{ count }] = await AppDataSource.query<Array<{ count: number }>>(
     `SELECT COUNT(DISTINCT user_id)::int AS count FROM (
-      SELECT user_id FROM user_pins WHERE pin_id = $1
+      SELECT user_id FROM pin_activities WHERE pin_id = $1
       UNION
       SELECT sp.user_id FROM matches m
         JOIN sports_profiles sp ON sp.id = m.requester_profile_id

@@ -661,6 +661,10 @@ export class AuthService {
     const tokens = await issueTokenPair({ userId: user.id, email: user.email });
     await this.storeRefreshToken(user.id, tokens.refreshToken);
 
+    // 토큰 자동 갱신도 "활동 = 최근 접속"으로 간주해 갱신.
+    // 미갱신 시 access 토큰이 살아있는 동안 last_login_at이 옛 시점에 멈춰 어드민에 며칠 전으로 찍힘.
+    await userRepo.update(user.id, { lastLoginAt: new Date() });
+
     return tokens;
   }
 

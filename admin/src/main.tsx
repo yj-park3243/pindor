@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { ConfigProvider, App as AntdApp } from 'antd';
 import koKR from 'antd/locale/ko_KR';
+import { NavermapsProvider } from 'react-naver-maps';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ko';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -54,9 +55,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <BrowserRouter>
       <QueryClientProvider client={queryClient}>
         <ConfigProvider locale={koKR} theme={antdTheme}>
-          <AntdApp>
-            <App />
-          </AntdApp>
+          <NavermapsProvider ncpKeyId={import.meta.env.VITE_NAVER_MAP_KEY_ID ?? import.meta.env.VITE_NAVER_MAP_CLIENT_ID}>
+            <AntdApp>
+              <App />
+            </AntdApp>
+          </NavermapsProvider>
         </ConfigProvider>
         {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
       </QueryClientProvider>

@@ -49,19 +49,37 @@ Future<void> runUserAFlowUI(
     }
   }
 
-  // ── 1. 홈 도달 + 알림 팝업 닫기 ─────────────────────────────────────
-  await tester.pumpAndSettle(const Duration(seconds: 3));
-  // iOS 알림 권한 팝업: '허용' 또는 '허용 안 함' 탭
-  await _safeTap(tester, find.text('허용'), 'notif-allow');
-  await tester.pumpAndSettle(const Duration(seconds: 1));
-  expect(find.text('홈'), findsWidgets, reason: '자동 로그인 실패 (홈 화면 미도달)');
+  // ── 1. 홈 도달 + 권한/공지 팝업 닫기 ─────────────────────────────────
+  for (var i = 0; i < 8; i++) {
+    try {
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+    } catch (_) {
+      await tester.pump(const Duration(seconds: 1));
+    }
+    for (final label in ['허용', '확인', '나중에', '닫기']) {
+      final f = find.text(label);
+      if (f.evaluate().isNotEmpty) {
+        try {
+          await tester.tap(f.first, warnIfMissed: false);
+          await tester.pump(const Duration(milliseconds: 400));
+        } catch (_) {}
+      }
+    }
+    if (find.text('오늘 대결 나가고 싶다!').evaluate().isNotEmpty) break;
+  }
+  expect(find.text('오늘 대결 나가고 싶다!'), findsWidgets,
+      reason: '자동 로그인 실패 (홈 화면 미도달)');
   await shot('01_home');
 
   // ── 2. 매칭 요청 (API) ──────────────────────────────────────────────
   final pins = await api.getAllPins(token);
   if (pins.isEmpty) throw Exception('[UserA] 핀 데이터 없음');
-  final pinId = pins.first['id'] as String;
-  debugPrint('[UserA] 핀: $pinId (${pins.first['name']})');
+  final selected = pins.firstWhere(
+    (p) => p['name'] == TestConfig.testPinName,
+    orElse: () => pins.first,
+  );
+  final pinId = selected['id'] as String;
+  debugPrint('[UserA] 핀: $pinId (${selected['name']})');
 
   final matchReq = await api.createMatchRequest(
     token,
@@ -88,20 +106,17 @@ Future<void> runUserAFlowUI(
   final matchId = pending['id'] as String;
   debugPrint('[UserA] 매칭 성사: $matchId (${pending['status']})');
 
-  // 바텀 네비 '매칭' 탭 — 여러 개 있으면 last (bottom nav가 트리 하단)
+  // 바텀 네비 '매칭' 탭
   await _safeTap(tester, find.text('매칭'), 'nav-match');
   await shot('02_match_list');
 
-  // ── 4. 매칭 아이템 탭 → 수락 화면 진입 ─────────────────────────────
-  // 매칭 상세는 InkWell로 감싸진 카드
-  await _safeTap(tester, find.byType(InkWell), 'match-item');
-  await shot('03_match_accept');
-
-  // ── 5. API 수락 ─────────────────────────────────────────────────────
+  // ── 4. API로 매칭 수락 (UI 거절 시트가 뜨지 않도록 직접 API) ─────
   if (pending['status'] == 'PENDING_ACCEPT') {
     await api.acceptMatch(token, matchId);
     debugPrint('[UserA] 수락 완료');
   }
+  await tester.pumpAndSettle(const Duration(seconds: 2));
+  await shot('03_match_accept');
 
   // ── 6. CHAT 상태 대기 + UI 갱신 ─────────────────────────────────────
   final accepted = await api.pollUntil<Map<String, dynamic>>(

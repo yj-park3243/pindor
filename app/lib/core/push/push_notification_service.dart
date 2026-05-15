@@ -41,8 +41,12 @@ class PushNotificationService {
   }
 
   Future<void> _initializeInternal() async {
+    // E2E 테스트 모드 — 알림 권한 시스템 다이얼로그가 시뮬레이터 UI를 가리지 않도록 권한 요청 자체 스킵
+    const isTestMode =
+        bool.fromEnvironment('TEST_MODE', defaultValue: false);
+
     // Android 13+ 런타임 알림 권한 요청
-    if (Platform.isAndroid) {
+    if (Platform.isAndroid && !isTestMode) {
       final status = await Permission.notification.request();
       debugPrint('[Push] Android 알림 권한 상태: $status');
       if (status.isDenied || status.isPermanentlyDenied) {
@@ -50,18 +54,22 @@ class PushNotificationService {
       }
     }
 
-    // iOS 권한 요청
-    final settings = await _messaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-      provisional: false,
-    );
+    // iOS 권한 요청 (테스트 모드에선 시스템 다이얼로그 안 띄움)
+    if (!isTestMode) {
+      final settings = await _messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+        provisional: false,
+      );
 
-    debugPrint('[Push] 권한 상태: ${settings.authorizationStatus}');
+      debugPrint('[Push] 권한 상태: ${settings.authorizationStatus}');
 
-    if (settings.authorizationStatus == AuthorizationStatus.denied) {
-      debugPrint('[Push] 푸시 알림 권한 거부됨 — FCM 초기화는 계속 진행');
+      if (settings.authorizationStatus == AuthorizationStatus.denied) {
+        debugPrint('[Push] 푸시 알림 권한 거부됨 — FCM 초기화는 계속 진행');
+      }
+    } else {
+      debugPrint('[Push] TEST_MODE — 권한 요청 스킵');
     }
 
     // iOS: APNS 토큰이 준비될 때까지 대기 후 FCM 토큰 요청

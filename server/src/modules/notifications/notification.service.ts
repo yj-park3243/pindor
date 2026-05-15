@@ -4,6 +4,8 @@ import { Queue } from 'bullmq';
 import { AppDataSource } from '../../config/database.js';
 import { Notification } from '../../entities/notification.entity.js';
 import { NotificationSettings } from '../../entities/notification-settings.entity.js';
+import { DeviceToken } from '../../entities/device-token.entity.js';
+import { getMessaging } from '../../config/firebase.js';
 import type { NotificationPayload, NotificationType } from '../../shared/types/index.js';
 import type { ListNotificationsQuery } from './notification.schema.js';
 
@@ -68,19 +70,32 @@ export class NotificationService {
     const settings = await this.getUserSettings(payload.userId);
 
     if (settings && settingKey && !(settings as any)[settingKey]) {
+      console.info(
+        `[Notif] silent return — type=${payload.type} user=${payload.userId} settingKey=${settingKey} value=${(settings as any)[settingKey]}`,
+      );
       return; // 사용자가 해당 알림 OFF
     }
 
     // 2) DB 저장 (옵션)
     if (payload.saveToDb !== false) {
-      const notification = this.notificationRepo.create({
-        userId: payload.userId,
-        type: payload.type,
-        title: payload.title,
-        body: payload.body,
-        data: (payload.data ?? {}) as any,
-      });
-      await this.notificationRepo.save(notification);
+      try {
+        const notification = this.notificationRepo.create({
+          userId: payload.userId,
+          type: payload.type,
+          title: payload.title,
+          body: payload.body,
+          data: (payload.data ?? {}) as any,
+        });
+        const saved = await this.notificationRepo.save(notification);
+        console.info(
+          `[Notif] saved id=${saved.id} type=${payload.type} user=${payload.userId}`,
+        );
+      } catch (err) {
+        console.error(
+          `[Notif] save failed type=${payload.type} user=${payload.userId}:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
     }
 
     // 3) Socket.io 실시간 전송 (앱 포그라운드)
@@ -163,6 +178,7 @@ export class NotificationService {
       { userId, isRead: false },
       { isRead: true },
     );
+    void this.syncDeviceBadge(userId);
   }
 
   // ─────────────────────────────────────
@@ -177,6 +193,47 @@ export class NotificationService {
     if (!notification) return;
 
     await this.notificationRepo.update(notificationId, { isRead: true });
+    void this.syncDeviceBadge(userId);
+  }
+
+  // ─────────────────────────────────────
+  // 디바이스 배지 동기화 — silent push로 현재 unread 수 반영
+  // (백그라운드에서도 즉시 배지 갱신되도록)
+  // ─────────────────────────────────────
+
+  private async syncDeviceBadge(userId: string): Promise<void> {
+    try {
+      const messaging = getMessaging();
+      if (!messaging) return;
+
+      const tokens = await AppDataSource.getRepository(DeviceToken).find({
+        where: { userId, isActive: true },
+      });
+      if (tokens.length === 0) return;
+
+      const unreadCount = await this.notificationRepo.count({
+        where: { userId, isRead: false },
+      });
+
+      await messaging.sendEachForMulticast({
+        tokens: tokens.map((t) => t.token),
+        apns: {
+          payload: {
+            aps: {
+              'content-available': 1,
+              badge: unreadCount,
+            } as any,
+          },
+          headers: {
+            'apns-priority': '5',
+            'apns-push-type': 'background',
+          },
+        },
+        data: { type: 'BADGE_SYNC' },
+      });
+    } catch (err) {
+      console.info('[NotificationService] syncDeviceBadge failed:', (err as Error).message);
+    }
   }
 
   // ─────────────────────────────────────

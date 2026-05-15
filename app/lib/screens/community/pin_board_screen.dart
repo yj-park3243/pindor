@@ -12,6 +12,7 @@ import '../../providers/community_provider.dart';
 import '../../providers/sport_preference_provider.dart';
 import '../../widgets/common/loading_indicator.dart';
 import '../../widgets/common/error_view.dart';
+import '../../widgets/common/native_ad_card.dart';
 import '../../widgets/common/tier_badge.dart';
 
 
@@ -235,23 +236,42 @@ class _PinBoardScreenState extends ConsumerState<PinBoardScreen> {
       );
     }
 
+    // 12개 게시글마다 네이티브 광고 1개 삽입
+    const int adInterval = 12;
+    final postCount = state.posts.length;
+    final adCount = postCount ~/ adInterval;
+    final itemCount = postCount + adCount + (state.hasMore ? 1 : 0);
+
     return RefreshIndicator(
       onRefresh: refresh,
       child: ListView.separated(
         controller: _scrollController,
         padding: const EdgeInsets.symmetric(vertical: 8),
         physics: const AlwaysScrollableScrollPhysics(),
-        itemCount: state.posts.length + (state.hasMore ? 1 : 0),
+        itemCount: itemCount,
         separatorBuilder: (_, __) =>
             const Divider(height: 1, indent: 16, endIndent: 16),
         itemBuilder: (context, index) {
-          if (index >= state.posts.length) {
+          // adInterval+1 단위 블록에서 마지막은 광고
+          final block = adInterval + 1;
+          final isAdSlot = (index + 1) % block == 0;
+          final postIndex = index - (index ~/ block);
+
+          // 더보기 로딩 인디케이터
+          if (postIndex >= postCount) {
             return const Padding(
               padding: EdgeInsets.all(16),
               child: Center(child: LoadingIndicator()),
             );
           }
-          final post = state.posts[index];
+
+          if (isAdSlot) {
+            return const NativeAdCard(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            );
+          }
+
+          final post = state.posts[postIndex];
           return _PostListTile(
             post: post,
             onTap: () async {

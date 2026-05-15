@@ -18,6 +18,23 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  // 앱 버전 20번 탭 시 광고 테스트 페이지로 이동 (개발자용 hidden)
+  int _versionTapCount = 0;
+  DateTime _lastVersionTap = DateTime.fromMillisecondsSinceEpoch(0);
+
+  void _onVersionTap() {
+    final now = DateTime.now();
+    if (now.difference(_lastVersionTap).inSeconds > 5) {
+      _versionTapCount = 0;
+    }
+    _lastVersionTap = now;
+    _versionTapCount++;
+    if (_versionTapCount >= 20) {
+      _versionTapCount = 0;
+      context.push('/profile/settings/ad-test');
+    }
+  }
+
   Future<void> _clearCache() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -139,7 +156,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                 ),
               ),
-              onTap: null,
+              onTap: _onVersionTap,
             ),
           ]),
 

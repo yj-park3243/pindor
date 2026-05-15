@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import '../../config/app_config.dart';
@@ -159,7 +160,10 @@ class _AuthInterceptor extends Interceptor {
     RequestOptions options,
     RequestInterceptorHandler handler,
   ) async {
-    // 토큰 불필요한 엔드포인트 제외
+    // 모든 요청에 디바이스 플랫폼 식별 헤더 추가 (서버가 users.device_platform 저장에 사용)
+    options.headers['X-Platform'] = Platform.isIOS ? 'IOS' : 'ANDROID';
+
+    // 토큰 불필요한 엔드포인트 — 401 인터셉터를 거치지 않도록 skip
     final skipAuth = [
       '/auth/kakao',
       '/auth/google',
@@ -167,16 +171,25 @@ class _AuthInterceptor extends Interceptor {
       '/auth/refresh',
       '/auth/email/login',
       '/auth/email/register',
-      '/app-version',
       '/notices',
     ];
-    if (skipAuth.any((path) => options.path.contains(path))) {
+    // 토큰 옵셔널 엔드포인트 — 인증 필수는 아니지만 토큰이 있으면 함께 보냄
+    final optionalAuth = ['/app-version'];
+
+    final isSkipAuth = skipAuth.any((path) => options.path.contains(path));
+    final isOptional = optionalAuth.any((path) => options.path.contains(path));
+
+    if (isSkipAuth) {
       return handler.next(options);
     }
 
     final token = await _storage.getAccessToken();
     if (token != null) {
       options.headers['Authorization'] = 'Bearer $token';
+    }
+    // optionalAuth 는 토큰 없어도 통과
+    if (isOptional) {
+      return handler.next(options);
     }
     handler.next(options);
   }

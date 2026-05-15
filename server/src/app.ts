@@ -106,12 +106,28 @@ export async function createApp(): Promise<FastifyInstance> {
     contentSecurityPolicy: false,
   });
 
+  const allowedOrigins = env.CORS_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean);
   await fastify.register(fastifyCors, {
-    origin: env.CORS_ORIGIN.split(',').map((o) => o.trim()),
+    origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
     exposedHeaders: ['X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'ETag'],
+  });
+
+  // CORS 헤더 fallback — rate-limit 등 다른 plugin이 응답을 가로채 ACAO가 누락되는 경우를 방어.
+  // cors plugin이 정상 set 했으면 no-op.
+  fastify.addHook('onSend', (request, reply, _payload, done) => {
+    const origin = request.headers.origin as string | undefined;
+    if (origin && allowedOrigins.includes(origin) && !reply.getHeader('access-control-allow-origin')) {
+      reply.header('access-control-allow-origin', origin);
+      reply.header('access-control-allow-credentials', 'true');
+      const vary = reply.getHeader('vary');
+      if (!vary || !String(vary).toLowerCase().includes('origin')) {
+        reply.header('vary', vary ? `${vary}, Origin` : 'Origin');
+      }
+    }
+    done();
   });
 
   // ─────────────────────────────────────

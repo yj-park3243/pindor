@@ -129,23 +129,19 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
       const dto = registerPushTokenSchema.parse(request.body);
       const userId = request.user.userId;
 
-      // upsert: token이 이미 존재하면 update, 없으면 insert
-      const existing = await deviceTokenRepo.findOne({ where: { token: dto.token } });
-
-      if (existing) {
-        await deviceTokenRepo.update(
-          { token: dto.token },
-          { userId, isActive: true, updatedAt: new Date() },
-        );
-      } else {
-        const newToken = deviceTokenRepo.create({
+      // 원자적 upsert — findOne + save 사이 race로 unique 위반 500 발생하던 문제 해결
+      await deviceTokenRepo.upsert(
+        {
           userId,
           token: dto.token,
           platform: dto.platform as DevicePlatform,
           isActive: true,
-        });
-        await deviceTokenRepo.save(newToken);
-      }
+        },
+        {
+          conflictPaths: ['token'],
+          skipUpdateIfNoValuesChanged: false,
+        },
+      );
 
       return reply.status(201).send({ success: true, data: { message: '푸시 토큰이 등록되었습니다.' } });
     },

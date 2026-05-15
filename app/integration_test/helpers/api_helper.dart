@@ -288,13 +288,12 @@ class ApiHelper {
 
   /// 경기 결과 입력
   /// - winnerId: 스포츠 프로필 ID (UUID). userId 아님.
-  /// - verificationCode: 상대방의 4자리 코드 (match의 opponent/requester verificationCode)
+  /// 양쪽 confirmMet 후에만 호출 가능.
   Future<void> submitGameResult(
     String token,
     String gameId, {
     required int myScore,
     required int opponentScore,
-    required String verificationCode,
     String? winnerId,
     String? claimedResult,
   }) async {
@@ -303,7 +302,6 @@ class ApiHelper {
       data: {
         'myScore': myScore,
         'opponentScore': opponentScore,
-        'verificationCode': verificationCode,
         if (winnerId != null) 'winnerId': winnerId,
         if (claimedResult != null) 'claimedResult': claimedResult,
       },
@@ -396,6 +394,75 @@ class ApiHelper {
       },
       condition: (data) => data['status'] == expectedStatus,
     );
+  }
+
+  /// "우리 만났어요" 확인
+  Future<void> confirmMet(String token, String matchId) async {
+    await _dio.post(
+      '/matches/$matchId/confirm-met',
+      data: {'latitude': 37.3454, 'longitude': 127.2592},
+      options: _authOptions(token),
+    );
+  }
+
+  /// 이의 제기 접수 (별도 dispute 테이블)
+  Future<Map<String, dynamic>> createDispute(
+    String token, {
+    required String matchId,
+    required String title,
+    required String content,
+    String phoneNumber = '010-0000-0000',
+  }) async {
+    final response = await _dio.post(
+      '/disputes',
+      data: {
+        'matchId': matchId,
+        'title': title,
+        'content': content,
+        'imageUrls': const ['https://example.com/e2e-evidence.jpg'],
+        'phoneNumber': phoneNumber,
+      },
+      options: _authOptions(token),
+    );
+    return (response.data['data'] as Map<String, dynamic>?) ?? {};
+  }
+
+  /// 노쇼 신고 — imageUrls 없이도 호출 가능 (서버가 빈 배열 허용)
+  Future<Map<String, dynamic>> reportNoshow(
+    String token,
+    String matchId, {
+    List<String>? imageUrls,
+  }) async {
+    final response = await _dio.post(
+      '/matches/$matchId/report-noshow',
+      data: {
+        'imageUrls': imageUrls ?? const ['https://example.com/e2e-evidence.jpg'],
+      },
+      options: _authOptions(token),
+    );
+    return (response.data['data'] as Map<String, dynamic>?) ?? {};
+  }
+
+  /// 매칭 요청 시도 (ban 검증용 — 실패 응답 그대로 throw)
+  Future<Map<String, dynamic>> tryCreateMatchRequest(
+    String token, {
+    required String sportType,
+    required String pinId,
+  }) async {
+    final response = await _dio.post(
+      '/matches/requests',
+      data: {
+        'sportType': sportType,
+        'requestType': 'SCHEDULED',
+        'pinId': pinId,
+        'desiredDate': DateTime.now().toIso8601String().substring(0, 10),
+        'desiredTimeSlot': 'ANY',
+        'genderPreference': 'ANY',
+        'isCasual': false,
+      },
+      options: _authOptions(token),
+    );
+    return (response.data['data'] as Map<String, dynamic>?) ?? {};
   }
 
   // ─── 내부 헬퍼 ──────────────────────────────────────────────

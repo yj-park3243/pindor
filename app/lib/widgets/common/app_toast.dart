@@ -48,7 +48,8 @@ class AppToast {
       builder: (_) => _ToastOverlay(
         duration: duration,
         onDismissed: () {
-          entry.remove();
+          // 새 토스트로 강제 detach된 직후 타이머 만료가 겹치면 중복 remove 폭발
+          if (entry.mounted) entry.remove();
           if (_currentEntry == entry) _currentEntry = null;
         },
         child: _ToastCard(message: message, icon: icon, color: color),

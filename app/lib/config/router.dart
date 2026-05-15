@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/version/version_check_service.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/common/app_toast.dart';
 import '../screens/auth/splash_screen.dart';
@@ -41,6 +42,7 @@ import '../screens/profile/settings_screen.dart';
 import '../screens/profile/notification_settings_screen.dart';
 import '../screens/profile/inquiry_screen.dart';
 import '../screens/profile/secret_screen.dart';
+import '../screens/dev/ad_test_screen.dart';
 import '../screens/team/team_home_screen.dart';
 import '../screens/team/create_team_screen.dart';
 import '../screens/team/team_detail_screen.dart';
@@ -153,7 +155,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       final authState = ref.read(authStateProvider);
       final isAuthenticated = authState.valueOrNull?.isAuthenticated ?? false;
       final isNewUser = authState.valueOrNull?.isNewUser ?? false;
-      final isVerified = authState.valueOrNull?.isVerified ?? true;
+      // 서버 원격 토글(platform별)이 false면 KCP 본인인증 강제하지 않음 → isVerified=true로 간주.
+      // DB: UPDATE app_versions SET require_phone_verification = false WHERE platform = 'ANDROID';
+      final isVerified = !VersionCheckService.requirePhoneVerification
+          ? true
+          : (authState.valueOrNull?.isVerified ?? true);
       final isLoading = authState.isLoading;
       final location = state.matchedLocation;
 
@@ -473,6 +479,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: 'blocked-users',
             builder: (context, state) => const BlockedUsersScreen(),
+          ),
+          GoRoute(
+            path: 'ad-test',
+            builder: (context, state) => const AdTestScreen(),
           ),
         ],
       ),

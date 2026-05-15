@@ -71,6 +71,11 @@
             android:name="com.naver.maps.map.CLIENT_ID"
             android:value="539desbv96"/>
 
+        <!-- AdMob Android 실 App ID (핀돌) -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-5100715769469045~4122414731"/>
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2"/>

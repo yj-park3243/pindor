@@ -69,6 +69,7 @@ export const USER_STATUS_CONFIG = {
 
 // 매칭 상태
 export const MATCH_STATUS_CONFIG = {
+  PENDING_ACCEPT: { label: '수락대기', color: 'gold' },
   CHAT: { label: '채팅중', color: 'blue' },
   CONFIRMED: { label: '확정', color: 'green' },
   COMPLETED: { label: '완료', color: 'default' },

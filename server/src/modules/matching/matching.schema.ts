@@ -15,7 +15,7 @@ export const createMatchRequestSchema = z.object({
   locationName: z.string().max(255).optional(),
   minOpponentScore: z.number().min(100).max(3000).default(800),
   maxOpponentScore: z.number().min(100).max(3000).default(1200),
-  genderPreference: z.enum(['SAME', 'ANY']).default('ANY'),
+  genderPreference: z.enum(['SAME', 'ANY', 'OPPOSITE']).default('ANY'),
   minAge: z.number().int().min(14).max(100).optional(),
   maxAge: z.number().int().min(14).max(100).optional(),
   ageRange: z.number().int().min(0).max(10).optional(),

@@ -102,6 +102,16 @@ export class User {
   @Column({ name: 'noshow_report_ban_until', type: 'timestamptz', nullable: true })
   noshowReportBanUntil!: Date | null;
 
+  // 허위 노쇼 신고 누적 횟수 (어드민이 reporterPenalty=true로 기각한 횟수)
+  @Column({ name: 'false_noshow_count', type: 'int', default: 0 })
+  falseNoshowCount!: number;
+
+  // 마지막으로 인증된 요청의 디바이스 플랫폼 (X-Platform 헤더)
+  // - 'IOS' | 'ANDROID' | null
+  // - null이면 옛 빌드 사용자 — iOS로 간주 (사용처: 클라 자체 헤더가 우선이지만, 서버 측 추정용)
+  @Column({ name: 'device_platform', type: 'varchar', length: 10, nullable: true })
+  devicePlatform!: string | null;
+
   // Relations
   @OneToMany('SocialAccount', 'user')
   socialAccounts!: SocialAccount[];

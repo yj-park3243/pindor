@@ -62,6 +62,11 @@ class HomeScreen extends ConsumerWidget {
         final type = data['type'] as String?;
         if (type == 'MATCH_PENDING_ACCEPT') {
           ref.invalidate(pendingAcceptMatchesProvider);
+        } else if (type == 'MATCH_COMPLETED') {
+          // 경기 완료 → 점수/순위/전적 즉시 갱신
+          ref.invalidate(myRankingHistoryProvider);
+          ref.invalidate(recentCompletedMatchesProvider);
+          ref.invalidate(pinRankingBySportProvider);
         }
       });
     });
@@ -1244,50 +1249,17 @@ class _ScoreTrendChart extends ConsumerWidget {
                       maxX: (spots.length - 1).toDouble(),
                       minY: yMin,
                       maxY: yMax,
-                      lineTouchData: LineTouchData(
-                        touchTooltipData: LineTouchTooltipData(
-                          getTooltipColor: (_) =>
-                              const Color(0xFF333333),
-                          getTooltipItems: (touchedSpots) {
-                            return touchedSpots.map((spot) {
-                              final idx = spot.spotIndex;
-                              final h = history[idx];
-                              final result = h.isWin ? '승' : '패';
-                              return LineTooltipItem(
-                                '${h.score}점 ($result)\nvs ${h.opponentNickname ?? ''}',
-                                const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              );
-                            }).toList();
-                          },
-                        ),
-                      ),
+                      lineTouchData: const LineTouchData(enabled: false),
                       lineBarsData: [
                         LineChartBarData(
                           spots: spots,
                           isCurved: true,
-                          curveSmoothness: 0.3,
+                          curveSmoothness: 0.45,
+                          preventCurveOverShooting: true,
                           color: chartColor,
                           barWidth: 2.5,
                           isStrokeCapRound: true,
-                          dotData: FlDotData(
-                            show: true,
-                            getDotPainter: (spot, _, __, ___) {
-                              final idx = spot.x.toInt();
-                              final h = history[idx];
-                              return FlDotCirclePainter(
-                                radius: 3,
-                                color: h.isWin
-                                    ? const Color(0xFF10B981)
-                                    : const Color(0xFFEF4444),
-                                strokeWidth: 1.5,
-                                strokeColor: const Color(0xFF1E1E1E),
-                              );
-                            },
-                          ),
+                          dotData: const FlDotData(show: false),
                           belowBarData: BarAreaData(
                             show: true,
                             gradient: LinearGradient(

@@ -20,11 +20,13 @@ import { NotificationSendPage } from '@/pages/notifications/NotificationSendPage
 import { StatisticsPage } from '@/pages/statistics/StatisticsPage';
 import { AdminAccountPage } from '@/pages/settings/AdminAccountPage';
 import { SystemSettingsPage } from '@/pages/settings/SystemSettingsPage';
+import { VersionCheckLogsPage } from '@/pages/settings/VersionCheckLogsPage';
 import { TeamListPage } from '@/pages/teams/TeamListPage';
 import { TeamDetailPage } from '@/pages/teams/TeamDetailPage';
 import { TeamMatchListPage } from '@/pages/teams/TeamMatchListPage';
 import { NoticeListPage } from '@/pages/notices/NoticeListPage';
 import { DisputeListPage } from '@/pages/disputes/DisputeListPage';
+import { InquiryListPage } from '@/pages/inquiries/InquiryListPage';
 import { NoshowReportPage } from '@/pages/matches/NoshowReportPage';
 
 // 인증 가드 컴포넌트
@@ -126,6 +128,9 @@ export function App() {
         {/* 이의 제기 관리 */}
         <Route path={ROUTES.DISPUTES} element={<DisputeListPage />} />
 
+        {/* 문의 관리 */}
+        <Route path={ROUTES.INQUIRIES} element={<InquiryListPage />} />
+
         {/* 노쇼 신고 */}
         <Route path={ROUTES.NOSHOW_REPORTS} element={<NoshowReportPage />} />
 
@@ -143,6 +148,14 @@ export function App() {
           element={
             <RequireRole roles={['SUPER_ADMIN', 'ADMIN']}>
               <SystemSettingsPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path={ROUTES.SETTINGS_VERSION_LOGS}
+          element={
+            <RequireRole roles={['SUPER_ADMIN', 'ADMIN']}>
+              <VersionCheckLogsPage />
             </RequireRole>
           }
         />

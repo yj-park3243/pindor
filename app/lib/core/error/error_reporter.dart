@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../../config/app_config.dart';
 import '../storage/secure_storage.dart';
 
@@ -26,9 +27,23 @@ class ErrorReporter {
     'sign_in_canceled',
     'PlatformException(sign_in_canceled',
     'kCLErrorDomain error 0', // 위치 권한 일시 실패 (iOS)
+    // PlatformView 재생성: 지도/네이티브 뷰가 hot reload나 빠른 재진입에서 발생.
+    // release 모드에선 자동 복구되며 사용자 영향 없음.
+    'PlatformException(recreating_view',
+    // SingleChildScrollView/Flex 내부의 일시적 layout assertion (release에선 swallow).
+    // 화면에 영향 없는 노이즈가 다수 — 사용자 영향 발생 시 별도 신호로 잡힘.
+    "Failed assertion: line 2251 pos 12: 'hasSize'",
+    'Cannot hit test a render box with no size',
+    "'!semantics.parentDataDirty'",
+    "'!childSemantics.renderObject._needsLayout'",
+    'Leading widget consumes the entire tile width',
+    // 사용자에게 토스트로 이미 표시된 API 에러 (DioException은 ApiClient에서 별도 처리).
+    'DioException [bad response]',
   ];
 
   late final Dio _dio;
+  String? _appVersion;
+  String? _buildNumber;
 
   void initialize() {
     try {
@@ -42,6 +57,11 @@ class ErrorReporter {
           'Accept': 'application/json',
         },
       ));
+      // package_info는 비동기라 reportError마다 호출하면 비용 큼 — 한 번만 캐시
+      PackageInfo.fromPlatform().then((info) {
+        _appVersion = info.version;
+        _buildNumber = info.buildNumber;
+      }).catchError((_) {});
     } catch (e) {
       debugPrint('[ErrorReporter] initialize failed: $e');
     }
@@ -147,6 +167,8 @@ class ErrorReporter {
       return {
         'os': Platform.operatingSystem,
         'osVersion': Platform.operatingSystemVersion,
+        if (_appVersion != null) 'appVersion': _appVersion,
+        if (_buildNumber != null) 'buildNumber': _buildNumber,
         'isDebug': kDebugMode,
       };
     } catch (_) {

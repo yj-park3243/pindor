@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -63,11 +64,40 @@ void main() {
       unawaited(Future(() => app.main()));
 
       bool reachedHome = false;
-      for (var i = 0; i < 30; i++) {
-        await tester.pump(const Duration(seconds: 1));
-        if (find.text('홈').evaluate().isNotEmpty) {
+      for (var i = 0; i < 60; i++) {
+        // pumpAndSettle은 OverlayEntry/애니메이션 무한루프에서 hang될 수 있어
+        // timeout 짧게 잡고 catch
+        try {
+          await tester.pumpAndSettle(const Duration(milliseconds: 800));
+        } catch (_) {
+          await tester.pump(const Duration(seconds: 1));
+        }
+
+        // "허용" 시스템 다이얼로그 자동 dismiss (알림/위치 권한)
+        final allow = find.text('허용');
+        if (allow.evaluate().isNotEmpty) {
+          try {
+            await tester.tap(allow.first, warnIfMissed: false);
+            await tester.pump(const Duration(milliseconds: 500));
+          } catch (_) {}
+        }
+
+        if (find.text('오늘 대결 나가고 싶다!').evaluate().isNotEmpty) {
           reachedHome = true;
+          debugPrint('[E2E] 홈 도달 (${i + 1}초): role=$role');
           break;
+        }
+
+        // 디버깅: 5초마다 현재 위젯 트리 상태 일부 로그
+        if (i % 5 == 4) {
+          final texts = find
+              .byType(Text)
+              .evaluate()
+              .take(8)
+              .map((e) => (e.widget as Text).data ?? '')
+              .where((s) => s.isNotEmpty)
+              .toList();
+          debugPrint('[E2E] ${i + 1}초 — 현재 화면 텍스트 일부: $texts');
         }
       }
       debugPrint('[E2E] 홈 도달: $reachedHome (role: $role)');

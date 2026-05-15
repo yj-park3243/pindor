@@ -98,12 +98,20 @@ Future<void> _runSyncSocketConnection(dynamic ref) async {
 }
 
 /// 즉시 소켓 연결 (룸 등록 직후 등 동기적으로 연결을 보장하고 싶을 때)
+/// connect() 만 호출하면 비동기로 연결이 진행되어, 직후의 join* emit 이
+/// 미연결 상태에서 스킵될 수 있다. 연결 완료(최대 5초)까지 대기한다.
 Future<void> ensureSocketConnected() async {
   final socket = SocketService.instance;
   if (socket.isConnected) return;
   final token = await SecureStorage.instance.getAccessToken();
-  if (token != null) {
-    socket.connect(token);
+  if (token == null) return;
+  socket.connect(token);
+  try {
+    await socket.onConnectionState
+        .firstWhere((connected) => connected)
+        .timeout(const Duration(seconds: 5));
+  } catch (_) {
+    // 타임아웃 — onConnect 핸들러가 추적 룸들을 재입장하므로 치명적이지 않다.
   }
 }
 
@@ -242,6 +250,15 @@ class MatchRequestNotifier
       final db = b.desiredDate ?? '';
       return da.compareTo(db);
     });
+
+    // 앱 재시작 등으로 진행 중인 WAITING 매칭 요청의 socket 룸을 복구한다.
+    // 이 복구가 없으면 부팅 후 매칭이 성사돼도 MATCH_FOUND 이벤트를 못 받는다.
+    for (final r in sent) {
+      if (r.isWaiting) {
+        SocketService.instance.joinMatchRequest(r.id);
+      }
+    }
+
     return MatchRequestListState(
       sent: sent,
       received: results[1],
@@ -257,10 +274,10 @@ class MatchRequestNotifier
 
     // WAITING 상태인 경우 소켓 룸에 입장하여 실시간 매칭 성사 알림 수신
     if (request.status == 'WAITING') {
-      // 룸 등록(연결 전이라도 추적 set 에 등록됨) → 소켓 연결 보장
+      // 먼저 연결을 완료(대기)한 뒤 룸에 입장해야 emit 이 실제로 전송된다.
       debugPrint('[Match] joinMatchRequest 룸 입장 — requestId=${request.id}');
-      SocketService.instance.joinMatchRequest(request.id);
       await ensureSocketConnected();
+      SocketService.instance.joinMatchRequest(request.id);
     }
 
     return request;

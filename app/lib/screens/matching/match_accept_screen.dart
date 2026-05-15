@@ -44,22 +44,41 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
   // 총 타이머 시간 — 10분 기준 (요구사항)
   static const Duration _totalDuration = Duration(minutes: 10);
 
+  /// 이미 redirect 처리한 matchId (static — 새 widget instance에서도 유지).
+  /// status=CHAT/COMPLETED 등으로 accept 화면이 의미 없어진 매칭을 추적.
+  static final Set<String> _redirectedMatchIds = {};
+
   @override
   void initState() {
     super.initState();
-    debugPrint('[Match] 매칭 수락 화면 진입 — matchId=${widget.matchId}');
+    debugPrint('[MatchAccept] >>> initState matchId=${widget.matchId} hash=${identityHashCode(this)}');
+    // 이전 instance에서 이미 redirect한 matchId면 매칭 상세로 직접 이동 (무한 mount 차단)
+    if (_redirectedMatchIds.contains(widget.matchId)) {
+      debugPrint('[MatchAccept] 이미 redirect 처리된 matchId — 매칭 상세로 이동');
+      _isNavigating = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        // stale 캐시 방지 — matchDetail 재조회 트리거
+        ref.invalidate(matchDetailProvider(widget.matchId));
+        context.go('/matches/${widget.matchId}');
+      });
+      return;
+    }
     _fetchMatchFromServer();
     _listenMatchStatus();
   }
 
   @override
   void dispose() {
+    debugPrint('[MatchAccept] <<< dispose matchId=${widget.matchId} hash=${identityHashCode(this)} navigating=$_isNavigating');
     _statusSub?.cancel();
     _countdownTimer?.cancel();
     super.dispose();
   }
 
-  /// 소켓으로 매칭 상태 변경 직접 감지 (CANCELLED → 목록으로 이동)
+  /// 소켓으로 매칭 상태 변경 감지
+  /// - CANCELLED → 목록으로 이동
+  /// - PENDING_ACCEPT(상대 수락 등) → 매칭 데이터 다시 fetch (UI 갱신)
   void _listenMatchStatus() {
     _statusSub = SocketService.instance.onMatchStatusChanged.listen((data) {
       final matchId = data['matchId'] as String?;
@@ -73,31 +92,50 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
         AppToast.info('상대방이 매칭을 취소했습니다.');
         ref.invalidate(matchListProvider(null));
         context.go(AppRoutes.matchList);
+        return;
+      }
+
+      // PENDING_ACCEPT 상태에서 상대방 수락/거절 등으로 acceptances가 변경됨 → 재조회
+      // socket 이벤트 → redirect 없이 데이터만 갱신 (무한 루프 방지)
+      if (mounted && !_isNavigating) {
+        _fetchMatchFromServer(allowRedirect: false);
       }
     });
   }
 
   /// 서버에서 직접 매칭 데이터 가져오기 (SWR 로컬 캐시 우회)
-  Future<void> _fetchMatchFromServer() async {
+  /// [allowRedirect=false]: socket 이벤트 등으로 갱신만 할 때 — 무한 루프 방지
+  Future<void> _fetchMatchFromServer({bool allowRedirect = true}) async {
     try {
       final repo = ref.read(matchingRepositoryProvider);
       final match = await repo.getMatchDetail(widget.matchId);
       if (!mounted) return;
 
-      // PENDING_ACCEPT 외 상태 처리:
-      // - 만료(EXPIRED) / 취소(CANCELLED) → 매칭 목록으로
-      // - 본인이 이미 수락 / CHAT / CONFIRMED / COMPLETED → 매칭 상세로
-      // - 상대만 수락한 PENDING_ACCEPT → 본인은 아직 수락 화면에 머물러야 함 (튕기지 않음)
       final myUserId = ref.read(currentUserProvider)?.id;
+      final accs = match.acceptances ?? [];
       final myAccepted = myUserId != null &&
-          (match.acceptances?.any((a) => a.userId == myUserId && a.accepted == true) ?? false);
-      final isExpired = match.acceptances?.any((a) =>
-          a.expiresAt != null && a.expiresAt!.isBefore(DateTime.now())) ?? false;
+          accs.any((a) => a.userId == myUserId && a.accepted == true);
+      final isExpired = accs.any((a) =>
+          a.expiresAt != null && a.expiresAt!.isBefore(DateTime.now()));
 
-      if (myAccepted || !match.isPendingAccept || isExpired) {
+      debugPrint(
+        '[MatchAccept] fetched matchId=${widget.matchId} status=${match.status} '
+        'isPendingAccept=${match.isPendingAccept} myUserId=$myUserId '
+        'acceptances=${accs.map((a) => "${a.userId}/${a.accepted}/${a.expiresAt}").join(", ")} '
+        'myAccepted=$myAccepted isExpired=$isExpired allowRedirect=$allowRedirect navigating=$_isNavigating',
+      );
+
+      if ((myAccepted || !match.isPendingAccept || isExpired) && allowRedirect && !_isNavigating) {
+        _isNavigating = true;
+        _redirectedMatchIds.add(widget.matchId);
+        debugPrint(
+          '[MatchAccept] REDIRECT — reason: myAccepted=$myAccepted '
+          'notPending=${!match.isPendingAccept} isExpired=$isExpired',
+        );
         ref.read(matchingRepositoryProvider).clearLocalCache();
         ref.read(matchListForceRefreshProvider.notifier).state = true;
         ref.invalidate(matchListProvider(null));
+        ref.invalidate(matchDetailProvider(widget.matchId));
         if (isExpired || match.isCancelled) {
           context.go(AppRoutes.matchList);
         } else {
@@ -106,11 +144,12 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
         return;
       }
 
+      // 화면이 살아있는 채 데이터만 갱신 (socket 이벤트로 호출된 경우)
       setState(() {
         _match = match;
         _isLoading = false;
       });
-      _startCountdown(match);
+      if (!_timerStarted) _startCountdown(match);
     } catch (e) {
       debugPrint('[MatchAccept] Server fetch failed: $e');
       if (!mounted) return;
@@ -202,18 +241,25 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
       final acceptState = ref.read(matchAcceptProvider(widget.matchId));
       debugPrint('[Match] 수락 결과 — matchId=${widget.matchId} acceptStatus=${acceptState.acceptStatus}');
       if (acceptState.acceptStatus == 'MATCHED') {
-        // 양측 수락 완료 → 축하 토스트 후 매칭 상세 화면으로 이동
+        // 양측 수락 완료 → 즉시 매칭 상세 화면으로 이동
         if (_isNavigating) return;
         _isNavigating = true;
+        _redirectedMatchIds.add(widget.matchId);
         AppToast.success('매칭이 확정되었습니다! 🎉');
+        ref.read(matchingRepositoryProvider).clearLocalCache();
+        ref.read(matchListForceRefreshProvider.notifier).state = true;
         ref.invalidate(matchListProvider(null));
-        Future.delayed(const Duration(milliseconds: 1500), () {
-          if (!mounted) return;
-          context.go('/matches/${widget.matchId}');
-        });
+        // matchDetail 캐시 무효화 — stale PENDING_ACCEPT 데이터로 화면 안 그려지게
+        ref.invalidate(matchDetailProvider(widget.matchId));
+        debugPrint('[MatchAccept] _onAccept MATCHED → go matchDetail');
+        context.go('/matches/${widget.matchId}');
       } else {
         // 상대 응답 대기 → 매칭 진행중 목록으로 이동
+        if (_isNavigating) return;
+        _isNavigating = true;
+        _redirectedMatchIds.add(widget.matchId);
         ref.invalidate(matchListProvider(null));
+        debugPrint('[MatchAccept] _onAccept WAITING_OPPONENT → go matchList');
         context.go(AppRoutes.matchList);
       }
     } else {
@@ -683,6 +729,7 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
                             child: SizedBox(
                               height: 54,
                               child: ElevatedButton(
+                                key: const Key('match_accept_reject_btn'),
                                 onPressed: acceptState.isLoading ? null : _onReject,
                                 style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorColor, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
                                 child: const Text('거절 (-15점)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
@@ -694,6 +741,7 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
                             child: SizedBox(
                               height: 54,
                               child: ElevatedButton(
+                                key: const Key('match_accept_accept_btn'),
                                 onPressed: acceptState.isLoading ? null : _onAccept,
                                 style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
                                 child: acceptState.isLoading

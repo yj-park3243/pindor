@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   Layout,
@@ -9,6 +9,7 @@ import {
   Badge,
   Space,
   Button,
+  Spin,
 } from 'antd';
 import {
   DashboardOutlined,
@@ -30,6 +31,7 @@ import {
   NotificationOutlined,
   AuditOutlined,
   WarningOutlined,
+  MobileOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { useAuthStore } from '@/store/auth.store';
@@ -98,6 +100,7 @@ function buildMenuItems(role: string, noshowPendingCount: number): MenuProps['it
         { key: ROUTES.POSTS, icon: <FileTextOutlined />, label: '게시판 관리' },
         { key: ROUTES.REPORTS, icon: <AlertOutlined />, label: '신고 처리' },
         { key: ROUTES.DISPUTES, icon: <AuditOutlined />, label: '이의 제기' },
+        { key: ROUTES.INQUIRIES, icon: <AuditOutlined />, label: '문의 관리' },
       ],
     },
     {
@@ -130,6 +133,7 @@ function buildMenuItems(role: string, noshowPendingCount: number): MenuProps['it
       children: [
         { key: ROUTES.SETTINGS_ACCOUNTS, icon: <UserOutlined />, label: '어드민 계정' },
         { key: ROUTES.SETTINGS_SYSTEM, icon: <SettingOutlined />, label: '시스템 설정' },
+        { key: ROUTES.SETTINGS_VERSION_LOGS, icon: <MobileOutlined />, label: '버전 체크 로그' },
       ],
     });
   }
@@ -295,7 +299,15 @@ export function AdminLayout() {
             background: '#f5f5f5',
           }}
         >
-          <Outlet />
+          <Suspense
+            fallback={
+              <div style={{ textAlign: 'center', padding: 80 }}>
+                <Spin size="large" />
+              </div>
+            }
+          >
+            <Outlet />
+          </Suspense>
         </Content>
       </Layout>
     </Layout>

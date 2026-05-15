@@ -325,12 +325,29 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   void _goToMyLocation() async {
-    if (_hasLocation) {
+    if (!_hasLocation) {
+      await _initLocation();
+      return;
+    }
+
+    // 현재 카메라가 내 위치 근처(약 500m 이내)인지 확인 → 자주 가는 핀으로 토글
+    final pos = await _mapController?.getCameraPosition();
+    final favoritePin = ref.read(selectedPinProvider);
+    final atMyLocation = pos != null &&
+        (pos.target.latitude - _currentLocation.latitude).abs() < 0.005 &&
+        (pos.target.longitude - _currentLocation.longitude).abs() < 0.005;
+
+    if (atMyLocation && favoritePin != null) {
+      _mapController?.updateCamera(
+        NCameraUpdate.scrollAndZoomTo(
+          target: NLatLng(favoritePin.centerLatitude, favoritePin.centerLongitude),
+          zoom: 14,
+        ),
+      );
+    } else {
       _mapController?.updateCamera(
         NCameraUpdate.scrollAndZoomTo(target: _currentLocation, zoom: 13),
       );
-    } else {
-      await _initLocation();
     }
   }
 

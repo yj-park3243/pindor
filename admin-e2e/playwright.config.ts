@@ -11,9 +11,9 @@ export default defineConfig({
   use: {
     baseURL: process.env.ADMIN_BASE_URL ?? 'https://admin.pins.kr',
     headless: true,
-    trace: 'retain-on-failure',
-    screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    trace: 'on',
+    screenshot: 'on',
+    video: 'on',
     locale: 'ko-KR',
     timezoneId: 'Asia/Seoul',
     viewport: { width: 1440, height: 900 },

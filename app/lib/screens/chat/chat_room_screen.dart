@@ -18,6 +18,7 @@ import '../../widgets/common/error_view.dart';
 import '../../widgets/common/app_toast.dart';
 import '../../widgets/common/game_result_sheet.dart';
 import '../../widgets/report/report_bottom_sheet.dart';
+import '../../core/network/api_client.dart';
 import '../../core/network/socket_service.dart';
 import '../../core/utils/location_utils.dart';
 import '../../repositories/matching_repository.dart';
@@ -159,7 +160,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           .sendImageMessage(url);
     } catch (e) {
       if (mounted) {
-        AppToast.error('이미지 전송 실패');
+        AppToast.error(extractErrorMessage(e, '이미지 전송 실패'));
       }
     }
   }
@@ -247,7 +248,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       _scrollToBottom();
     } catch (e) {
       if (mounted) {
-        AppToast.error('위치 전송 실패. 네트워크를 확인해주세요.');
+        AppToast.error(extractErrorMessage(e, '위치 전송 실패. 네트워크를 확인해주세요.'));
       }
     }
   }
@@ -367,7 +368,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                 _scrollToBottom();
               } catch (e) {
                 if (mounted) {
-                  AppToast.error('메시지 전송 실패. 네트워크를 확인해주세요.');
+                  AppToast.error(
+                      extractErrorMessage(e, '메시지 전송 실패. 네트워크를 확인해주세요.'));
                 }
               }
             },
@@ -402,6 +404,8 @@ class _GameResultButton extends ConsumerWidget {
     }
 
     // 이미 결과 제출했거나 매칭 완료 시 버튼 숨김
+    bool bothMet = false;
+    bool resultSubmitted = false;
     if (matchId != null && matchId.isNotEmpty) {
       final matchAsync = ref.watch(matchDetailProvider(matchId));
       final match = matchAsync.valueOrNull;
@@ -412,7 +416,11 @@ class _GameResultButton extends ConsumerWidget {
       if (!matchAsync.hasValue && !matchAsync.isLoading) {
         ref.invalidate(matchDetailProvider(matchId));
       }
+      bothMet = match?.bothMetConfirmed ?? false;
+      resultSubmitted = match?.myResultSubmitted ?? false;
     }
+
+    final disabled = !bothMet || resultSubmitted;
 
     return Container(
       width: double.infinity,
@@ -421,12 +429,22 @@ class _GameResultButton extends ConsumerWidget {
       child: SizedBox(
         height: 42,
         child: ElevatedButton.icon(
-          onPressed: () => _onGameResult(context, ref),
-          icon: const Icon(Icons.emoji_events_rounded, size: 18),
-          label: const Text('승부 결과', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+          onPressed: disabled ? null : () => _onGameResult(context, ref),
+          icon: Icon(
+            disabled ? Icons.lock_outline_rounded : Icons.emoji_events_rounded,
+            size: 18,
+          ),
+          label: Text(
+            !bothMet ? '만남 확인 후 결과 입력 가능' : '승부 결과',
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+          ),
           style: ElevatedButton.styleFrom(
-            backgroundColor: AppTheme.secondaryColor,
-            foregroundColor: Colors.white,
+            backgroundColor:
+                disabled ? AppTheme.borderColor : AppTheme.secondaryColor,
+            foregroundColor:
+                disabled ? AppTheme.textSecondary : Colors.white,
+            disabledBackgroundColor: AppTheme.borderColor,
+            disabledForegroundColor: AppTheme.textSecondary,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             elevation: 0,
           ),
@@ -542,20 +560,15 @@ class _MetConfirmBannerState extends ConsumerState<_MetConfirmBanner> {
   @override
   void dispose() {
     _metSub?.cancel();
-    if (_subscribedMatchId != null) {
-      SocketService.instance.leaveMatch(_subscribedMatchId!);
-    }
     super.dispose();
   }
 
+  // 매칭 룸 join/leave는 activeMatchRoomsProvider 가 글로벌 관리.
+  // 본 배너는 onMatchMetUpdated 스트림 구독만 담당.
   void _ensureSubscribed(String matchId) {
     if (_subscribedMatchId == matchId) return;
-    if (_subscribedMatchId != null) {
-      _metSub?.cancel();
-      SocketService.instance.leaveMatch(_subscribedMatchId!);
-    }
+    _metSub?.cancel();
     _subscribedMatchId = matchId;
-    SocketService.instance.joinMatch(matchId);
     _metSub = SocketService.instance.onMatchMetUpdated
         .where((d) => d['matchId'] == matchId)
         .listen((_) {
@@ -609,8 +622,8 @@ class _MetConfirmBannerState extends ConsumerState<_MetConfirmBanner> {
             longitude: lng,
           );
       ref.invalidate(matchDetailProvider(matchId));
-    } catch (_) {
-      if (mounted) AppToast.error('만남 확인에 실패했습니다');
+    } catch (e) {
+      if (mounted) AppToast.error(extractErrorMessage(e, '만남 확인에 실패했습니다'));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }

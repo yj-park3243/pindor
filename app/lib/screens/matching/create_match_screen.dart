@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:dio/dio.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../config/router.dart';
 import '../../config/sports.dart';
 import '../../config/theme.dart';
+import '../../core/network/api_client.dart';
 import '../../providers/sport_preference_provider.dart';
 import '../../providers/matching_provider.dart';
 import '../../widgets/common/app_toast.dart';
@@ -329,19 +329,25 @@ class _CreateMatchScreenState extends ConsumerState<CreateMatchScreen> {
 
       if (mounted) {
         if (request.status == 'MATCHED') {
-          // 즉시 매칭 성사 — 소켓 알림이 수락 화면으로 이동시키도록 잠시 대기
-          // 소켓 알림이 먼저 처리되면 이미 이동된 상태이므로 mounted 체크
           AppToast.success('매칭 상대를 찾았습니다!');
-          await Future.delayed(const Duration(milliseconds: 500));
-          // 소켓이 이미 이동시켰으면 여기서 중단, 아니면 fallback으로 조회해서 이동
-          if (mounted) {
-            final matches = await ref.read(pendingAcceptMatchesProvider.future);
-            if (mounted && matches.isNotEmpty) {
-              debugPrint('[Match] 즉시 매칭 — fallback 이동 matchId=${matches.first.id}');
-              context.go('/matches/${matches.first.id}/accept');
-            } else if (mounted) {
-              debugPrint('[Match] 즉시 매칭 — pending 없음, 목록으로 이동');
-              context.go(AppRoutes.matchList);
+
+          // 1순위: 서버 응답의 matchedMatchId로 즉시 이동 (가장 안정적)
+          if (request.matchedMatchId != null && request.matchedMatchId!.isNotEmpty) {
+            debugPrint('[Match] 즉시 매칭 — 응답 matchedMatchId=${request.matchedMatchId}');
+            context.go('/matches/${request.matchedMatchId}/accept');
+          } else {
+            // 2순위 fallback: 소켓/polling으로 PENDING_ACCEPT 매칭 조회
+            await Future.delayed(const Duration(milliseconds: 500));
+            if (mounted) {
+              ref.invalidate(pendingAcceptMatchesProvider);
+              final matches = await ref.read(pendingAcceptMatchesProvider.future);
+              if (mounted && matches.isNotEmpty) {
+                debugPrint('[Match] 즉시 매칭 — fallback 이동 matchId=${matches.first.id}');
+                context.go('/matches/${matches.first.id}/accept');
+              } else if (mounted) {
+                debugPrint('[Match] 즉시 매칭 — pending 없음, 목록으로 이동');
+                context.go(AppRoutes.matchList);
+              }
             }
           }
         } else {
@@ -357,16 +363,7 @@ class _CreateMatchScreenState extends ConsumerState<CreateMatchScreen> {
     } catch (e) {
       debugPrint('[Match] 매칭 요청 실패: $e');
       if (mounted) {
-        // Dio 에러에서 서버 메시지 추출, 없으면 기본 메시지 표시
-        String errorMessage = '매칭 요청에 실패했습니다.';
-        if (e is DioException) {
-          final data = e.response?.data;
-          if (data is Map<String, dynamic> && data['error'] != null) {
-            final errorData = data['error'] as Map<String, dynamic>;
-            errorMessage = errorData['message']?.toString() ?? errorMessage;
-          }
-        }
-        AppToast.error(errorMessage);
+        AppToast.error(extractErrorMessage(e, '매칭 요청에 실패했습니다.'));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -647,7 +644,13 @@ class _CreateMatchScreenState extends ConsumerState<CreateMatchScreen> {
                   const Spacer(),
                   Switch.adaptive(
                     value: !_isCasual,
-                    onChanged: (v) => setState(() => _isCasual = !v),
+                    onChanged: (v) => setState(() {
+                      _isCasual = !v;
+                      // 랭크로 전환 시 친선 전용 옵션(OPPOSITE) 자동 리셋
+                      if (!_isCasual && _genderPreference == 'OPPOSITE') {
+                        _genderPreference = 'ANY';
+                      }
+                    }),
                     activeColor: AppTheme.primaryColor,
                   ),
                 ],
@@ -932,6 +935,46 @@ class _CreateMatchScreenState extends ConsumerState<CreateMatchScreen> {
                         ),
                       ),
                     ),
+                    // OPPOSITE은 친선 매칭에서만 노출 — 랭크는 점수 기반이라 이성 필터링 의도 없음
+                    if (_isCasual)
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () =>
+                              setState(() => _genderPreference = 'OPPOSITE'),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            decoration: BoxDecoration(
+                              color: _genderPreference == 'OPPOSITE'
+                                  ? AppTheme.primaryColor
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(8),
+                              boxShadow: _genderPreference == 'OPPOSITE'
+                                  ? [
+                                      BoxShadow(
+                                        color: AppTheme.primaryColor
+                                            .withOpacity(0.25),
+                                        blurRadius: 6,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ]
+                                  : null,
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              '이성만',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: _genderPreference == 'OPPOSITE'
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                                color: _genderPreference == 'OPPOSITE'
+                                    ? Colors.white
+                                    : const Color(0xFF9CA3AF),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),

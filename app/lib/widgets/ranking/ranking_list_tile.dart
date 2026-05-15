@@ -114,7 +114,7 @@ class _RankNumber extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (rank <= 3) {
+    if (rank >= 1 && rank <= 3) {
       final colors = [
         const Color(0xFFFFD700), // 1위 금
         const Color(0xFFC0C0C0), // 2위 은
@@ -124,7 +124,8 @@ class _RankNumber extends StatelessWidget {
         width: 28,
         height: 28,
         decoration: BoxDecoration(
-          color: colors[rank - 1],
+          // rank 가드 통과해도 stale rebuild/비정상 입력으로 -1 들어온 사례 있어 clamp
+          color: colors[(rank - 1).clamp(0, colors.length - 1)],
           shape: BoxShape.circle,
         ),
         child: Center(

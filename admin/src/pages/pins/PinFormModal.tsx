@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import {
   Modal,
   Form,
@@ -9,8 +9,7 @@ import {
   Col,
   Switch,
 } from 'antd';
-import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
-import L from 'leaflet';
+import { Container, NaverMap, Marker, Listener, useNavermaps } from 'react-naver-maps';
 import { useCreatePin, useUpdatePin } from '@/hooks/usePins';
 import { PIN_LEVEL_CONFIG } from '@/config/constants';
 import type { Pin } from '@/types/pin';
@@ -30,59 +29,11 @@ interface PinFormValues {
   isActive: boolean;
 }
 
-// 지도 클릭 핸들러
-function ClickHandler({ onMapClick }: { onMapClick: (lat: number, lng: number) => void }) {
-  useMapEvents({
-    click(e) {
-      onMapClick(e.latlng.lat, e.latlng.lng);
-    },
-  });
-  return null;
-}
-
-// 지도 중심 이동 컴포넌트 (모달 열릴 때 center 동기화)
-function MapCenterSync({ center }: { center: [number, number] }) {
-  const map = useMap();
-  const prevCenter = useRef<[number, number]>([0, 0]);
-
-  useEffect(() => {
-    const [prevLat, prevLng] = prevCenter.current;
-    const [lat, lng] = center;
-    if (prevLat !== lat || prevLng !== lng) {
-      map.setView(center, map.getZoom());
-      prevCenter.current = center;
-    }
-  }, [center, map]);
-
-  return null;
-}
-
-// 드래그 가능한 마커
-function DraggableMarker({
-  position,
-  onDragEnd,
-}: {
-  position: [number, number];
-  onDragEnd: (lat: number, lng: number) => void;
-}) {
-  return (
-    <Marker
-      position={position}
-      draggable
-      eventHandlers={{
-        dragend(e) {
-          const { lat, lng } = (e.target as L.Marker).getLatLng();
-          onDragEnd(lat, lng);
-        },
-      }}
-    />
-  );
-}
-
 const SEOUL_CENTER: [number, number] = [37.5665, 126.978];
 
 export function PinFormModal({ open, pin, onClose, initialCoords }: PinFormModalProps) {
   const [form] = Form.useForm<PinFormValues>();
+  const navermaps = useNavermaps();
   const isEdit = !!pin;
 
   const createMutation = useCreatePin();
@@ -262,24 +213,30 @@ export function PinFormModal({ open, pin, onClose, initialCoords }: PinFormModal
         <Form.Item label="지도에서 위치 선택" style={{ marginBottom: 0 }}>
           <div style={{ height: 300, borderRadius: 8, overflow: 'hidden', border: '1px solid #d9d9d9' }}>
             {open && (
-              <MapContainer
-                center={mapCenter}
-                zoom={13}
-                style={{ height: '100%', width: '100%' }}
-              >
-                <TileLayer
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                />
-                <MapCenterSync center={mapCenter} />
-                <ClickHandler onMapClick={handleMapClick} />
-                {markerPosition && (
-                  <DraggableMarker
-                    position={markerPosition}
-                    onDragEnd={handleDragEnd}
+              <Container style={{ height: '100%', width: '100%' }}>
+                <NaverMap
+                  center={new navermaps.LatLng(mapCenter[0], mapCenter[1])}
+                  zoom={13}
+                >
+                  <Listener
+                    type="click"
+                    listener={(e: naver.maps.PointerEvent) =>
+                      handleMapClick(e.coord.y, e.coord.x)
+                    }
                   />
-                )}
-              </MapContainer>
+                  {markerPosition && (
+                    <Marker
+                      position={
+                        new navermaps.LatLng(markerPosition[0], markerPosition[1])
+                      }
+                      draggable
+                      onDragend={(e: naver.maps.PointerEvent) =>
+                        handleDragEnd(e.coord.y, e.coord.x)
+                      }
+                    />
+                  )}
+                </NaverMap>
+              </Container>
             )}
           </div>
           <div style={{ marginTop: 4, fontSize: 12, color: '#8c8c8c' }}>

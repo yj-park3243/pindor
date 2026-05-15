@@ -83,6 +83,31 @@ async function start(): Promise<void> {
     `ALTER TABLE pins ADD COLUMN IF NOT EXISTS search_keywords TEXT[] NOT NULL DEFAULT '{}';`
   ).catch((e: any) => console.warn('[Server] ALTER TABLE pins (search_keywords):', e.message));
 
+  // users: 디바이스 플랫폼(IOS/ANDROID) 기록 컬럼 추가 (없으면)
+  // - X-Platform 헤더로 인증된 요청에서 set. NULL이면 옛 빌드 사용자 → iOS로 간주
+  await AppDataSource.query(
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS device_platform VARCHAR(10) NULL;`
+  ).catch((e: any) => console.warn('[Server] ALTER TABLE users (device_platform):', e.message));
+
+  // app_versions: 핸드폰 본인인증 강제 토글 컬럼 추가 (없으면)
+  // - 신규 컬럼 추가 시점에만 platform별 기본값 시드: iOS=true, ANDROID=false (심사 대응)
+  // - 컬럼이 이미 있으면 아무 동작 안 함 → 운영 중 변경한 값 보존
+  await AppDataSource.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'app_versions' AND column_name = 'require_phone_verification'
+      ) THEN
+        ALTER TABLE app_versions ADD COLUMN require_phone_verification BOOLEAN;
+        UPDATE app_versions
+           SET require_phone_verification = CASE WHEN platform = 'ANDROID' THEN FALSE ELSE TRUE END;
+        ALTER TABLE app_versions ALTER COLUMN require_phone_verification SET NOT NULL;
+        ALTER TABLE app_versions ALTER COLUMN require_phone_verification SET DEFAULT TRUE;
+      END IF;
+    END $$;
+  `).catch((e: any) => console.warn('[Server] ALTER TABLE app_versions (require_phone_verification):', e.message));
+
   // ─── 캠페인 알림 마이그레이션 ───
   // notification_settings: 캠페인 토글 컬럼 추가
   await AppDataSource.query(`
@@ -206,10 +231,11 @@ async function start(): Promise<void> {
       ADD COLUMN IF NOT EXISTS match_request_ban_until TIMESTAMPTZ NULL;
   `).catch((e: any) => console.warn('[Server] ALTER TABLE sports_profiles (noshow):', e.message));
 
-  // users: noshow_report_ban_until 컬럼 추가
+  // users: noshow_report_ban_until + false_noshow_count 컬럼 추가
   await AppDataSource.query(`
     ALTER TABLE users
-      ADD COLUMN IF NOT EXISTS noshow_report_ban_until TIMESTAMPTZ NULL;
+      ADD COLUMN IF NOT EXISTS noshow_report_ban_until TIMESTAMPTZ NULL,
+      ADD COLUMN IF NOT EXISTS false_noshow_count INT NOT NULL DEFAULT 0;
   `).catch((e: any) => console.warn('[Server] ALTER TABLE users (noshow_report_ban):', e.message));
 
   // pin_ranking_snapshots 테이블 신설

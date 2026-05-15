@@ -1382,6 +1382,21 @@ export class GamesService {
     // 이미 처리된 경우 스킵
     if (!['PENDING', 'PROOF_UPLOADED'].includes(game.resultStatus)) return;
 
+    // 3분 timeout 가드 — BullMQ delayed job이 worker 재시작/clock skew 등으로
+    // delay 무시하고 즉시 실행되는 race를 차단.
+    const lastUpdate = (game as any).updatedAt as Date | undefined;
+    if (lastUpdate) {
+      const elapsed = Date.now() - new Date(lastUpdate).getTime();
+      const REQUIRED_WAIT_MS = 3 * 60 * 1000;
+      if (elapsed < REQUIRED_WAIT_MS) {
+        const remainingSec = Math.ceil((REQUIRED_WAIT_MS - elapsed) / 1000);
+        console.info(
+          `[AutoResolve] Skip ${gameId} — 아직 3분 안 지남 (남은 ${remainingSec}s)`,
+        );
+        return;
+      }
+    }
+
     const match = game.match as any;
     const requesterProfileId = (match.requesterProfile as any).id;
     const opponentProfileId = (match.opponentProfile as any).id;

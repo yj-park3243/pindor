@@ -23,10 +23,12 @@ class MatchRequest {
   final int candidatesCount;
   final DateTime expiresAt;
   final DateTime createdAt;
-  final String genderPreference; // ANY | SAME | MALE | FEMALE
+  final String genderPreference; // ANY | SAME | OPPOSITE
   final bool isCasual;
   final int? minAge;
   final int? maxAge;
+  /// 즉시 매칭 성사 시 서버가 반환하는 매칭 ID (status=MATCHED일 때만)
+  final String? matchedMatchId;
 
   const MatchRequest({
     required this.id,
@@ -56,6 +58,7 @@ class MatchRequest {
     this.isCasual = false,
     this.minAge,
     this.maxAge,
+    this.matchedMatchId,
   });
 
   factory MatchRequest.fromJson(Map<String, dynamic> json) {
@@ -94,6 +97,7 @@ class MatchRequest {
       isCasual: json['isCasual'] as bool? ?? false,
       minAge: json['minAge'] as int?,
       maxAge: json['maxAge'] as int?,
+      matchedMatchId: json['matchedMatchId'] as String?,
     );
   }
 

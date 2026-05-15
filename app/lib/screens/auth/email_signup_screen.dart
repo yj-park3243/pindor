@@ -7,6 +7,7 @@ import '../../config/theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/common/app_toast.dart';
 import '../../core/network/api_client.dart';
+import '../../core/version/version_check_service.dart';
 
 /// 이메일 회원가입 화면 (Firebase Auth 기반)
 class EmailSignupScreen extends ConsumerStatefulWidget {
@@ -73,7 +74,10 @@ class _EmailSignupScreenState extends ConsumerState<EmailSignupScreen> {
       await Future.delayed(const Duration(milliseconds: 50));
       if (!mounted) return;
       final auth = ref.read(authStateProvider).valueOrNull;
-      final next = (auth?.isVerified ?? false)
+      await VersionCheckService.ensureLoaded();
+      final effectiveVerified = !VersionCheckService.requirePhoneVerification ||
+          (auth?.isVerified ?? false);
+      final next = effectiveVerified
           ? (auth?.isNewUser ?? true ? AppRoutes.profileSetup : AppRoutes.home)
           : AppRoutes.phoneVerification;
       debugPrint('[EmailSignup] 다음 화면: $next (isVerified=${auth?.isVerified}, isNewUser=${auth?.isNewUser})');

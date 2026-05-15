@@ -111,7 +111,10 @@ export class ChatService {
                 createdAt: lastMessage.createdAt,
               }
             : null,
-          unreadCount: unreadMap.get(room.id) ?? 0,
+          unreadCount:
+            ['COMPLETED', 'CANCELLED'].includes(match.status as string)
+              ? 0
+              : (unreadMap.get(room.id) ?? 0),
           lastMessageAt: room.lastMessageAt,
           createdAt: room.createdAt,
         };

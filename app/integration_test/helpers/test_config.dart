@@ -58,8 +58,11 @@ class TestConfig {
   static const String userAChatMessage = '안녕하세요!';
   static const String userBChatMessage = '반갑습니다!';
 
-  // 테스트 위치 (서울 중심)
-  static const double testLatitude = 37.5665;
-  static const double testLongitude = 126.9780;
-  static const String testAddress = '서울특별시 중구 을지로1가';
+  // 테스트 위치 (몬테로이 — 경기 광주)
+  static const double testLatitude = 37.3454;
+  static const double testLongitude = 127.2592;
+  static const String testAddress = '경기 광주';
+
+  // 테스트 핀 이름 — getAllPins 결과 중 이 이름으로 검색
+  static const String testPinName = '몬테로이';
 }

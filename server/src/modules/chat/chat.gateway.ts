@@ -166,17 +166,20 @@ export function setupSocketGateway(io: Server, redis: Redis): void {
 
     // ─── 채팅방 입장 ───
     socket.on('JOIN_ROOM', async (data: JoinRoomData): Promise<void> => {
+      console.info(`[WS] JOIN_ROOM 수신 user=${userId} socket=${socket.id} room=${data?.roomId}`);
       try {
         const room = await chatRoomRepo.findOne({
           where: { id: data.roomId },
         });
 
         if (!room) {
+          console.warn(`[WS] JOIN_ROOM 실패(ROOM_NOT_FOUND) user=${userId} room=${data.roomId}`);
           socket.emit('ERROR', { code: 'ROOM_NOT_FOUND', message: '채팅방을 찾을 수 없습니다.' });
           return;
         }
 
         if (room.status === 'BLOCKED' as any) {
+          console.warn(`[WS] JOIN_ROOM 실패(ROOM_BLOCKED) user=${userId} room=${data.roomId}`);
           socket.emit('ERROR', { code: 'ROOM_BLOCKED', message: '차단된 채팅방입니다.' });
           return;
         }
@@ -197,12 +200,14 @@ export function setupSocketGateway(io: Server, redis: Redis): void {
           ];
 
           if (!participantIds.includes(userId)) {
+            console.warn(`[WS] JOIN_ROOM 실패(FORBIDDEN) user=${userId} room=${data.roomId}`);
             socket.emit('ERROR', { code: 'FORBIDDEN', message: '접근 권한이 없습니다.' });
             return;
           }
         }
 
         await socket.join(`room:${data.roomId}`);
+        console.info(`[WS] JOIN_ROOM 완료 user=${userId} socket=${socket.id} room=${data.roomId}`);
 
         // 현재 활성 채팅방 기록 (푸시 스킵 판단용)
         await redis.set(`user_active_room:${userId}`, data.roomId, 'EX', 3600);
@@ -226,6 +231,7 @@ export function setupSocketGateway(io: Server, redis: Redis): void {
 
     // ─── 메시지 전송 ───
     socket.on('SEND_MESSAGE', async (data: SendMessageData): Promise<void> => {
+      console.info(`[WS] SEND_MESSAGE 수신 user=${userId} socket=${socket.id} room=${data?.roomId} content=${data?.content}`);
       try {
         // LOCATION/VERIFICATION_CODE 타입은 content 없이 extraData로 전송
         if (!data.roomId || (!['LOCATION', 'VERIFICATION_CODE'].includes(data.messageType) && !data.content)) {
@@ -276,6 +282,8 @@ export function setupSocketGateway(io: Server, redis: Redis): void {
 
         // 같은 채팅방의 모든 소켓에 실시간 전달
         // TypeORM 엔티티 직렬화 이슈 방지를 위해 sender를 plain object로 전달
+        const roomSockets = await io.in(`room:${data.roomId}`).fetchSockets();
+        console.info(`[WS] NEW_MESSAGE 전달 room=${data.roomId} content=${message.content} → 룸 소켓 ${roomSockets.length}개: [${roomSockets.map((s) => s.id).join(', ')}]`);
         io.to(`room:${data.roomId}`).emit('NEW_MESSAGE', {
           id: message.id,
           roomId: data.roomId,

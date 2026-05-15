@@ -24,7 +24,7 @@ import {
   Cell,
 } from 'recharts';
 import dayjs from 'dayjs';
-import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
+import { Container as MapContainer, NaverMap, Circle, InfoWindow, useNavermaps } from 'react-naver-maps';
 import { useDashboardMetrics } from '@/hooks/useDashboard';
 
 const { Title, Text } = Typography;
@@ -49,6 +49,8 @@ const TIER_COLORS: Record<string, string> = {
 
 export function StatisticsPage() {
   const [period, setPeriod] = useState<'7' | '30' | '90'>('30');
+  const [openHeatIdx, setOpenHeatIdx] = useState<number | null>(null);
+  const navermaps = useNavermaps();
   const { data: metrics, isLoading, error } = useDashboardMetrics();
 
   if (isLoading) {
@@ -278,32 +280,36 @@ export function StatisticsPage() {
             title="지역별 활성도 히트맵"
             style={{ borderRadius: 8 }}
           >
-            <MapContainer
-              center={[37.5665, 126.978]}
-              zoom={11}
-              style={{ height: 400, width: '100%', borderRadius: 8 }}
-            >
-              <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
-              {heatmapPoints.map((point, i) => (
-                <CircleMarker
-                  key={i}
-                  center={[point.lat, point.lng]}
-                  radius={Math.max(8, point.intensity / 5)}
-                  fillColor="#1890ff"
-                  fillOpacity={Math.min(0.8, point.intensity / 100)}
-                  color="#1890ff"
-                  weight={1}
-                >
-                  <Popup>
-                    <strong>{point.label}</strong>
-                    <br />
-                    활성도: {point.intensity}
-                  </Popup>
-                </CircleMarker>
-              ))}
+            <MapContainer style={{ height: 400, width: '100%', borderRadius: 8, overflow: 'hidden' }}>
+              <NaverMap
+                defaultCenter={new navermaps.LatLng(37.5665, 126.978)}
+                defaultZoom={11}
+              >
+                {heatmapPoints.map((point, i) => (
+                  <Circle
+                    key={i}
+                    center={new navermaps.LatLng(point.lat, point.lng)}
+                    radius={Math.max(400, point.intensity * 30)}
+                    fillColor="#1890ff"
+                    fillOpacity={Math.min(0.5, point.intensity / 200)}
+                    strokeColor="#1890ff"
+                    strokeWeight={1}
+                    clickable
+                    onClick={() => setOpenHeatIdx(i)}
+                  />
+                ))}
+                {openHeatIdx !== null && heatmapPoints[openHeatIdx] && (
+                  <InfoWindow
+                    position={
+                      new navermaps.LatLng(
+                        heatmapPoints[openHeatIdx].lat,
+                        heatmapPoints[openHeatIdx].lng
+                      )
+                    }
+                    content={`<div style="padding:8px 10px;font-size:13px;line-height:1.6;"><strong>${heatmapPoints[openHeatIdx].label}</strong><br/>활성도: ${heatmapPoints[openHeatIdx].intensity}</div>`}
+                  />
+                )}
+              </NaverMap>
             </MapContainer>
           </Card>
         </Col>

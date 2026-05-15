@@ -149,8 +149,12 @@ Future<void> runUserBFlow(
   debugPrint('[UserB] 핀 조회 + 매칭 요청 생성');
   final pins = await api.getAllPins(tokenB);
   if (pins.isEmpty) throw Exception('[UserB] 핀이 없습니다');
-  final pinId = pins.first['id'] as String;
-  debugPrint('[UserB] 핀 선택: $pinId (${pins.first['name']})');
+  final selected = pins.firstWhere(
+    (p) => p['name'] == TestConfig.testPinName,
+    orElse: () => pins.first,
+  );
+  final pinId = selected['id'] as String;
+  debugPrint('[UserB] 핀 선택: $pinId (${selected['name']})');
 
   final matchReq = await api.createMatchRequest(
     tokenB,

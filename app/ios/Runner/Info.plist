@@ -96,5 +96,15 @@
 	<false/>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- AdMob iOS 실 App ID (핀돌) -->
+	<key>GADApplicationIdentifier</key>
+	<string>ca-app-pub-5100715769469045~9971461612</string>
+	<key>SKAdNetworkItems</key>
+	<array>
+		<dict>
+			<key>SKAdNetworkIdentifier</key>
+			<string>cstr6suwn9.skadnetwork</string>
+		</dict>
+	</array>
 </dict>
 </plist>

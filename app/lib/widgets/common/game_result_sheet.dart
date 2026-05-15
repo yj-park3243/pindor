@@ -286,6 +286,7 @@ void showGameResultSheet(
                     width: double.infinity,
                     height: 52,
                     child: ElevatedButton(
+                      key: const Key('game_result_submit_btn'),
                       onPressed: !canSubmit
                           ? null
                           : () async {
@@ -412,6 +413,7 @@ Widget _resultOptionButton(
   final isSelected = selected == value;
   return Expanded(
     child: GestureDetector(
+      key: Key('game_result_option_$value'),
       onTap: () => onTap(value),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),

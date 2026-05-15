@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../core/push/badge_service.dart';
 import '../models/notification.dart';
 import '../repositories/notification_repository.dart';
 
@@ -59,6 +60,9 @@ class NotificationListNotifier
     state = AsyncData(current
         .map((n) => n.id == notificationId ? n.copyWith(isRead: true) : n)
         .toList());
+
+    // 디바이스 배지 즉시 초기화 (서버 silent push 도착 전 빠른 반영)
+    await BadgeService.instance.clear();
   }
 
   /// 전체 읽음 처리
@@ -68,6 +72,8 @@ class NotificationListNotifier
 
     final current = state.valueOrNull ?? [];
     state = AsyncData(current.map((n) => n.copyWith(isRead: true)).toList());
+
+    await BadgeService.instance.clear();
   }
 
   /// 새 알림 추가 (소켓 수신 시)

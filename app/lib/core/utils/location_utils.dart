@@ -20,6 +20,11 @@ class LocationUtils {
   static const double defaultLat = 37.5665;
   static const double defaultLng = 126.9780;
 
+  /// E2E 테스트 모드 — 위치 권한 다이얼로그가 시뮬레이터 화면을 가려
+  /// 테스트가 막히므로, 이 모드에선 권한 요청(requestPermission)을 호출하지 않는다.
+  static const bool _isE2E =
+      bool.fromEnvironment('TEST_MODE', defaultValue: false);
+
   /// 위치 권한이 허용 상태인지 확인 (요청 없이 현재 상태만 체크)
   static Future<bool> hasPermission() async {
     try {
@@ -38,6 +43,7 @@ class LocationUtils {
       if (!await Geolocator.isLocationServiceEnabled()) return false;
       var perm = await Geolocator.checkPermission();
       if (perm == LocationPermission.denied) {
+        if (_isE2E) return false;
         perm = await Geolocator.requestPermission();
       }
       if (perm == LocationPermission.denied ||
@@ -64,6 +70,7 @@ class LocationUtils {
 
       var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
+        if (_isE2E) return null;
         permission = await Geolocator.requestPermission();
       }
       if (permission == LocationPermission.denied ||

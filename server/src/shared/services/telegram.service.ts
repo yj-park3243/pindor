@@ -43,10 +43,11 @@ export async function sendAdminAlert(message: string): Promise<void> {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      console.warn(`[Telegram] sendMessage failed: ${res.status} ${text}`);
+      console.info(`[Telegram] sendMessage failed: ${res.status} ${text}`);
     }
   } catch (err) {
-    console.warn('[Telegram] send error:', err);
+    // 외부 API 일시 장애 (ETIMEDOUT 등)는 fail-silent — error.log 노이즈 방지
+    console.info('[Telegram] send error:', (err as Error).message);
   }
 }
 

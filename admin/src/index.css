@@ -9,15 +9,6 @@ body {
   background: #f5f5f5;
 }
 
-/* Leaflet 지도 z-index 조정 (Ant Design 모달 하위) */
-.leaflet-pane {
-  z-index: 1;
-}
-.leaflet-top,
-.leaflet-bottom {
-  z-index: 2;
-}
-
 /* 스크롤바 스타일 */
 ::-webkit-scrollbar {
   width: 6px;

@@ -42,6 +42,12 @@ interface WaitingRequest {
   // 매너 점수 필드
   mannerTotal: number;
   mannerCount: number;
+  // 성별/나이 필터 (matching.service.ts 즉시 매칭과 동일 정책)
+  gender: string | null;
+  birthDate: string | null;
+  genderPreference: string | null;
+  minAge: number | null;
+  maxAge: number | null;
 }
 
 // ─────────────────────────────────────
@@ -144,6 +150,51 @@ function isRecentOpponent(a: WaitingRequest, b: WaitingRequest): boolean {
          (b.recentOpponentIds || []).includes(a.sportsProfileId);
 }
 
+function ageOf(birthDate: string | null): number | null {
+  if (!birthDate) return null;
+  const bd = new Date(birthDate);
+  if (isNaN(bd.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - bd.getFullYear();
+  const m = now.getMonth() - bd.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < bd.getDate())) age--;
+  return age;
+}
+
+// 즉시 매칭(matching.service.ts:655~680)과 동일 정책으로 성별 SAME / OPPOSITE / minAge / maxAge 검증
+function isCompatibleGenderAge(a: WaitingRequest, b: WaitingRequest): boolean {
+  // SAME 선호 — 양쪽 성별 정보가 있어야 하고 일치해야 함
+  if (a.genderPreference === 'SAME') {
+    if (!a.gender || !b.gender || a.gender !== b.gender) return false;
+  }
+  if (b.genderPreference === 'SAME') {
+    if (!a.gender || !b.gender || a.gender !== b.gender) return false;
+  }
+  // OPPOSITE 선호 — 양쪽 성별 정보가 있어야 하고 서로 달라야 함
+  if (a.genderPreference === 'OPPOSITE') {
+    if (!a.gender || !b.gender || a.gender === b.gender) return false;
+  }
+  if (b.genderPreference === 'OPPOSITE') {
+    if (!a.gender || !b.gender || a.gender === b.gender) return false;
+  }
+  const ageA = ageOf(a.birthDate);
+  const ageB = ageOf(b.birthDate);
+  // A가 요구한 minAge/maxAge는 B의 나이로 검증, B가 요구한 minAge/maxAge는 A의 나이로 검증
+  if (a.minAge !== null && a.minAge !== undefined) {
+    if (ageB === null || ageB < a.minAge) return false;
+  }
+  if (a.maxAge !== null && a.maxAge !== undefined) {
+    if (ageB === null || ageB > a.maxAge) return false;
+  }
+  if (b.minAge !== null && b.minAge !== undefined) {
+    if (ageA === null || ageA < b.minAge) return false;
+  }
+  if (b.maxAge !== null && b.maxAge !== undefined) {
+    if (ageA === null || ageA > b.maxAge) return false;
+  }
+  return true;
+}
+
 // ─────────────────────────────────────
 // 최적 페어링 - min-cost 그리디 매칭
 // 같은 (pinId + sportType) 그룹 내에서 레이팅 차이 기반 비용 최소화
@@ -167,6 +218,9 @@ function findOptimalPairs(
       // 차단 관계 확인 — 차단된 쌍은 절대 매칭 불가
       const blockKey = [requests[i].requesterId, requests[j].requesterId].sort().join('::');
       if (blockedPairs.has(blockKey)) continue;
+
+      // 성별/나이 호환성 — 즉시 매칭과 동일 정책
+      if (!isCompatibleGenderAge(requests[i], requests[j])) continue;
 
       // 시간대 호환성 확인: 동일 슬롯이거나 한쪽이 ANY/null 일 때만 매칭 허용
       const slotI = requests[i].desiredTimeSlot;
@@ -306,9 +360,15 @@ export async function processMatchingQueue(): Promise<boolean> {
       sp.recent_opponent_ids AS "recentOpponentIds",
       sp.win_streak AS "winStreak",
       COALESCE(sp.manner_total, 0) AS "mannerTotal",
-      COALESCE(sp.manner_count, 0) AS "mannerCount"
+      COALESCE(sp.manner_count, 0) AS "mannerCount",
+      u.gender AS "gender",
+      u.birth_date AS "birthDate",
+      mr.gender_preference AS "genderPreference",
+      mr.min_age AS "minAge",
+      mr.max_age AS "maxAge"
     FROM match_requests mr
     JOIN sports_profiles sp ON sp.id = mr.sports_profile_id
+    LEFT JOIN users u ON u.id = mr.requester_id
     WHERE mr.status = 'WAITING'
       AND mr.expires_at > NOW()
       AND (sp.match_request_ban_until IS NULL OR sp.match_request_ban_until <= NOW())

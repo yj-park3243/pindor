@@ -9,6 +9,7 @@ import '../../config/theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/common/app_toast.dart';
 import '../../core/network/api_client.dart';
+import '../../core/version/version_check_service.dart';
 
 /// 로그인 화면
 class LoginScreen extends ConsumerStatefulWidget {
@@ -34,7 +35,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final result = await ref.read(authStateProvider.notifier).loginWithApple();
       if (!mounted) return;
       print('[Apple] 라우팅: isNewUser=${result.isNewUser}, isVerified=${result.isVerified}');
-      if (result.isNewUser && !result.isVerified) {
+      await VersionCheckService.ensureLoaded();
+      final effectiveVerified =
+          !VersionCheckService.requirePhoneVerification || result.isVerified;
+      if (result.isNewUser && !effectiveVerified) {
         context.go(AppRoutes.phoneVerification);
       } else if (result.isNewUser) {
         context.go(AppRoutes.profileSetup);
@@ -56,7 +60,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await ref.read(authStateProvider.notifier).loginWithGoogle();
       if (mounted) {
         final authState = ref.read(authStateProvider).valueOrNull;
-        if (authState?.isNewUser == true && authState?.isVerified != true) {
+        await VersionCheckService.ensureLoaded();
+        final effectiveVerified = !VersionCheckService.requirePhoneVerification ||
+            authState?.isVerified == true;
+        if (authState?.isNewUser == true && !effectiveVerified) {
           context.go(AppRoutes.phoneVerification);
         } else if (authState?.isNewUser == true) {
           context.go(AppRoutes.profileSetup);

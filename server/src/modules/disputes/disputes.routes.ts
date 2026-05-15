@@ -224,8 +224,6 @@ export async function disputesRoutes(fastify: FastifyInstance): Promise<void> {
             m.id AS "matchId",
             m.sport_type AS "sportType",
             m.status AS "matchStatus",
-            m.requester_verification_code AS "reqCode",
-            m.opponent_verification_code AS "oppCode",
             rp.id AS "requesterProfileId",
             rp.user_id AS "requesterUserId",
             ru.nickname AS "requesterNickname",

@@ -57,10 +57,21 @@ export class MatchingService {
   private gameRepo;
   private messageRepo;
 
+  // 라우트 register가 NotificationService 생성보다 먼저라 constructor의 인자가 undefined일 수 있음.
+  // 매 호출 시점에 global에서 fresh lookup → 알림이 누락되지 않도록 보장.
+  get notificationService(): INotificationService | undefined {
+    return this._notificationService ?? (global as any).__notificationService;
+  }
+  set notificationService(v: INotificationService | undefined) {
+    this._notificationService = v;
+  }
+  private _notificationService?: INotificationService;
+
   constructor(
     private dataSource: DataSource,
-    private notificationService?: INotificationService,
+    notificationService?: INotificationService,
   ) {
+    this._notificationService = notificationService;
     this.matchAcceptTimeoutQueue = new Queue<MatchAcceptTimeoutJobData>(
       'match-accept-timeout',
       { connection: bullmqRedis },
@@ -468,6 +479,7 @@ export class MatchingService {
       minOpponentScore: dto.minOpponentScore,
       maxOpponentScore: dto.maxOpponentScore,
       requesterScore: sportsProfile.currentScore,
+      requesterRd: (sportsProfile as any).glickoRd ?? 350,
       requesterUserId: userId,
       requesterGender: (user as any).gender,
       requesterBirthDate: (user as any).birthDate,
@@ -484,6 +496,17 @@ export class MatchingService {
       where: { id: requestId },
       select: { status: true } as any,
     });
+
+    // 즉시 매칭 성사된 경우 — 매칭 ID 조회해서 응답에 포함 (클라이언트 직접 이동용)
+    let matchedId: string | null = null;
+    if ((updatedRequest?.status ?? 'WAITING') === 'MATCHED') {
+      const matched = await this.matchRepo.findOne({
+        where: { matchRequestId: requestId },
+        select: { id: true } as any,
+        order: { createdAt: 'DESC' } as any,
+      });
+      matchedId = matched?.id ?? null;
+    }
 
     // WAITING이면 매칭 큐 Worker에 이벤트 발행 (즉시 매칭 시도)
     if ((updatedRequest?.status ?? 'WAITING') === 'WAITING') {
@@ -509,6 +532,7 @@ export class MatchingService {
       status: (updatedRequest?.status ?? 'WAITING') as MatchRequestStatus,
       expiresAt,
       candidatesCount,
+      matchedMatchId: matchedId,
     };
   }
 
@@ -540,6 +564,7 @@ export class MatchingService {
       minOpponentScore: number;
       maxOpponentScore: number;
       requesterScore: number;
+      requesterRd?: number;
       requesterUserId: string;
       requesterGender: string | null;
       requesterBirthDate: Date | null;
@@ -631,9 +656,17 @@ export class MatchingService {
         if (!opts.requesterGender || !candidate.gender) return false;
         if (candidate.gender !== opts.requesterGender) return false;
       }
+      if (opts.genderPreference === 'OPPOSITE') {
+        if (!opts.requesterGender || !candidate.gender) return false;
+        if (candidate.gender === opts.requesterGender) return false;
+      }
       if (candidate.genderPreference === 'SAME') {
         if (!opts.requesterGender || !candidate.gender) return false;
         if (opts.requesterGender !== candidate.gender) return false;
+      }
+      if (candidate.genderPreference === 'OPPOSITE') {
+        if (!opts.requesterGender || !candidate.gender) return false;
+        if (opts.requesterGender === candidate.gender) return false;
       }
 
       // --- 나이 조건 ---
@@ -668,9 +701,21 @@ export class MatchingService {
 
     candidatesWithDiff.sort((a, b) => a.scoreDiff - b.scoreDiff);
 
-    const bestCandidate = candidatesWithDiff[0];
+    // 4) 점수 범위 정책 — 워커보다 약간 관대 (즉시 매칭 우선)
+    //    BASE 150 + RD multiplier, 하드캡 250 (워커는 BASE 50으로 더 엄격)
+    //    이유: API 즉시 매칭은 큐가 비어있는 첫 매칭자이므로 워커 진입 전 폭넓은 매칭 허용
+    const BASE_RANGE = 150;
+    const HARD_CAP = 250;
+    const requesterRd = opts.requesterRd ?? 350;
+    const rdMultiplier = 1.0 + Math.max(0, (requesterRd - 50)) / 350;
+    const effectiveRange = Math.min(BASE_RANGE * rdMultiplier, HARD_CAP);
 
-    // 점수 차이에 관계없이 최선의 후보와 즉시 매칭
+    const bestCandidate = candidatesWithDiff[0];
+    if (bestCandidate.scoreDiff > effectiveRange) {
+      // 점수 차이가 즉시 매칭 허용 범위를 초과 → 워커에 위임 (WAITING 유지)
+      return 0;
+    }
+
     await this.createMatch(requestId, bestCandidate, opts);
 
     return filteredCandidates.length;
@@ -1303,6 +1348,7 @@ export class MatchingService {
       status: match.status,
       myAcceptance: myAcceptance
         ? {
+            userId: myAcceptance.userId,
             accepted: myAcceptance.accepted,
             respondedAt: myAcceptance.respondedAt,
             expiresAt: myAcceptance.expiresAt,
@@ -1426,6 +1472,27 @@ export class MatchingService {
       }
     }
 
+    // 노쇼 신고 일괄 조회 (REJECTED 제외 — 살아있는 신고만)
+    const noshowMap = new Map<string, { reporterId: string; reportedUserId: string; status: string }>();
+    if (items.length > 0) {
+      const matchIds = items.map((m) => m.id);
+      const noshowRows = await this.dataSource.query<
+        Array<{ match_id: string; reporter_id: string; reported_user_id: string; status: string }>
+      >(
+        `SELECT match_id, reporter_id, reported_user_id, status
+         FROM noshow_reports
+         WHERE match_id = ANY($1) AND status IN ('PENDING', 'INSUFFICIENT', 'APPROVED')`,
+        [matchIds],
+      );
+      for (const row of noshowRows) {
+        noshowMap.set(row.match_id, {
+          reporterId: row.reporter_id,
+          reportedUserId: row.reported_user_id,
+          status: row.status,
+        });
+      }
+    }
+
     // 완료된 매칭의 점수 변동을 일괄 조회
     const completedGameIds = items
       .map((m, idx) => ({ gameId: rawItems[idx]?.game_id as string | null, match: m }))
@@ -1466,12 +1533,16 @@ export class MatchingService {
       }
 
       // PENDING_ACCEPT 상태일 때만 myAcceptance 포함
-      let myAcceptance: { accepted: boolean | null; expiresAt: Date | null } | null = null;
+      // userId 필드를 같이 내려줘야 클라이언트가 본인 수락 여부를 판별 가능 (자동 redirect 무한 루프 방지)
+      let myAcceptance:
+        | { userId: string; accepted: boolean | null; expiresAt: Date | null }
+        | null = null;
       if ((match.status as string) === 'PENDING_ACCEPT') {
         const accs = acceptancesMap.get(match.id) ?? [];
         const myAcc = accs.find((a) => a.userId === userId);
         if (myAcc) {
           myAcceptance = {
+            userId: myAcc.userId,
             accepted: myAcc.accepted ?? null,
             expiresAt: myAcc.expiresAt ?? null,
           };
@@ -1489,6 +1560,11 @@ export class MatchingService {
       const opponentMetConfirmed = isRequester
         ? (match as any).opponentMetConfirmedAt != null
         : (match as any).requesterMetConfirmedAt != null;
+
+      // 노쇼 신고 정보 (REJECTED는 제외됨)
+      const noshow = noshowMap.get(match.id);
+      const noshowReportedByMe = noshow?.reporterId === userId;
+      const noshowReportedAgainstMe = noshow?.reportedUserId === userId;
 
       return {
         id: match.id,
@@ -1513,6 +1589,8 @@ export class MatchingService {
         pinName: rawItems[idx]?.pin_name ?? null,
         desiredDate: match.desiredDate ?? rawItems[idx]?.mr_desired_date ?? null,
         desiredTimeSlot: (match as any).desiredTimeSlot ?? rawItems[idx]?.mr_desired_time_slot ?? null,
+        noshowReportedByMe,
+        noshowReportedAgainstMe,
         ...(myAcceptance !== null ? { myAcceptance } : {}),
       };
     });
@@ -1656,6 +1734,23 @@ export class MatchingService {
     const myUserId = userId;
     const opponentUserId = (opponentProfile as any).user?.id;
     let encounterCount = 0;
+    let headToHead: {
+      totalGames: number;
+      wins: number;
+      losses: number;
+      draws: number;
+      winRate: number;
+      lastMetAt: string | null;
+      recentForm: string[];
+    } = {
+      totalGames: 0,
+      wins: 0,
+      losses: 0,
+      draws: 0,
+      winRate: 0,
+      lastMetAt: null,
+      recentForm: [],
+    };
     if (opponentUserId) {
       const result = await this.matchRepo
         .createQueryBuilder('m')
@@ -1670,10 +1765,73 @@ export class MatchingService {
         )
         .getCount();
       encounterCount = result;
+
+      // 상대전적 — 완료된 게임의 승/패/무 계산 (최근 50건, recentForm은 최근 10건)
+      const games = await this.matchRepo
+        .createQueryBuilder('m')
+        .leftJoin('m.requesterProfile', 'rp')
+        .leftJoin('rp.user', 'ru')
+        .leftJoin('m.opponentProfile', 'op')
+        .leftJoin('op.user', 'ou')
+        .leftJoin('games', 'g', 'g.match_id = m.id')
+        .leftJoin('sports_profiles', 'wp', 'wp.id = g.winner_profile_id')
+        .where('m.status = :status', { status: 'COMPLETED' })
+        .andWhere(
+          '((ru.id = :myId AND ou.id = :oppId) OR (ru.id = :oppId AND ou.id = :myId))',
+          { myId: myUserId, oppId: opponentUserId },
+        )
+        .andWhere("g.result_status = 'VERIFIED'")
+        .select([
+          'g.winner_profile_id AS "winnerProfileId"',
+          'wp.user_id AS "winnerUserId"',
+          'm.scheduled_date AS "scheduledDate"',
+          'g.played_at AS "playedAt"',
+        ])
+        .orderBy('COALESCE(g.played_at, m.scheduled_date)', 'DESC')
+        .limit(50)
+        .getRawMany();
+
+      let wins = 0;
+      let losses = 0;
+      let draws = 0;
+      const recentForm: string[] = [];
+      for (const g of games) {
+        let result: 'W' | 'L' | 'D';
+        if (!g.winnerUserId) {
+          result = 'D';
+          draws++;
+        } else if (g.winnerUserId === myUserId) {
+          result = 'W';
+          wins++;
+        } else {
+          result = 'L';
+          losses++;
+        }
+        if (recentForm.length < 10) recentForm.push(result);
+      }
+      const total = wins + losses + draws;
+      const lastMetAt = games[0]
+        ? (games[0].playedAt
+            ? new Date(games[0].playedAt).toISOString()
+            : games[0].scheduledDate
+              ? new Date(games[0].scheduledDate).toISOString()
+              : null)
+        : null;
+      headToHead = {
+        totalGames: total,
+        wins,
+        losses,
+        draws,
+        winRate: total > 0 ? Math.round((wins / total) * 100) : 0,
+        lastMetAt,
+        recentForm,
+      };
     }
 
     // 수락 상태 정보 조회 (PENDING_ACCEPT 상태에서만 의미 있음)
-    let myAcceptance: { accepted: boolean | null; expiresAt: Date } | null = null;
+    let myAcceptance:
+      | { userId: string; accepted: boolean | null; expiresAt: Date }
+      | null = null;
     let opponentAcceptance: { accepted: boolean | null } | null = null;
     let timeRemainingSeconds = 0;
 
@@ -1686,6 +1844,7 @@ export class MatchingService {
 
     if (myAcceptanceRecord) {
       myAcceptance = {
+        userId: myAcceptanceRecord.userId,
         accepted: myAcceptanceRecord.accepted,
         expiresAt: myAcceptanceRecord.expiresAt,
       };
@@ -1735,6 +1894,19 @@ export class MatchingService {
       : match.requesterMetConfirmedAt != null;
     const bothMetConfirmed = myMetConfirmed && opponentMetConfirmed;
 
+    // 노쇼 신고 정보 (REJECTED 제외 — 살아있는 신고만)
+    const noshowRows = await this.dataSource.query<
+      Array<{ reporter_id: string; reported_user_id: string; status: string }>
+    >(
+      `SELECT reporter_id, reported_user_id, status
+       FROM noshow_reports
+       WHERE match_id = $1 AND status IN ('PENDING', 'INSUFFICIENT', 'APPROVED')
+       LIMIT 1`,
+      [matchId],
+    );
+    const noshowReportedByMe = noshowRows[0]?.reporter_id === userId;
+    const noshowReportedAgainstMe = noshowRows[0]?.reported_user_id === userId;
+
     return {
       ...match,
       gameId: game?.id ?? null,
@@ -1744,6 +1916,7 @@ export class MatchingService {
       isCasual,
       pinName,
       encounterCount,
+      headToHead,
       desiredDate: match.desiredDate ?? desiredDate,
       desiredTimeSlot: (match as any).desiredTimeSlot ?? desiredTimeSlot,
       myAcceptance,
@@ -1752,6 +1925,8 @@ export class MatchingService {
       myMetConfirmed,
       opponentMetConfirmed,
       bothMetConfirmed,
+      noshowReportedByMe,
+      noshowReportedAgainstMe,
       requesterProfile: isRequester
         ? myProfile
         : { ...opponentProfile, currentScore: undefined },
@@ -2040,6 +2215,31 @@ export class MatchingService {
       }
     } catch (e) {
       console.warn('[MatchService] confirmMet user broadcast failed:', e);
+    }
+
+    // socket이 끊긴 클라이언트도 받을 수 있도록 notification으로도 발송 (push fallback)
+    // 양쪽 모두에게 보내 main_tab_screen socketNotificationProvider listener가 화면 갱신.
+    if (this.notificationService && !alreadyConfirmed) {
+      const opponentId = isRequester ? opponentUserId : requesterUserId;
+      try {
+        await this.notificationService.send({
+          userId: opponentId,
+          type: 'MATCH_MET_UPDATED' as any,
+          title: bothMetConfirmed ? '양쪽 모두 만남 확인' : '상대가 만남을 확인했어요',
+          body: bothMetConfirmed
+            ? '경기 결과를 입력해주세요.'
+            : '"우리 만났어요" 버튼을 눌러주세요.',
+          data: {
+            matchId,
+            requesterMetConfirmed: String(requesterMetConfirmed),
+            opponentMetConfirmed: String(opponentMetConfirmed),
+            bothMetConfirmed: String(bothMetConfirmed),
+            deepLink: `/matches/${matchId}`,
+          },
+        });
+      } catch (e) {
+        console.warn('[MatchService] confirmMet notification failed:', e);
+      }
     }
 
     return {
@@ -2587,10 +2787,16 @@ export class MatchingService {
         userId: noshowUserId,
         type: 'NOSHOW_REPORT_RECEIVED',
         title: '노쇼 신고 접수',
-        body: '노쇼 신고가 접수되었습니다. 검토 중입니다.',
+        body: '노쇼 신고가 접수되었습니다. 매칭이 종료되었습니다.',
         data: { matchId, reportId: noshowReportId },
       });
     }
+
+    // 8. 매치 상태 변경 소켓 이벤트 — 양쪽 클라이언트가 매치를 종료 상태로 갱신
+    await this.emitMatchEvent('MATCH_STATUS_CHANGED', {
+      matchId,
+      data: { matchId, status: 'COMPLETED' },
+    });
 
     return { message: '노쇼 신고가 접수되었습니다. 관리자 검토 후 결과를 알려드릴게요.' };
   }
@@ -2780,6 +2986,17 @@ export class MatchingService {
       throw AppError.badRequest(ErrorCode.MATCH_INVALID_STATUS, '처리 가능한 상태가 아닙니다.');
     }
 
+    // 허위 신고 누적 — reporterPenalty=true인 경우만 카운트되어 2회 이상이면 영구 정지
+    let isFalseReportPermanent = false;
+    if (reporterPenalty) {
+      const currentRow = await this.dataSource.query<Array<{ false_noshow_count: number }>>(
+        `SELECT false_noshow_count FROM users WHERE id = $1 LIMIT 1`,
+        [report.reporterId],
+      );
+      const currentFalseCount = currentRow[0]?.false_noshow_count ?? 0;
+      isFalseReportPermanent = currentFalseCount + 1 >= 2;
+    }
+
     await this.dataSource.transaction(async (manager) => {
       // 상태 업데이트
       await manager.update(NoshowReport, reportId, {
@@ -2842,25 +3059,56 @@ export class MatchingService {
             .execute();
         }
 
-        // 신고 자격 7일 차단
-        const reportBanUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-        await manager
-          .createQueryBuilder()
-          .update(User)
-          .set({ noshowReportBanUntil: reportBanUntil } as any)
-          .where('id = :id', { id: report.reporterId })
-          .execute();
+        // 허위 신고 누적 카운트 +1
+        await manager.query(
+          `UPDATE users SET false_noshow_count = false_noshow_count + 1 WHERE id = $1`,
+          [report.reporterId],
+        );
+
+        if (isFalseReportPermanent) {
+          // 누적 2회 이상 — 영구 정지 + 진행 중인 매칭 강제 취소
+          await manager
+            .createQueryBuilder()
+            .update(User)
+            .set({ status: 'SUSPENDED' as any, noshowReportBanUntil: null } as any)
+            .where('id = :id', { id: report.reporterId })
+            .execute();
+
+          await manager
+            .createQueryBuilder()
+            .update(Match)
+            .set({ status: 'CANCELLED' as any, cancelReason: '허위 신고 누적으로 인한 강제 취소' })
+            .where(
+              `(requester_profile_id IN (SELECT id FROM sports_profiles WHERE user_id = :uid)
+                OR opponent_profile_id IN (SELECT id FROM sports_profiles WHERE user_id = :uid))
+               AND status IN ('PENDING_ACCEPT', 'CHAT', 'CONFIRMED')`,
+              { uid: report.reporterId },
+            )
+            .execute();
+        } else {
+          // 1회차: 신고 자격 7일 차단
+          const reportBanUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+          await manager
+            .createQueryBuilder()
+            .update(User)
+            .set({ noshowReportBanUntil: reportBanUntil } as any)
+            .where('id = :id', { id: report.reporterId })
+            .execute();
+        }
       }
     });
 
     // 알림 발송
     if (this.notificationService) {
+      const reporterBody = isFalseReportPermanent
+        ? '허위 신고 누적으로 계정이 영구 정지되었습니다.'
+        : '노쇼 신고가 기각되었습니다. 자세한 내용은 1:1 문의로 확인해주세요.';
       await Promise.allSettled([
         this.notificationService.send({
           userId: report.reporterId,
-          type: 'NOSHOW_REPORT_REJECTED',
-          title: '노쇼 신고 기각',
-          body: '노쇼 신고가 기각되었습니다. 자세한 내용은 1:1 문의로 확인해주세요.',
+          type: isFalseReportPermanent ? 'NOSHOW_BAN_PERMANENT' : 'NOSHOW_REPORT_REJECTED',
+          title: isFalseReportPermanent ? '계정 영구 정지' : '노쇼 신고 기각',
+          body: reporterBody,
           data: { reportId },
         }),
         this.notificationService.send({
@@ -2873,7 +3121,11 @@ export class MatchingService {
       ]);
     }
 
-    return { message: '노쇼 신고가 기각되었습니다.' };
+    return {
+      message: isFalseReportPermanent
+        ? '노쇼 신고가 기각되었으며, 신고자는 허위 신고 누적으로 영구 정지되었습니다.'
+        : '노쇼 신고가 기각되었습니다.',
+    };
   }
 
   // ─────────────────────────────────────

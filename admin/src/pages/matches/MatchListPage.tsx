@@ -14,11 +14,12 @@ import {
   Badge,
 } from 'antd';
 import type { TableColumnsType } from 'antd';
-import { SearchOutlined, CloseCircleOutlined, CheckCircleOutlined, MessageOutlined } from '@ant-design/icons';
+import { SearchOutlined, CloseCircleOutlined, CheckCircleOutlined, MessageOutlined, EnvironmentOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useMatchList, useForceCancel, useForceComplete } from '@/hooks/useMatches';
 import { ConfirmAction } from '@/components/ConfirmAction';
 import { ChatDrawer } from '@/components/ChatDrawer';
+import { MetLocationModal } from '@/components/MetLocationModal';
 import { MATCH_STATUS_CONFIG, SPORT_TYPE_CONFIG } from '@/config/constants';
 import type { Match, MatchStatus } from '@/types/match';
 import type { SportType } from '@/types/user';
@@ -32,6 +33,7 @@ export function MatchListPage() {
   const [page, setPage] = useState(1);
   const [cancelTarget, setCancelTarget] = useState<Match | null>(null);
   const [chatMatchId, setChatMatchId] = useState<string | null>(null);
+  const [metLocationMatch, setMetLocationMatch] = useState<Match | null>(null);
 
   const { data, isLoading } = useMatchList({
     search: search || undefined,
@@ -83,7 +85,7 @@ export function MatchListPage() {
       dataIndex: 'status',
       key: 'status',
       render: (s: MatchStatus) => {
-        const cfg = MATCH_STATUS_CONFIG[s];
+        const cfg = MATCH_STATUS_CONFIG[s] ?? { label: s ?? '-', color: 'default' };
         return <Badge status="processing" text={<Tag color={cfg.color}>{cfg.label}</Tag>} />;
       },
       width: 110,
@@ -106,41 +108,56 @@ export function MatchListPage() {
     {
       title: '액션',
       key: 'actions',
-      render: (_, record) => (
-        <Space>
-          {record.chatRoomId && (
-            <Tooltip title="채팅 보기">
-              <Button
-                type="text"
-                icon={<MessageOutlined />}
-                onClick={() => setChatMatchId(record.id)}
-              />
-            </Tooltip>
-          )}
-          {['CHAT', 'CONFIRMED'].includes(record.status) && (
-            <>
-              <Tooltip title="강제 취소">
+      render: (_, record) => {
+        const hasMetLocation =
+          (record.requesterMetLatitude != null && record.requesterMetLongitude != null) ||
+          (record.opponentMetLatitude != null && record.opponentMetLongitude != null);
+        return (
+          <Space>
+            {hasMetLocation && (
+              <Tooltip title="만남 위치 보기">
                 <Button
                   type="text"
-                  danger
-                  icon={<CloseCircleOutlined />}
-                  onClick={() => setCancelTarget(record)}
+                  icon={<EnvironmentOutlined />}
+                  style={{ color: '#1890ff' }}
+                  onClick={() => setMetLocationMatch(record)}
                 />
               </Tooltip>
-              <Tooltip title="강제 완료">
+            )}
+            {record.chatRoomId && (
+              <Tooltip title="채팅 보기">
                 <Button
                   type="text"
-                  icon={<CheckCircleOutlined />}
-                  style={{ color: '#52c41a' }}
-                  onClick={() => forceCompleteMutation.mutate(record.id)}
-                  loading={forceCompleteMutation.isPending}
+                  icon={<MessageOutlined />}
+                  onClick={() => setChatMatchId(record.id)}
                 />
               </Tooltip>
-            </>
-          )}
-        </Space>
-      ),
-      width: 130,
+            )}
+            {['CHAT', 'CONFIRMED'].includes(record.status) && (
+              <>
+                <Tooltip title="강제 취소">
+                  <Button
+                    type="text"
+                    danger
+                    icon={<CloseCircleOutlined />}
+                    onClick={() => setCancelTarget(record)}
+                  />
+                </Tooltip>
+                <Tooltip title="강제 완료">
+                  <Button
+                    type="text"
+                    icon={<CheckCircleOutlined />}
+                    style={{ color: '#52c41a' }}
+                    onClick={() => forceCompleteMutation.mutate(record.id)}
+                    loading={forceCompleteMutation.isPending}
+                  />
+                </Tooltip>
+              </>
+            )}
+          </Space>
+        );
+      },
+      width: 160,
     },
   ];
 
@@ -220,6 +237,12 @@ export function MatchListPage() {
       <ChatDrawer
         matchId={chatMatchId}
         onClose={() => setChatMatchId(null)}
+      />
+
+      <MetLocationModal
+        open={!!metLocationMatch}
+        match={metLocationMatch}
+        onClose={() => setMetLocationMatch(null)}
       />
 
       <ConfirmAction

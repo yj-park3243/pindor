@@ -15,6 +15,9 @@ import '../providers/profile_provider.dart';
 import '../providers/pin_provider.dart';
 import '../providers/ranking_provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/active_match_rooms_provider.dart';
+import '../core/push/badge_service.dart';
+import '../core/version/version_check_service.dart';
 import '../repositories/matching_repository.dart';
 import '../providers/chat_provider.dart';
 import '../widgets/common/in_app_notification.dart';
@@ -46,7 +49,15 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> with WidgetsBindi
     _startPendingMatchPolling();
     _listenSocketReconnect();
     // 자주 가는 핀이 없으면 무조건 핀 설정 화면으로 이동
-    WidgetsBinding.instance.addPostFrameCallback((_) => _ensureFavoritePin());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _ensureFavoritePin();
+      // 앱 진입 시 unread count 채워두기 — 매칭 카드/탭 배지 표시용
+      try {
+        refreshUnreadCounts(ref);
+      } catch (_) {}
+      // 앱 진입 시 디바이스 배지/전달된 알림 초기화
+      BadgeService.instance.clear();
+    });
   }
 
   /// 자주 가는 핀이 DB에도 없을 때만 location-setup으로 강제 이동.
@@ -132,9 +143,19 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> with WidgetsBindi
     if (state == AppLifecycleState.resumed) {
       // foreground 복귀 시:
       // 1) 끊긴 소켓 즉시 재연결 (백그라운드 동안 OS가 끊었을 가능성)
-      // 2) 매칭 목록 force refresh로 socket이 놓친 PENDING_ACCEPT 보정
+      // 2) 매칭 목록 + 채팅방(unread) 강제 갱신 → 백그라운드 동안 놓친 데이터 보정
       _ensureSocketConnected();
       _checkPendingMatchAndNavigate();
+      try {
+        ref.invalidate(chatRoomListProvider);
+        refreshUnreadCounts(ref);
+      } catch (_) {}
+      // 앱 진입 시 디바이스 배지/전달된 알림 초기화
+      BadgeService.instance.clear();
+      // 백그라운드 동안 운영 측에서 minVersion이 올라갔을 수 있으므로 강제 업데이트 재체크
+      try {
+        VersionCheckService.check(context);
+      } catch (_) {}
     }
   }
 
@@ -185,6 +206,7 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> with WidgetsBindi
       ref.listenManual(socketNotificationProvider, (previous, next) {
         next.whenData((data) {
           final type = data['type'] as String? ?? '';
+          debugPrint('[MainTab] socket notification 수신 type=$type matchId=${data['data']?['matchId']}');
           if (type == 'CHAT_MESSAGE' || type == 'CHAT_IMAGE') {
             // 서버에서 최신 unreadCount 조회
             refreshUnreadCounts(ref);
@@ -207,25 +229,51 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> with WidgetsBindi
           // 매칭 성사 알림 — 수락 화면으로 직접 이동
           if (type == 'MATCH_PENDING_ACCEPT') {
             final matchId = data['data']?['matchId'] as String?;
-            debugPrint('[Match] MATCH_PENDING_ACCEPT 수신 — matchId=$matchId → 수락 화면 이동');
+            debugPrint('[Match] MATCH_PENDING_ACCEPT 수신 — matchId=$matchId');
             ref.invalidate(matchListProvider(null));
             ref.invalidate(matchRequestProvider);
+            ref.read(notificationListProvider.notifier).addNotification(data);
+
+            if (matchId != null && _autoNavigatedMatchIds.contains(matchId)) {
+              debugPrint('[Match] MATCH_PENDING_ACCEPT 이미 처리됨 — skip');
+              return;
+            }
             // addPostFrameCallback: 열린 sheet/dialog와의 Navigator dispose 충돌 방지
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (!mounted) return;
-              if (matchId != null) {
-                context.go('/matches/$matchId/accept');
-              } else {
+              if (matchId == null) {
                 context.go(AppRoutes.matchList);
+                return;
               }
+              // 이미 accept 화면에 있으면 push 안 함
+              final loc = GoRouterState.of(context).matchedLocation;
+              if (loc == '/matches/$matchId/accept') {
+                _autoNavigatedMatchIds.add(matchId);
+                return;
+              }
+              _autoNavigatedMatchIds.add(matchId);
+              debugPrint('[MainTab] go(accept) — from MATCH_PENDING_ACCEPT matchId=$matchId');
+              context.go('/matches/$matchId/accept');
             });
-            ref.read(notificationListProvider.notifier).addNotification(data);
             return;
           }
 
           debugPrint('[Match] 소켓 알림 수신 type=$type matchId=${data['data']?['matchId']}');
 
           // 양측 수락 완료 — 매칭 확정, 목록 갱신 + 상세 화면 이동
+          // 우리 만났어요 — 상대 confirm 알림 (socket 룸 누락 fallback)
+          if (type == 'MATCH_MET_UPDATED') {
+            final matchId = data['data']?['matchId'] as String?;
+            debugPrint('[Match] MATCH_MET_UPDATED 수신 — matchId=$matchId');
+            if (matchId != null) {
+              ref.invalidate(matchDetailProvider(matchId));
+              ref.read(matchListForceRefreshProvider.notifier).state = true;
+              ref.invalidate(matchListProvider(null));
+            }
+            ref.read(notificationListProvider.notifier).addNotification(data);
+            return;
+          }
+
           if (type == 'MATCH_BOTH_ACCEPTED') {
             final matchId = data['data']?['matchId'] as String?;
             debugPrint('[Match] 상대 수락 완료 (MATCH_BOTH_ACCEPTED) — matchId=$matchId');
@@ -321,36 +369,50 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> with WidgetsBindi
         next.whenData((data) {
           final matchId = data['matchId'] as String?;
           debugPrint('[Match] MATCH_FOUND 수신 — matchId=$matchId');
-          if (matchId != null && mounted) {
-            _autoNavigatedMatchIds.add(matchId);
-            SocketService.instance.joinMatch(matchId);
-            ref.invalidate(matchListProvider(null));
-            ref.invalidate(matchRequestProvider);
-            context.go('/matches/$matchId/accept');
+          if (matchId == null || !mounted) return;
+          // 같은 matchId 중복 navigation 차단 (무한 루프 방지)
+          if (_autoNavigatedMatchIds.contains(matchId)) {
+            debugPrint('[Match] MATCH_FOUND 이미 처리됨 — skip');
+            return;
           }
+          // 이미 accept 화면에 있으면 다시 push 안 함
+          final loc = GoRouterState.of(context).matchedLocation;
+          if (loc == '/matches/$matchId/accept') {
+            _autoNavigatedMatchIds.add(matchId);
+            return;
+          }
+          _autoNavigatedMatchIds.add(matchId);
+          SocketService.instance.joinMatch(matchId);
+          ref.invalidate(matchListProvider(null));
+          ref.invalidate(matchRequestProvider);
+          debugPrint('[MainTab] go(accept) — from MATCH_FOUND matchId=$matchId');
+          context.go('/matches/$matchId/accept');
         });
       });
 
-      // 매칭 목록 변경 listen — socket 누락 fallback.
-      // 새 PENDING_ACCEPT 매칭이 발견되면 accept 페이지로 자동 이동.
+      // 매칭 목록 변경 listen — socket 누락 fallback + 활성 매칭 룸 동기화
       ref.listenManual(matchListProvider(null), (prev, next) {
         next.whenData((matches) {
           if (!mounted) return;
+
+          // 활성 매칭(PENDING_ACCEPT/CHAT/CONFIRMED) 룸 join 상태를 글로벌 매니저로 동기화.
+          // 화면별 join/leave에 의존하지 않고 앱 런타임 내내 룸 유지.
+          ref.read(activeMatchRoomsProvider.notifier).sync(matches);
+
+          // 새 PENDING_ACCEPT 매칭이 발견되면 accept 페이지로 자동 이동.
           final loc = GoRouterState.of(context).matchedLocation;
-          // 이미 매칭/채팅 화면에 있으면 자동 이동 X
           if (loc.startsWith('/matches/') || loc.startsWith('/chats/')) return;
           final myUserId = ref.read(currentUserProvider)?.id;
           for (final m in matches) {
             if (m.status != 'PENDING_ACCEPT') continue;
             // 본인이 이미 수락한 상태면 자동 이동 X (상대 응답 대기 중)
-            // 상대만 수락한 경우는 myAccepted=false → 본인 수락 화면으로 이동해야 함
             final myAccepted = myUserId != null &&
                 (m.acceptances?.any((a) => a.userId == myUserId && a.accepted == true) ?? false);
             if (myAccepted) continue;
-            // 한 번 자동 이동한 ID는 중복 이동 안 함
             if (_autoNavigatedMatchIds.contains(m.id)) continue;
             debugPrint('[Match] PENDING_ACCEPT 폴링 fallback 감지 — matchId=${m.id} → 수락 화면 이동');
             _autoNavigatedMatchIds.add(m.id);
+            debugPrint('[MainTab] go(accept) — from matchListProvider polling matchId=${m.id}');
             context.go('/matches/${m.id}/accept');
             break;
           }
@@ -365,6 +427,11 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> with WidgetsBindi
           debugPrint('[Match] MATCH_STATUS_CHANGED 수신 — matchId=$matchId status=$status');
 
           if (matchId != null) {
+            // 매치 상태가 바뀌었을 때 로컬 SQLite 캐시가 stale일 수 있으므로
+            // 무조건 캐시 비우고 서버에서 강제 재조회.
+            try {
+              ref.read(matchingRepositoryProvider).clearLocalCache();
+            } catch (_) {}
             ref.read(matchListForceRefreshProvider.notifier).state = true;
             ref.invalidate(matchListProvider(null));
             ref.invalidate(matchDetailProvider(matchId));
@@ -388,7 +455,16 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> with WidgetsBindi
           //  C) 그 외 화면(홈/핀/마이/다른 매칭 상세 등) — 무시
           if (status == 'CHAT' && matchId != null && mounted) {
             final loc = GoRouterState.of(context).matchedLocation;
-            final shouldNavigate = loc == '/matches/$matchId/accept' || loc == '/matches';
+            // accept 화면 + 매칭 목록(/matches와 그 자식 경로)에서는 매칭 상세로 자동 이동
+            final shouldNavigate = loc == '/matches/$matchId/accept' ||
+                loc == '/matches' ||
+                loc.startsWith('/matches?');
+            debugPrint(
+              '[MainTab] MATCH_STATUS_CHANGED CHAT matchId=$matchId loc=$loc shouldNavigate=$shouldNavigate',
+            );
+            // CHAT 상태가 됐어도 _autoNavigatedMatchIds 는 유지해야 함
+            // (PENDING_ACCEPT 폴링이 stale 데이터로 다시 accept으로 push하는 race 차단)
+            _autoNavigatedMatchIds.add(matchId);
             if (shouldNavigate) {
               AppToast.success('매칭이 확정되었습니다! 🎉');
               WidgetsBinding.instance.addPostFrameCallback((_) {

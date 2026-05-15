@@ -3,7 +3,13 @@ import type { SportType, SportsProfile, User } from './user';
 export type MatchRequestStatus = 'WAITING' | 'MATCHED' | 'CANCELLED' | 'EXPIRED';
 export type MatchRequestType = 'SCHEDULED' | 'INSTANT';
 export type TimeSlot = 'MORNING' | 'AFTERNOON' | 'EVENING' | 'ANY';
-export type MatchStatus = 'CHAT' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED' | 'DISPUTED';
+export type MatchStatus =
+  | 'PENDING_ACCEPT'
+  | 'CHAT'
+  | 'CONFIRMED'
+  | 'COMPLETED'
+  | 'CANCELLED'
+  | 'DISPUTED';
 
 export interface MatchRequest {
   id: string;
@@ -37,6 +43,12 @@ export interface Match {
   confirmedAt: string | null;
   completedAt: string | null;
   createdAt: string;
+  requesterMetConfirmedAt: string | null;
+  opponentMetConfirmedAt: string | null;
+  requesterMetLatitude: number | null;
+  requesterMetLongitude: number | null;
+  opponentMetLatitude: number | null;
+  opponentMetLongitude: number | null;
 }
 
 export interface MatchListFilter {

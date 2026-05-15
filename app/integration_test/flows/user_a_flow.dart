@@ -160,8 +160,12 @@ Future<void> runUserAFlow(
   if (pins.isEmpty) {
     throw Exception('[UserA] 핀이 없습니다. 서버에 핀 데이터를 먼저 추가해주세요.');
   }
-  final pinId = pins.first['id'] as String;
-  debugPrint('[UserA] 핀 선택: $pinId (${pins.first['name']})');
+  final selected = pins.firstWhere(
+    (p) => p['name'] == TestConfig.testPinName,
+    orElse: () => pins.first,
+  );
+  final pinId = selected['id'] as String;
+  debugPrint('[UserA] 핀 선택: $pinId (${selected['name']})');
 
   // ── 10. 매칭 요청 생성 (API) ────────────────────────────────────
   debugPrint('[UserA] 매칭 요청 생성');

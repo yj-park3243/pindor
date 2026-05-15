@@ -27,6 +27,7 @@ export const ROUTES = {
 
   SETTINGS_ACCOUNTS: '/settings/accounts',
   SETTINGS_SYSTEM: '/settings/system',
+  SETTINGS_VERSION_LOGS: '/settings/version-logs',
 
   TEAMS: '/teams',
   TEAM_DETAIL: '/teams/:id',
@@ -35,6 +36,8 @@ export const ROUTES = {
   NOTICES: '/notices',
 
   DISPUTES: '/disputes',
+
+  INQUIRIES: '/inquiries',
 
   NOSHOW_REPORTS: '/noshow-reports',
 } as const;

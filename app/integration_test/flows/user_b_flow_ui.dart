@@ -48,18 +48,38 @@ Future<void> runUserBFlowUI(
     }
   }
 
-  // 1. 홈 + 알림 팝업
-  await tester.pumpAndSettle(const Duration(seconds: 3));
-  await _safeTap(tester, find.text('허용'), 'notif-allow');
-  await tester.pumpAndSettle(const Duration(seconds: 1));
-  expect(find.text('홈'), findsWidgets, reason: '자동 로그인 실패');
+  // 1. 홈 + 알림/위치 권한 + 강제업데이트 팝업 처리
+  for (var i = 0; i < 8; i++) {
+    try {
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+    } catch (_) {
+      await tester.pump(const Duration(seconds: 1));
+    }
+    // 자주 등장하는 권한/공지 버튼 dismiss
+    for (final label in ['허용', '확인', '나중에', '닫기']) {
+      final f = find.text(label);
+      if (f.evaluate().isNotEmpty) {
+        try {
+          await tester.tap(f.first, warnIfMissed: false);
+          await tester.pump(const Duration(milliseconds: 400));
+        } catch (_) {}
+      }
+    }
+    if (find.text('오늘 대결 나가고 싶다!').evaluate().isNotEmpty) break;
+  }
+  expect(find.text('오늘 대결 나가고 싶다!'), findsWidgets,
+      reason: '자동 로그인 실패');
   await shot('01_home');
 
   // 2. 매칭 요청
   final pins = await api.getAllPins(token);
   if (pins.isEmpty) throw Exception('[UserB] 핀 데이터 없음');
-  final pinId = pins.first['id'] as String;
-  debugPrint('[UserB] 핀: $pinId (${pins.first['name']})');
+  final selected = pins.firstWhere(
+    (p) => p['name'] == TestConfig.testPinName,
+    orElse: () => pins.first,
+  );
+  final pinId = selected['id'] as String;
+  debugPrint('[UserB] 핀: $pinId (${selected['name']})');
 
   final matchReq = await api.createMatchRequest(
     token,
@@ -88,15 +108,13 @@ Future<void> runUserBFlowUI(
   await _safeTap(tester, find.text('매칭'), 'nav-match');
   await shot('02_match_list');
 
-  // 4. 매칭 아이템 탭
-  await _safeTap(tester, find.byType(InkWell), 'match-item');
-  await shot('03_match_accept');
-
-  // 5. API 수락
+  // 4. API 수락 (UI 거절 시트가 뜨지 않도록 직접 API)
   if (pending['status'] == 'PENDING_ACCEPT') {
     await api.acceptMatch(token, matchId);
     debugPrint('[UserB] 수락 완료');
   }
+  await tester.pumpAndSettle(const Duration(seconds: 2));
+  await shot('03_match_accept');
 
   // 6. CHAT 대기
   final accepted = await api.pollUntil<Map<String, dynamic>>(

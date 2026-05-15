@@ -70,3 +70,19 @@ temp/
 *.tgz
 server/tests/matching-test-results.json
 docs/data/
+
+# ─── E2E test artifacts (스크린샷/동영상/로그) ───
+test_results/
+app/test_screenshots/
+app/test_results/
+admin-e2e/test-results/
+admin-e2e/playwright-report/
+
+# ─── 테스트 실행 스크립트 / 데이터 (로컬 전용, git 미추적) ───
+app/run_*.sh
+app/test_matching.sh
+admin-e2e/run.sh
+e2e-tests/run-tests.sh
+test-client/serve.sh
+test-client/test-users.json
+server/tests/*.json

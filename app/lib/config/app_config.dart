@@ -11,7 +11,11 @@ class AppConfig {
   static bool get isProduction => _env == 'production';
 
   // ─── API 설정 ───
-  static const String _apiHost = 'https://api.pins.kr';
+  // 빌드 시 dart-define=API_HOST=https://api-staging.pins.kr 로 override 가능 (E2E 등)
+  static const String _apiHost = String.fromEnvironment(
+    'API_HOST',
+    defaultValue: 'https://api.pins.kr',
+  );
 
   static String get apiBaseUrl => '$_apiHost/v1';
   static String get socketUrl => _apiHost;

@@ -9,6 +9,8 @@ export async function registerRateLimit(fastify: FastifyInstance): Promise<void>
     max: env.RATE_LIMIT_MAX,
     timeWindow: env.RATE_LIMIT_WINDOW_MS,
     redis,
+    // CORS preflight(OPTIONS)은 카운트 제외 — 차단 시 ACAO 헤더가 빠져 브라우저가 CORS로 인식
+    allowList: (request) => request.method === 'OPTIONS',
     keyGenerator(request) {
       // 인증된 사용자는 userId 기반, 미인증은 IP 기반
       const userId = (request as any).user?.userId;

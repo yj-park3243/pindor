@@ -9,6 +9,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:flutter_naver_map/flutter_naver_map.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'config/router.dart';
 import 'config/theme.dart';
 import 'widgets/common/ambient_glow_background.dart';
@@ -91,10 +92,18 @@ Future<void> main() async {
       };
 
       // 네이버 지도 SDK 초기화
-      await FlutterNaverMap().init(
-        clientId: '539desbv96',
-        onAuthFailed: (ex) => debugPrint('NaverMap auth failed: $ex'),
-      );
+      // E2E 테스트(TEST_MODE)에선 스킵 — NaverMap iOS SDK 가 위치 권한 다이얼로그를
+      // 띄워 시뮬레이터 화면을 가리고 테스트를 막는다. 테스트 경로엔 지도가 없다.
+      const isE2E = bool.fromEnvironment('TEST_MODE', defaultValue: false);
+      if (!isE2E) {
+        await FlutterNaverMap().init(
+          clientId: '539desbv96',
+          onAuthFailed: (ex) => debugPrint('NaverMap auth failed: $ex'),
+        );
+      }
+
+      // Google Mobile Ads 초기화 (실패해도 앱은 계속 동작)
+      unawaited(MobileAds.instance.initialize());
 
       // FCM 백그라운드 핸들러 등록
       FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
@@ -200,9 +209,17 @@ class _AppInitializerState extends ConsumerState<_AppInitializer>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializePush();
       // 버전 체크 (인증 불필요, 실패해도 앱 계속 동작)
+      debugPrint('[VersionCheck] _AppInitializer PostFrame — check 시작');
       VersionCheckService.check(context);
       // 오프라인 큐 감시 시작 + 대기 작업 처리
       ref.read(offlineQueueServiceProvider).processQueue();
+    });
+
+    // 라우터 변경/위젯 rebuild 시 누락 가능성 대비 — 5초 후 한 번 더 보강 체크
+    Future.delayed(const Duration(seconds: 5), () {
+      if (!mounted) return;
+      debugPrint('[VersionCheck] 5초 보강 — check 재시도');
+      VersionCheckService.check(context);
     });
   }
 

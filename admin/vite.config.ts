@@ -31,7 +31,7 @@ export default defineConfig({
           'vendor-antd': ['antd', '@ant-design/icons', '@ant-design/pro-components'],
           'vendor-query': ['@tanstack/react-query'],
           'vendor-charts': ['recharts'],
-          'vendor-map': ['react-leaflet', 'leaflet'],
+          'vendor-map': ['react-naver-maps'],
           'vendor-utils': ['axios', 'dayjs', 'zustand'],
         },
       },

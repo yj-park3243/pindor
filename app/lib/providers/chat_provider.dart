@@ -149,17 +149,48 @@ class ChatMessagesNotifier
   late String _roomId;
   StreamSubscription<Map<String, dynamic>>? _messageSubscription;
   StreamSubscription<Map<String, dynamic>>? _messagesReadSubscription;
+  StreamSubscription<bool>? _connStateSubscription;
+  Timer? _keepAliveTimer;
 
   @override
   Future<List<Message>> build(String roomId) async {
     _roomId = roomId;
     SocketService.instance.joinRoom(roomId);
 
+    // 소켓 연결 상태가 바뀔 때마다 룸 재입장을 보장한다.
+    // - 끊김(false): joinRoom 이 _ensureConnected 로 재연결을 트리거
+    // - 재연결됨(true): onConnect 핸들러 내부의 JOIN_ROOM emit 이 간헐적으로 유실되므로,
+    //   일반 코드 흐름에서 joinRoom 을 한 번 더 호출해 emit 을 확실히 전송한다.
+    // build() 는 keepAlive 로 한 번만 실행되므로 이 감시가 없으면 채팅방에 머무는 동안
+    // 소켓이 끊긴 채 복구되지 않아 메시지 송수신이 막힌다 (앱 재시작 전까지).
+    _connStateSubscription?.cancel();
+    _connStateSubscription =
+        SocketService.instance.onConnectionState.listen((_) {
+      SocketService.instance.joinRoom(roomId);
+    });
+
+    // 화면이 잠시 unmount되어도 30분간 캐시 유지 → autoDispose GC로 인한
+    // leaveRoom/rejoinRoom race condition (읽음 처리 누락) 방지.
+    // E2E(TEST_MODE)에선 스킵 — 30분 Timer 가 테스트 종료까지 pending 으로 남아
+    // provider 가 dispose 되지 않고 finalize assertion 을 유발한다.
+    const isE2E = bool.fromEnvironment('TEST_MODE', defaultValue: false);
+    if (!isE2E) {
+      final link = ref.keepAlive();
+      _keepAliveTimer?.cancel();
+      _keepAliveTimer = Timer(const Duration(minutes: 30), () {
+        link.close();
+      });
+    }
+
     ref.onDispose(() {
       _messageSubscription?.cancel();
       _messageSubscription = null;
       _messagesReadSubscription?.cancel();
       _messagesReadSubscription = null;
+      _connStateSubscription?.cancel();
+      _connStateSubscription = null;
+      _keepAliveTimer?.cancel();
+      _keepAliveTimer = null;
       SocketService.instance.leaveRoom(roomId);
     });
 
@@ -216,6 +247,7 @@ class ChatMessagesNotifier
   void _setupSocketListener(String roomId) {
     _messageSubscription?.cancel();
     _messageSubscription = SocketService.instance.onNewMessage.listen((data) async {
+      debugPrint('[Chat] onNewMessage 콜백: data.roomId=${data['roomId']} 기대=$roomId 일치=${data['roomId'] == roomId}');
       if (data['roomId'] == roomId) {
         final message = Message.fromSocketData(data);
 
@@ -228,6 +260,9 @@ class ChatMessagesNotifier
         // 중복 방지
         if (!currentMessages.any((m) => m.id == message.id)) {
           state = AsyncData([...currentMessages, message]);
+          debugPrint('[Chat] state 갱신: content=${message.content} 총 ${currentMessages.length + 1}개');
+        } else {
+          debugPrint('[Chat] state 갱신 스킵(중복): content=${message.content}');
         }
 
         // 채팅방 목록의 lastMessage도 업데이트

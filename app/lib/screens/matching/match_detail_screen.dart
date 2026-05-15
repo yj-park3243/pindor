@@ -494,6 +494,9 @@ class MatchDetailScreen extends ConsumerWidget {
     final matchAsync = ref.watch(matchDetailProvider(matchId));
 
     return matchAsync.when(
+      // socket 이벤트로 invalidate 될 때 loading 화면으로 전환하지 않음.
+      // _MatchDetailContent 가 dispose 되면 socket 구독이 끊겨 이벤트가 유실됨.
+      skipLoadingOnReload: true,
       loading: () => const Scaffold(
         backgroundColor: AppTheme.backgroundDark,
         body: FullScreenLoading(),
@@ -521,30 +524,9 @@ class MatchDetailScreen extends ConsumerWidget {
         ),
       ),
       data: (match) {
-        // PENDING_ACCEPT 매칭에 잘못 진입한 경우 — 수락 페이지로 보낸다
-        // (매칭 목록으로 보내면 _redirectedAcceptIds 가드와 함께 무한 redirect 루프 발생)
-        if (match.status == 'PENDING_ACCEPT') {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!context.mounted) return;
-            // 양측 모두 미응답이면 수락 페이지, 내가 수락 후 상대 대기면 목록
-            final myAccepted =
-                match.acceptances?.any((a) => a.accepted == true) ?? false;
-            if (myAccepted) {
-              AppToast.info('상대 응답을 기다리고 있습니다.');
-              if (context.canPop()) {
-                context.pop();
-              } else {
-                context.go('/matches');
-              }
-            } else {
-              context.go('/matches/${match.id}/accept');
-            }
-          });
-          return const Scaffold(
-            backgroundColor: AppTheme.backgroundDark,
-            body: FullScreenLoading(),
-          );
-        }
+        // PENDING_ACCEPT 매칭에 진입한 경우 — redirect 안 하고 그냥 그대로 표시.
+        // (이전엔 accept 페이지로 push했으나 무한 mount/redirect 루프 유발).
+        // accept 화면 진입은 main_tab_screen의 socket 이벤트/폴링 listener가 담당.
 
         final shouldLock = false;
         // 노쇼 신고 가능 상태: CHAT 또는 CONFIRMED
@@ -643,8 +625,8 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
   @override
   void initState() {
     super.initState();
-    // 화면 진입 시 매칭 룸 조인 (실시간 상태 변경 수신)
-    SocketService.instance.joinMatch(widget.matchId);
+    // 매칭 룸 join/leave는 글로벌 activeMatchRoomsProvider 가 관리.
+    // 본 화면에서는 별도 join 호출 없음 (이미 매니저가 보장).
 
     // 소켓 매칭 상태 변경 이벤트 구독
     _statusSub = SocketService.instance.onMatchStatusChanged
@@ -673,12 +655,7 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
   void dispose() {
     _statusSub?.cancel();
     _metSub?.cancel();
-    // 활성 매칭은 룸 유지 (main_tab_screen이 COMPLETED/CANCELLED 시 퇴장 처리)
-    // COMPLETED/CANCELLED일 때만 퇴장
-    final status = _lastKnownStatus ?? widget.match.status;
-    if (status == 'COMPLETED' || status == 'CANCELLED') {
-      SocketService.instance.leaveMatch(widget.matchId);
-    }
+    // 매칭 룸 leave는 activeMatchRoomsProvider 가 매칭 상태 변경(COMPLETED/CANCELLED)을 감지해 처리.
     super.dispose();
   }
 
@@ -755,6 +732,7 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
                     width: double.infinity,
                     height: 52,
                     child: ElevatedButton.icon(
+                      key: const Key('match_detail_submit_result_btn'),
                       onPressed: (!match.bothMetConfirmed || isResultSubmitted)
                           ? null
                           : () async {
@@ -1514,8 +1492,253 @@ class _MatchupCard extends ConsumerWidget {
               ),
             ),
           ],
+
+          // 상대전적 카드 (head-to-head): 누적 승률 + 마지막 대결일 + 최근 폼
+          if (match.headToHead != null && match.headToHead!.totalGames > 0)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: _HeadToHeadCard(
+                headToHead: match.headToHead!,
+                opponentNickname: opponent.nickname,
+              ),
+            ),
         ],
       ),
+    );
+  }
+}
+
+/// 상대전적 카드 — A vs B 누적 승률, 마지막 대결일, 최근 폼 (최근 10경기)
+class _HeadToHeadCard extends StatelessWidget {
+  final HeadToHead headToHead;
+  final String opponentNickname;
+
+  const _HeadToHeadCard({
+    required this.headToHead,
+    required this.opponentNickname,
+  });
+
+  String _formatLastMet(DateTime? dt) {
+    if (dt == null) return '-';
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inDays == 0) return '오늘';
+    if (diff.inDays == 1) return '어제';
+    if (diff.inDays < 7) return '${diff.inDays}일 전';
+    if (diff.inDays < 30) return '${diff.inDays ~/ 7}주 전';
+    if (diff.inDays < 365) return '${diff.inDays ~/ 30}달 전';
+    return '${diff.inDays ~/ 365}년 전';
+  }
+
+  Color _formColor(String r) {
+    switch (r) {
+      case 'W':
+        return AppTheme.stateCompleted;
+      case 'L':
+        return AppTheme.rejectColor;
+      default:
+        return AppTheme.textSecondary;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final h = headToHead;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.cardDark,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.borderColor, width: 0.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.history_rounded,
+                  size: 18, color: AppTheme.primaryColor),
+              const SizedBox(width: 6),
+              const Text(
+                '상대전적',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${h.totalGames}경기',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppTheme.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // 승/패/무 + 승률
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  children: [
+                    Text(
+                      '${h.winRate}%',
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        color: AppTheme.primaryColor,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      '내 승률',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppTheme.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                height: 40,
+                width: 1,
+                color: AppTheme.borderColor,
+              ),
+              Expanded(
+                flex: 2,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _RecordCol(label: '승', value: h.wins, color: AppTheme.stateCompleted),
+                    _RecordCol(label: '패', value: h.losses, color: AppTheme.rejectColor),
+                    _RecordCol(label: '무', value: h.draws, color: AppTheme.textSecondary),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          const Divider(height: 1),
+          const SizedBox(height: 14),
+
+          // 최근 폼 (가장 최근이 왼쪽)
+          Row(
+            children: [
+              const Text(
+                '최근 폼',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textSecondary,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Row(
+                  children: [
+                    for (final r in h.recentForm)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 4),
+                        child: Container(
+                          width: 22,
+                          height: 22,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: _formColor(r).withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: _formColor(r).withValues(alpha: 0.6),
+                              width: 1,
+                            ),
+                          ),
+                          child: Text(
+                            r,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: _formColor(r),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // 마지막 대결일
+          Row(
+            children: [
+              const Icon(Icons.event_rounded,
+                  size: 14, color: AppTheme.textSecondary),
+              const SizedBox(width: 4),
+              const Text(
+                '마지막 대결',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: AppTheme.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                _formatLastMet(h.lastMetAt),
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecordCol extends StatelessWidget {
+  final String label;
+  final int value;
+  final Color color;
+
+  const _RecordCol({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          '$value',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            color: color,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 11,
+            color: AppTheme.textSecondary,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1585,6 +1808,7 @@ class _MetConfirmButtonState extends ConsumerState<_MetConfirmButton> {
             child: const Text("취소"),
           ),
           ElevatedButton(
+            key: const Key('match_detail_confirm_met_dialog_ok'),
             onPressed: () => Navigator.of(ctx).pop(true),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primaryColor,
@@ -1618,7 +1842,7 @@ class _MetConfirmButtonState extends ConsumerState<_MetConfirmButton> {
       ref.invalidate(matchDetailProvider(widget.match.id));
       widget.onMetUpdated();
     } catch (e) {
-      if (mounted) AppToast.error("만남 확인에 실패했습니다");
+      if (mounted) AppToast.error(extractErrorMessage(e, '만남 확인에 실패했습니다'));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -1670,6 +1894,7 @@ class _MetConfirmButtonState extends ConsumerState<_MetConfirmButton> {
       width: double.infinity,
       height: 52,
       child: ElevatedButton.icon(
+        key: const Key('match_detail_confirm_met_btn'),
         onPressed: _submitting ? null : _confirmMet,
         icon: _submitting
             ? const SizedBox(

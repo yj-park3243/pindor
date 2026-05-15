@@ -1,18 +1,9 @@
-import { useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
-import L from 'leaflet';
+import { Suspense, useState } from 'react';
+import { Spin } from 'antd';
+import { Container, NaverMap, Marker, InfoWindow, Listener, useNavermaps } from 'react-naver-maps';
 import type { Pin } from '@/types/pin';
 import { PIN_LEVEL_CONFIG } from '@/config/constants';
 
-// Leaflet 기본 아이콘 문제 수정
-delete (L.Icon.Default.prototype as { _getIconUrl?: unknown })._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-});
-
-// 핀 레벨별 아이콘 색상
 const PIN_COLORS: Record<string, string> = {
   DONG: '#1890ff',
   GU: '#52c41a',
@@ -20,25 +11,28 @@ const PIN_COLORS: Record<string, string> = {
   PROVINCE: '#722ed1',
 };
 
-function createPinIcon(level: string, isActive: boolean, selected = false) {
-  const color = isActive ? (PIN_COLORS[level] || '#1890ff') : '#d9d9d9';
+function pinIconHtml(level: string, isActive: boolean, selected: boolean): string {
+  const color = isActive ? PIN_COLORS[level] || '#1890ff' : '#d9d9d9';
   const size = selected ? 32 : 24;
-  return L.divIcon({
-    className: '',
-    html: `
-      <div style="
-        background: ${color};
-        width: ${size}px;
-        height: ${size}px;
-        border-radius: 50% 50% 50% 0;
-        transform: rotate(-45deg);
-        border: ${selected ? '3px' : '2px'} solid #fff;
-        box-shadow: ${selected ? '0 0 0 3px ' + color + ', 0 2px 6px rgba(0,0,0,0.4)' : '0 2px 4px rgba(0,0,0,0.3)'};
-      "></div>
-    `,
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size],
-  });
+  const shadow = selected
+    ? `0 0 0 3px ${color}, 0 2px 6px rgba(0,0,0,0.4)`
+    : '0 2px 4px rgba(0,0,0,0.3)';
+  const border = selected ? '3px' : '2px';
+  return `<div style="background:${color};width:${size}px;height:${size}px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:${border} solid #fff;box-shadow:${shadow};"></div>`;
+}
+
+function popupHtml(pin: Pin): string {
+  const levelLabel = PIN_LEVEL_CONFIG[pin.level]?.label || pin.level;
+  const statusColor = pin.isActive ? '#52c41a' : '#999';
+  const statusLabel = pin.isActive ? '활성' : '비활성';
+  return `
+    <div style="min-width:140px;padding:8px 10px;font-size:13px;line-height:1.6;">
+      <strong>${pin.name}</strong><br/>
+      <span style="font-size:12px;color:#666;">레벨: ${levelLabel}</span><br/>
+      <span style="font-size:12px;color:#666;">사용자 수: ${pin.userCount.toLocaleString()}명</span><br/>
+      <span style="font-size:11px;color:${statusColor};">${statusLabel}</span>
+    </div>
+  `;
 }
 
 interface MapViewProps {
@@ -53,34 +47,35 @@ interface MapViewProps {
   onMapClick?: (lat: number, lng: number) => void;
 }
 
-// 지도 중심 이동 컴포넌트
-function MapController({ center, zoom }: { center?: [number, number]; zoom?: number }) {
-  const map = useMap();
-  const prevCenter = useRef<[number, number] | undefined>(undefined);
-
-  useEffect(() => {
-    if (center && center !== prevCenter.current) {
-      map.setView(center, zoom || map.getZoom());
-      prevCenter.current = center;
-    }
-  }, [center, zoom, map]);
-
-  return null;
+function MapFallback({ height }: { height: number | string }) {
+  return (
+    <div
+      style={{
+        height,
+        width: '100%',
+        borderRadius: 8,
+        background: '#f5f5f5',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Spin />
+    </div>
+  );
 }
 
-// 지도 클릭 이벤트 핸들러
-function ClickHandler({ onMapClick }: { onMapClick: (lat: number, lng: number) => void }) {
-  useMapEvents({
-    click(e) {
-      onMapClick(e.latlng.lat, e.latlng.lng);
-    },
-  });
-  return null;
+export function MapView(props: MapViewProps) {
+  return (
+    <Suspense fallback={<MapFallback height={props.height ?? 500} />}>
+      <MapViewContent {...props} />
+    </Suspense>
+  );
 }
 
-export function MapView({
+function MapViewContent({
   pins = [],
-  center = [37.5665, 126.978], // 서울 기본값
+  center = [37.5665, 126.978],
   zoom = 10,
   height = 500,
   onPinClick,
@@ -89,63 +84,58 @@ export function MapView({
   onPinDragEnd,
   onMapClick,
 }: MapViewProps) {
+  const navermaps = useNavermaps();
+  const [openPinId, setOpenPinId] = useState<string | null>(null);
+
+  const openedPin = openPinId ? pins.find((p) => p.id === openPinId) : null;
+
   return (
-    <MapContainer
-      center={center}
-      zoom={zoom}
-      style={{ height, width: '100%', borderRadius: 8 }}
-    >
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
-      <MapController center={center} zoom={zoom} />
+    <Container style={{ height, width: '100%', borderRadius: 8, overflow: 'hidden' }}>
+      <NaverMap
+        center={new navermaps.LatLng(center[0], center[1])}
+        zoom={zoom}
+      >
+        {onMapClick && (
+          <Listener
+            type="click"
+            listener={(e: naver.maps.PointerEvent) => onMapClick(e.coord.y, e.coord.x)}
+          />
+        )}
 
-      {onMapClick && <ClickHandler onMapClick={onMapClick} />}
+        {pins.map((pin) => {
+          const isSelected = pin.id === selectedPinId;
+          const size = isSelected ? 32 : 24;
+          return (
+            <Marker
+              key={pin.id}
+              position={new navermaps.LatLng(pin.center.lat, pin.center.lng)}
+              icon={{
+                content: pinIconHtml(pin.level, pin.isActive, isSelected),
+                anchor: new navermaps.Point(size / 2, size),
+              }}
+              draggable={editable}
+              onClick={() => {
+                onPinClick?.(pin);
+                setOpenPinId(pin.id);
+              }}
+              onDragend={
+                editable
+                  ? (e: naver.maps.PointerEvent) =>
+                      onPinDragEnd?.(pin.id, e.coord.y, e.coord.x)
+                  : undefined
+              }
+            />
+          );
+        })}
 
-      {pins.map((pin) => {
-        const isSelected = pin.id === selectedPinId;
-        return (
-          <Marker
-            key={pin.id}
-            position={[pin.center.lat, pin.center.lng]}
-            icon={createPinIcon(pin.level, pin.isActive, isSelected)}
-            draggable={editable}
-            eventHandlers={{
-              click: () => onPinClick?.(pin),
-              dragend: editable
-                ? (e) => {
-                    const { lat, lng } = (e.target as L.Marker).getLatLng();
-                    onPinDragEnd?.(pin.id, lat, lng);
-                  }
-                : undefined,
-            }}
-          >
-            <Popup>
-              <div style={{ minWidth: 140 }}>
-                <strong>{pin.name}</strong>
-                <br />
-                <span style={{ fontSize: 12, color: '#666' }}>
-                  레벨: {PIN_LEVEL_CONFIG[pin.level]?.label || pin.level}
-                </span>
-                <br />
-                <span style={{ fontSize: 12, color: '#666' }}>
-                  사용자 수: {pin.userCount.toLocaleString()}명
-                </span>
-                <br />
-                <span
-                  style={{
-                    fontSize: 11,
-                    color: pin.isActive ? '#52c41a' : '#999',
-                  }}
-                >
-                  {pin.isActive ? '활성' : '비활성'}
-                </span>
-              </div>
-            </Popup>
-          </Marker>
-        );
-      })}
-    </MapContainer>
+        {openedPin && (
+          <InfoWindow
+            position={new navermaps.LatLng(openedPin.center.lat, openedPin.center.lng)}
+            content={popupHtml(openedPin)}
+            pixelOffset={new navermaps.Point(0, -10)}
+          />
+        )}
+      </NaverMap>
+    </Container>
   );
 }
