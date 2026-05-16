@@ -4,7 +4,7 @@
 기존 자동화 테스트 자산 4그룹(앱 integration_test + 서버 E2E + admin E2E + 서버 단위)과
 대조해 도출한 미커버 시나리오와 발견된 정책 갭.
 
-## 1. 본 PR로 새로 추가된 시나리오
+## 1. 추가된 시나리오 (누적)
 
 | ID | 검증 | 자산 | 결과 |
 |----|------|------|------|
@@ -13,34 +13,59 @@
 | MR | JOIN_ROOM 자동 markRead → unreadCount 즉시 갱신 | `scenario_messages_read_test.dart` + `run_scenario_messages_read.sh` | ✅ |
 | RC | 거절 5회 누적 시 15분 쿨다운 enforce | `run_scenario_reject_cooldown.sh` (shell-only) | ✅ |
 | CI | IMAGE 타입 메시지 흐름 + markRead | `run_scenario_chat_image.sh` (shell-only) | ✅ |
+| NB | 노쇼 PENDING 신고 시 24h 임시 매칭 차단 enforce | `run_scenario_noshow_pending_ban.sh` (shell-only) | ✅ (2-A 회귀 차단) |
+| DA | 양측 WIN 충돌 → DRAW_AUTO + ELO 무승부 반영 | `run_scenario_draw_auto.sh` (shell-only) | ✅ (2-B 회귀 차단) |
 
 부수 효과: staging DB 핀(`몬테로이`) + test1/test2 본인인증/스포츠프로필 시드.
-다른 staging 시나리오들도 재실행 가능해짐.
+`run_scenario_2.sh`/`run_scenario_3.sh` 도 ID 동적 추출 + 시드 보강으로 staging 호환.
 
-## 2. 본 PR에서 발견된 server-side 정책 갭
+## 2. server-side 정책 갭 — **본 PR에서 모두 수정 완료**
 
-### 2-A. `matchRequestBanUntil` enforce 누락
-- 위치: `server/src/modules/matching/matching.service.ts`
-- 증상: 노쇼 PENDING 신고 시 신고 대상자의 `matchRequestBanUntil`이 24h로 저장되지만,
-  매칭 요청 진입점(`createMatchRequest`)에서 이 값을 검증하지 않아 ban이 실제로 enforce 안 됨.
-- 영향: 기획서 `noshow-admin-plan.md §4-3, §6.3`의 "신고 즉시 24h 임시 매칭 신청 차단" 정책이 작동하지 않음.
-- 검증: `matchBanUntil`은 line 165~181에서 enforce되지만 `matchRequestBanUntil`은 검색 결과 enforce 코드 0건.
-- 권장: `matchBanUntil` enforce 블록 바로 옆에 동일 패턴으로 `matchRequestBanUntil` 검증 추가 + 별도 시나리오로 회귀 차단.
+### 2-A. `matchRequestBanUntil` enforce 누락 → **수정 완료** ✅
+- 위치: `server/src/modules/matching/matching.service.ts:165~196`
+- 원증상: 노쇼 PENDING 신고 시 `matchRequestBanUntil`이 24h로 저장되지만 매칭 요청 진입점에서 검증 안 되어 ban이 enforce 안 됨.
+- **수정**: `matchBanUntil` enforce 블록 옆에 동일 패턴으로 `matchRequestBanUntil` 검증 추가. error details 에 `reason: 'NOSHOW_REPORT_PENDING'` 포함.
+- 회귀 차단: `run_scenario_noshow_pending_ban.sh` (시나리오 NB).
 
-### 2-B. DRAW_AUTO 상태 미구현
-- 위치: `server/src/modules/games/games.service.ts:378~382`
-- 증상: 기획서 `PRD.md §2.4`는 "양측 승리 주장 시 자동 무승부 (DRAW_AUTO) + 72h 이내 이의신청"인데,
-  실제 코드는 양측 WIN/LOSS 일치 외 모든 케이스를 **DISPUTED**로 처리(어드민 검토 대기).
-- 영향: DRAW_AUTO 상태 자체가 없음. 72h 이의신청 윈도우/ELO 무승부 자동 반영 흐름도 부재.
-- 현재 테스트: `scenario_2_dispute_test.dart`가 실제 코드(DISPUTED)를 검증 중. 기획-구현 정렬 결정 필요.
+### 2-B. DRAW_AUTO 상태 미구현 → **수정 완료** ✅
+- 위치: `server/src/modules/games/games.service.ts:resolveClaimedResults`
+- 원증상: 양측 WIN/LOSS 일치 외 모든 케이스를 **DISPUTED**로 처리 (점수 변동 없음).
+- **수정**:
+  - `GameResultStatus.DRAW_AUTO` enum 값 추가 (entities/enums.ts) + staging DB `ALTER TYPE ... ADD VALUE`.
+  - `resolveClaimedResults` 의 `!isAgreement` 분기를 `DISPUTED` → `DRAW_AUTO` + `applyEloChanges(winnerProfileId=null)` 호출로 변경.
+  - 폴백: `applyEloChanges` 실패 시 기존 `DISPUTED` 동작 유지.
+  - 메시지 변경: "자동 무승부로 처리되었습니다. 72시간 이내 이의 제기를…" 안내 추가.
+- 회귀 차단: `run_scenario_draw_auto.sh` (시나리오 DA) + `scenario_2_dispute_test.dart` 가 DRAW_AUTO 흐름 검증으로 정렬.
 
-## 3. 남은 누락 시나리오 (우선순위별)
+## 3. 본 PR에서 새로 발견된 client-side UI 갭
+
+### 3-A. DRAW_AUTO 상태 미인식 — 매치 카드/상세에서 자기 claim 기반 W/L 표시
+- 위치: 매치 카드(`match_list_screen.dart`) + 매치 상세(`match_detail_screen.dart`)
+- 증상: `game.resultStatus='DRAW_AUTO'`, `winnerProfileId=NULL`, `draws+=1` 이 서버에 정상 반영되지만,
+  클라이언트는 결과 칩/통계를 자기 claim 기반으로 표시:
+  - A 측: "1승 0패 0무" + "승리" 칩 + 최근 폼 W + 100% 승률
+  - B 측: "0승 1패 0무" + "패배" 칩 + 최근 폼 L + 0% 승률
+  - 기대: 양쪽 모두 "0승 0패 1무" + "무승부" 칩 + D + 50%
+- 영향: 사용자가 잘못된 결과로 인식. 이의제기 결정에 혼란.
+- 근거 스크린샷: `app/test_screenshots/scenario2_20260516_134339/userA_12_match_detail_after_result.png`,
+  `userB_12_match_detail_after_result.png`, `userA_14_resolved_state.png`, `userB_14_resolved_state.png`.
+- 권장: `game.winnerProfileId === null && game.resultStatus === 'DRAW_AUTO'` 케이스를 "무승부"로 표시.
+  72h 이내 이의제기 버튼 + 카운트다운 UI 추가.
+- 별도 PR 권장 (UI/UX 변경 범위).
+
+### 3-B. 시나리오 sh `_settle` 시간 부족 — 마이/프로필 캡처에 로딩 스피너만 잡힘
+- 위치: `scenario_2_dispute_test.dart` / `scenario_3_normal_test.dart` 의 phase 15 (`_forceGo('/profile')` 직후).
+- 증상: `_settle(seconds:3)` 이 부족해 ProfileScreen 의 비동기 fetch 완료 전 캡처.
+- 영향: 시각적 회귀 검증 약화. 기능 자체에는 영향 없음.
+- 권장: 프로필 캐릭터 로드 완료를 위한 `_waitFor` 헬퍼 사용 또는 settle 5s 이상.
+
+## 4. 남은 누락 시나리오 (우선순위별)
 
 ### 🚨 High — 운영 핵심
 | # | 시나리오 | 추가 방식 | 비고 |
 |---|---------|----------|------|
 | 5 | 노쇼 INSUFFICIENT 흐름 (자료 요청 → 7일 자동 REJECTED → ban 해제) | admin API + shell | ADMIN_PASSWORD 필요. `runNoshowCleanup` 워커 직접 호출 또는 created_at 조작 |
-| 6 | PENDING 동안 임시 ban (2-A 갭 — server 수정 선행 필요) | 1줄 enforce 추가 후 시나리오 | server 코드 수정이 prerequisite |
+| 5b | DRAW_AUTO 이의제기 72h 윈도우 + 어드민 결과 정정 흐름 | admin Playwright | 본 PR에서 서버 DRAW_AUTO 만 구현 — 이의제기 시간 제한은 미구현 |
 
 ### ⚠️ Medium — 단위 테스트 적합 (server/tests/)
 | # | 시나리오 | 위치 |
@@ -74,16 +99,16 @@
 - 친구/팀 ranked (기획 todo 단계)
 - 부하 테스트 (p95 < 300ms, 5000 동시)
 
-## 4. 카테고리별 커버리지 매트릭스
+## 5. 카테고리별 커버리지 매트릭스
 
 | 카테고리 | 커버율 | 비고 |
 |---|---|---|
 | 인증/회원가입 | 🟡 | 02-users CRUD만. KCP/병합/OAuth/비번재설정 미커버 |
 | 매칭 알고리즘 | 🟢 | 시나리오 10-19 + matching-algorithm.test.ts |
-| 매칭 라이프사이클 | 🟢 | **AT/UC** 추가로 보강. DRAW_AUTO만 갭 |
+| 매칭 라이프사이클 | 🟢 | **AT/UC** 추가로 보강. DRAW_AUTO 서버 구현 완료 |
 | 채팅 | 🟢 | **MR/CI/UC** 추가로 보강. 위치 메시지/제안 카드 미커버 |
-| 게임 결과 | 🟡 | 정상/이의 흐름만. 활동 보너스/허위 누적/OCR 미커버 |
-| 노쇼/이의 | 🟡 | 기본 + admin S1만. **INSUFFICIENT/임시 ban/false_noshow_count 미커버** |
+| 게임 결과 | 🟢 | 정상/이의 + **DRAW_AUTO** 흐름. 활동 보너스/허위 누적/OCR 미커버 |
+| 노쇼/이의 | 🟢 | 기본 + admin S1 + **PENDING 24h ban enforce(NB)**. INSUFFICIENT/false_noshow_count 미커버 |
 | 매너 | 🟡 | 기본 + NOSHOW_AUTO만. cost 보정/voided_at 미커버 |
 | 티어 | 🔴 | 퍼센타일/강등 보호/K계수 단계 모두 미커버 |
 | 핀 시스템 | 🟡 | CRUD만. 활성화 인원/계층/sportType 분리 미커버 |
@@ -95,14 +120,17 @@
 | 인프라/관측성 | 🔴 | 부하/SLO 미커버 |
 | 팀/친구 | ⚪ | 기획 todo 단계, 09-teams API 기본만 |
 
-## 5. 권장 다음 액션 (우선순위)
+## 6. 권장 다음 액션 (우선순위)
 
-1. **2-A `matchRequestBanUntil` enforce 추가** — 1줄 수정 + scenario_noshow_pending_ban.sh 추가 (1시간 작업, 운영 영향 큼)
+1. **3-A DRAW_AUTO 클라이언트 UI 정렬** — 매치 카드/상세에서 `winnerProfileId === null && resultStatus === 'DRAW_AUTO'` 케이스를 "무승부"로 표시 + 72h 이의제기 카운트다운 UI. 별도 PR.
 2. **시나리오 5 INSUFFICIENT** — admin API shell-only (30분 작업, ADMIN_PASSWORD 필요)
 3. **server 단위 테스트 3종** (활동 보너스 / 티어 / 캠페인) — 격리된 환경에서 작성 가능 (각 1~2시간)
-4. **2-B DRAW_AUTO 상태 구현 여부 결정** — 기획-구현 정렬 결정 필요. 구현하면 PRD 정합성↑, DISPUTED 흐름과의 차이 정립 필요
+4. **시나리오 sh `_settle` 시간 보강** — 마이/프로필 캡처에 `_waitFor` 도입 (시각 회귀 검증 강화)
 
-## 6. 본 PR에 포함된 server 변경
+## 7. 본 PR에 포함된 server 변경
 
 - `ACCEPT_TIMEOUT_MS` 환경변수 분리 (matching.service.ts + match-accept-timeout.worker.ts) — 기본 10분, staging .env 에 15초 셋업. prod 영향 없음.
+- `matchRequestBanUntil` enforce 추가 (matching.service.ts:165~196) — 노쇼 PENDING 24h 임시 매칭 차단 정책 enforce.
+- `GameResultStatus.DRAW_AUTO` enum 추가 (entities/enums.ts) + staging DB `ALTER TYPE GameResultStatus ADD VALUE 'DRAW_AUTO'` 적용.
+- 양측 결과 불일치 시 자동 무승부 + ELO 반영 (games.service.ts:resolveClaimedResults) — PRD §2.4 정렬.
 - staging DB 시드: 핀(`몬테로이`) + 본인인증 + sports_profile (`is_placement=false, games_played=10`) — 시나리오 sh 셋업 단계에서 자동 실행.

@@ -35,12 +35,16 @@ Future<void> _shot(String role, String name) async {
   } catch (_) {}
 }
 
-/// 시나리오 2 — 양쪽 동일 결과 → DISPUTED → 이의 제기 → admin 처리
+/// 시나리오 2 — 양쪽 동일 결과 → DRAW_AUTO → 이의 제기 → admin 처리
 ///
-/// 흐름:
-///   A,B: 매칭 → 수락 → CHAT → confirm-met → A WIN / B WIN → DISPUTED
-///   A:   POST /disputes (이의 제기)
-///   admin: PATCH /admin/disputes/:id (VOID_GAME) — 별도 Playwright spec
+/// 흐름 (PRD §2.4):
+///   A,B: 매칭 → 수락 → CHAT → confirm-met → A WIN / B WIN
+///        → 서버가 자동 무승부 처리 (game.resultStatus='DRAW_AUTO',
+///          ELO 무승부 반영, 72h 이내 이의 가능)
+///   A:   POST /disputes (이의 제기, 72h 이내)
+///   admin: PATCH /admin/disputes/:id (VOID_GAME / 결과 정정) — 별도 Playwright spec
+///
+/// 폴백: applyEloChanges 실패 시 게임 DISPUTED 로 떨어질 수 있어 둘 다 허용.
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   final api = ApiHelper();
@@ -204,31 +208,35 @@ void main() {
       await _settle(tester, const Duration(seconds: 2));
       await _shot(role, '13_match_list_after_result');
 
-      // ── 7. DISPUTED 상태 대기 (양쪽 다 WIN 제출 시 서버가 자동 처리) ─
-      final disputedGame = await api.pollUntil<Map<String, dynamic>>(
+      // ── 7. DRAW_AUTO 상태 대기 (PRD §2.4 정렬 후 — 양측 WIN 충돌 시 자동 무승부) ─
+      // 폴백으로 DISPUTED 도 허용 (applyEloChanges 실패 시 폴백 경로)
+      final resolvedGame = await api.pollUntil<Map<String, dynamic>>(
         fetcher: () => api.getGameDetail(accessToken, gameId),
-        condition: (g) =>
-            (g['resultStatus'] as String? ?? '') == 'DISPUTED' ||
-            (g['resultStatus'] as String? ?? '') == 'VERIFIED',
+        condition: (g) {
+          final s = g['resultStatus'] as String? ?? '';
+          return s == 'DRAW_AUTO' || s == 'DISPUTED' || s == 'VERIFIED';
+        },
         maxAttempts: 30,
       );
-      final gameStatus = disputedGame['resultStatus'] as String? ?? '';
+      final gameStatus = resolvedGame['resultStatus'] as String? ?? '';
       debugPrint('[S2-$role] 게임 상태: $gameStatus');
+      expect(gameStatus == 'DRAW_AUTO' || gameStatus == 'DISPUTED', true,
+          reason: '양측 WIN 제출 후 DRAW_AUTO/DISPUTED 둘 다 아님: $gameStatus');
       _forceGo('/matches/$matchId');
       await _settle(tester, const Duration(seconds: 2));
-      await _shot(role, '14_disputed_state');
+      await _shot(role, '14_resolved_state');
 
-      // ── 8. A만 이의 제기 작성 ──────────────────────────────────
-      if (role == 'A' && gameStatus == 'DISPUTED') {
+      // ── 8. A만 이의 제기 작성 (DRAW_AUTO/DISPUTED 둘 다에서 가능) ──
+      if (role == 'A') {
         await Future.delayed(const Duration(seconds: 2));
         final dispute = await api.createDispute(
           accessToken,
           matchId: matchId,
           title: 'E2E 시나리오 2 이의 제기',
           content:
-              '양쪽이 같은 결과를 제출하여 분쟁이 발생했습니다. E2E 테스트용 이의 제기입니다.',
+              '양쪽이 같은 결과를 제출하여 자동 무승부(또는 분쟁)로 처리되었습니다. E2E 테스트용 이의 제기입니다.',
         );
-        debugPrint('[S2-A] 이의 제기 접수: ${dispute['id']}');
+        debugPrint('[S2-A] 이의 제기 접수: ${dispute['id']} (game=$gameStatus)');
         await _settle(tester, const Duration(seconds: 2));
         _forceGo('/profile');
         await _settle(tester, const Duration(seconds: 2));
@@ -236,8 +244,6 @@ void main() {
         _forceGo('/home');
         await _settle(tester, const Duration(seconds: 2));
         await _shot(role, '16_home_after_dispute');
-      } else if (role == 'A') {
-        debugPrint('[S2-A] gameStatus=$gameStatus — DISPUTED 아님, 이의 제기 스킵');
       }
 
       debugPrint('[S2-$role] 완료');

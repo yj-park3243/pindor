@@ -415,59 +415,84 @@ export class GamesService {
         ? '친선 경기 결과가 확정되었습니다.'
         : '경기 결과가 확정되었습니다. 점수가 반영되었습니다.';
     } else {
-      // 결과 불일치 → 점수 변동 없이 DISPUTED 상태로 처리 (어드민 검토 대기)
-      await this.gameRepo.update(gameId, {
-        resultStatus: 'DISPUTED' as any,
-        verifiedAt: new Date(),
-      });
-      const matchRepo = this.dataSource.getRepository(Match);
-      await matchRepo.update(game.matchId, {
-        status: 'COMPLETED' as any,
-        completedAt: new Date(),
-      });
-
-      // DISPUTED여도 배치 진행 카운트는 증가 (점수/승패 통계는 변동 없음)
-      await this.sportsProfileRepo
-        .createQueryBuilder()
-        .update()
-        .set({
-          gamesPlayed: () => 'games_played + 1',
-          isPlacement: () => 'CASE WHEN games_played + 1 < 5 THEN true ELSE false END',
-        })
-        .where('id IN (:...ids)', {
-          ids: [(match.requesterProfile as any).id, (match.opponentProfile as any).id],
-        })
-        .execute();
-
-      // DISPUTED여도 해당 핀에 ranking_entry 생성 (점수 변동 없이 기록만)
-      if (match.pinId) {
-        const rankingEntryRepoDisputed = this.dataSource.getRepository(RankingEntry);
-        const sportType = (match.requesterProfile as any).sportType;
-        for (const profile of [match.requesterProfile, match.opponentProfile]) {
-          const profileId = (profile as any).id;
-          const profileScore = (profile as any).currentScore ?? 1000;
-          const existing = await rankingEntryRepoDisputed.findOne({
-            where: { pinId: match.pinId, sportsProfileId: profileId, sportType: sportType as any },
-          });
-          if (existing) {
-            await rankingEntryRepoDisputed.update(existing.id, {
-              gamesPlayed: (existing.gamesPlayed ?? 0) + 1,
-            });
-          } else {
-            await rankingEntryRepoDisputed.save(rankingEntryRepoDisputed.create({
-              pinId: match.pinId,
-              sportsProfileId: profileId,
-              sportType: sportType as any,
-              score: profileScore,
-              rank: 0,
-              tier: 'IRON' as any,
-              gamesPlayed: 1,
-            }));
-          }
-        }
+      // 결과 불일치 (WIN+WIN, LOSS+LOSS, 한쪽 DRAW 등) → DRAW_AUTO 자동 무승부.
+      // PRD §2.4: 자동 무승부로 ELO 즉시 반영, 72시간 이내 이의제기 가능.
+      // resolvedWinnerProfileId 는 이미 null 로 설정됨 (위 379~382 분기).
+      try {
+        isCasual = await this.applyEloChanges(
+          gameId,
+          { ...game, winnerProfileId: null },
+          match,
+        );
+        // applyEloChanges 는 status='VERIFIED' 로 마무리하므로, DRAW_AUTO 로 덮어쓴다.
+        // (이의제기 기간 추적 + 클라이언트 구분 표시용)
+        await this.gameRepo.update(gameId, {
+          resultStatus: 'DRAW_AUTO' as any,
+        });
+      } catch (eloError) {
+        console.error('[GamesService] DRAW_AUTO applyEloChanges 실패 — DISPUTED 폴백:', eloError);
+        await this.gameRepo.update(gameId, {
+          resultStatus: 'DISPUTED' as any,
+          verifiedAt: new Date(),
+        });
+        const matchRepo = this.dataSource.getRepository(Match);
+        await matchRepo.update(game.matchId, {
+          status: 'COMPLETED' as any,
+          completedAt: new Date(),
+        });
       }
 
-      message = '결과가 일치하지 않아 점수 변동 없이 처리되었습니다. 이의 제기를 통해 운영자에게 검토를 요청할 수 있습니다.';
+      // DRAW_AUTO 정상 처리 시 applyEloChanges 가 batch count + ranking_entry 까지 모두 처리.
+      // 폴백 (DISPUTED) 케이스에서만 수동으로 batch count + ranking_entry 생성.
+      const fellBackToDisputed =
+        (await this.gameRepo.findOne({ where: { id: gameId }, select: { resultStatus: true } as any }))
+          ?.resultStatus === ('DISPUTED' as any);
+      if (fellBackToDisputed) {
+        await this.sportsProfileRepo
+          .createQueryBuilder()
+          .update()
+          .set({
+            gamesPlayed: () => 'games_played + 1',
+            isPlacement: () => 'CASE WHEN games_played + 1 < 5 THEN true ELSE false END',
+          })
+          .where('id IN (:...ids)', {
+            ids: [(match.requesterProfile as any).id, (match.opponentProfile as any).id],
+          })
+          .execute();
+
+        if (match.pinId) {
+          const rankingEntryRepoDisputed = this.dataSource.getRepository(RankingEntry);
+          const sportType = (match.requesterProfile as any).sportType;
+          for (const profile of [match.requesterProfile, match.opponentProfile]) {
+            const profileId = (profile as any).id;
+            const profileScore = (profile as any).currentScore ?? 1000;
+            const existing = await rankingEntryRepoDisputed.findOne({
+              where: { pinId: match.pinId, sportsProfileId: profileId, sportType: sportType as any },
+            });
+            if (existing) {
+              await rankingEntryRepoDisputed.update(existing.id, {
+                gamesPlayed: (existing.gamesPlayed ?? 0) + 1,
+              });
+            } else {
+              await rankingEntryRepoDisputed.save(rankingEntryRepoDisputed.create({
+                pinId: match.pinId,
+                sportsProfileId: profileId,
+                sportType: sportType as any,
+                score: profileScore,
+                rank: 0,
+                tier: 'IRON' as any,
+                gamesPlayed: 1,
+              }));
+            }
+          }
+        }
+        message = '결과가 일치하지 않아 점수 변동 없이 처리되었습니다. 이의 제기를 통해 운영자에게 검토를 요청할 수 있습니다.';
+      } else {
+        // DRAW_AUTO 정상 — ELO 무승부 반영됨. 72h 이내 이의제기 안내.
+        message = isCasual
+          ? '결과가 일치하지 않아 친선 자동 무승부로 처리되었습니다.'
+          : '결과가 일치하지 않아 자동 무승부로 처리되었습니다. 72시간 이내 이의 제기를 통해 운영자 검토를 요청할 수 있습니다.';
+      }
     }
 
     // 채팅방에 확정 시스템 메시지 전송

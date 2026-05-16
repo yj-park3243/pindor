@@ -78,6 +78,9 @@ export enum GameResultStatus {
   VERIFIED = 'VERIFIED',
   DISPUTED = 'DISPUTED',
   VOIDED = 'VOIDED',
+  // 양측 결과 불일치(WIN+WIN, LOSS+LOSS, 한쪽 DRAW 등) 시 자동 무승부.
+  // ELO 무승부로 즉시 반영하되 72시간 이내 이의제기 가능 (PRD §2.4).
+  DRAW_AUTO = 'DRAW_AUTO',
 }
 
 export enum ScoreChangeType {

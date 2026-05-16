@@ -162,9 +162,13 @@ export class MatchingService {
       );
     }
 
-    // 노쇼 밴 체크: 해당 종목 스포츠 프로필의 matchBanUntil 확인
+    // 노쇼 밴 체크: 해당 종목 스포츠 프로필의 matchBanUntil(영구/장기) +
+    // matchRequestBanUntil(노쇼 PENDING 즉시 24h 임시 차단) 두 가지 모두 검증
     const bannedProfileRows = await this.dataSource.query(
-      `SELECT match_ban_until FROM sports_profiles WHERE user_id = $1::uuid AND sport_type = $2::"SportType" AND is_active = true LIMIT 1`,
+      `SELECT match_ban_until, match_request_ban_until
+         FROM sports_profiles
+        WHERE user_id = $1::uuid AND sport_type = $2::"SportType" AND is_active = true
+        LIMIT 1`,
       [userId, dto.sportType],
     );
     if (bannedProfileRows.length > 0 && bannedProfileRows[0].match_ban_until) {
@@ -176,6 +180,18 @@ export class MatchingService {
           ErrorCode.MATCH_REJECTION_COOLDOWN,
           `노쇼 패널티로 인해 매칭이 제한되었습니다. ${remainingHours}시간 후에 다시 시도해 주세요.`,
           { banUntil, remainingHours },
+        );
+      }
+    }
+    if (bannedProfileRows.length > 0 && bannedProfileRows[0].match_request_ban_until) {
+      const banUntil = new Date(bannedProfileRows[0].match_request_ban_until);
+      if (banUntil > new Date()) {
+        const remainingMs = banUntil.getTime() - Date.now();
+        const remainingHours = Math.ceil(remainingMs / (60 * 60 * 1000));
+        throw AppError.badRequest(
+          ErrorCode.MATCH_REJECTION_COOLDOWN,
+          `노쇼 신고 검토 중으로 매칭 요청이 ${remainingHours}시간 동안 제한됩니다.`,
+          { banUntil, remainingHours, reason: 'NOSHOW_REPORT_PENDING' },
         );
       }
     }
