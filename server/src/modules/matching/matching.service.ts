@@ -33,6 +33,16 @@ import { MatchRequestStatus, RequestType, ScoreChangeType } from '../../entities
 import { sendAdminAlert, escapeHtml } from '../../shared/services/telegram.service.js';
 
 // ─────────────────────────────────────
+// 수락 타임아웃 — 기본 10분. staging E2E 에서만 짧게 (ACCEPT_TIMEOUT_MS env)
+// ─────────────────────────────────────
+const ACCEPT_TIMEOUT_MS = parseInt(
+  process.env.ACCEPT_TIMEOUT_MS ?? `${10 * 60 * 1000}`,
+  10,
+);
+const ACCEPT_REMINDER_HALFWAY_MS = Math.floor(ACCEPT_TIMEOUT_MS / 2);
+const ACCEPT_REMINDER_NEAR_END_MS = Math.floor(ACCEPT_TIMEOUT_MS * 0.9);
+
+// ─────────────────────────────────────
 // 나이 계산 헬퍼
 // ─────────────────────────────────────
 
@@ -789,7 +799,7 @@ export class MatchingService {
       });
       const savedMatch = await manager.save(Match, match);
 
-      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10분 후
+      const expiresAt = new Date(Date.now() + ACCEPT_TIMEOUT_MS);
 
       // MatchAcceptance 레코드 2개 생성 (양측)
       await manager.save(MatchAcceptance, [
@@ -826,16 +836,15 @@ export class MatchingService {
           opponentRequestId: bestCandidate.matchRequestId,
         },
         {
-          delay: 10 * 60 * 1000,
+          delay: ACCEPT_TIMEOUT_MS,
           jobId: `accept-timeout-${savedMatch.id}`,
         },
       );
 
-      // 매칭 수락 리마인더 job 등록 (5분전, 1분전)
-      // 수락 만료가 10분이므로 생성 후 5분, 9분에 발송
+      // 매칭 수락 리마인더 job 등록 — 중간 + 종료 직전 (ACCEPT_TIMEOUT_MS 비율 기반)
       const reminders = [
-        { delay: 5 * 60 * 1000, label: '5분' },
-        { delay: 9 * 60 * 1000, label: '1분' },
+        { delay: ACCEPT_REMINDER_HALFWAY_MS, label: '5분' },
+        { delay: ACCEPT_REMINDER_NEAR_END_MS, label: '1분' },
       ];
       for (const { delay, label } of reminders) {
         for (const userId of [opts.requesterUserId, bestCandidate.userId]) {

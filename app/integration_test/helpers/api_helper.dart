@@ -255,6 +255,20 @@ class ApiHelper {
     return response.data['data'] as Map<String, dynamic>;
   }
 
+  /// 경기 취소 (PENDING_ACCEPT/CHAT/CONFIRMED → CANCELLED, 패널티 적용)
+  Future<Map<String, dynamic>> cancelMatch(
+    String token,
+    String matchId, {
+    String reason = 'E2E test cancel',
+  }) async {
+    final response = await _dio.patch(
+      '/matches/$matchId/cancel',
+      data: {'reason': reason},
+      options: _authOptions(token),
+    );
+    return (response.data['data'] as Map<String, dynamic>?) ?? {};
+  }
+
   /// 내 스포츠 프로필 목록 (점수/전적 검증용)
   Future<List<Map<String, dynamic>>> getSportsProfiles(String token) async {
     final response = await _dio.get(

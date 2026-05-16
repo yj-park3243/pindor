@@ -19,6 +19,14 @@ import { MatchRequestStatus, ScoreChangeType } from '../entities/index.js';
 //   1. accept-timeout: 30분 내 미응답 처리 (수락 시간 만료)
 //   2. delayed-match: 점수 차이가 50~150 또는 150+ 인 경우 3분/5분 대기 후 매칭 성사
 
+// 수락 타임아웃 — 기본 10분. staging E2E 에서만 짧게 (ACCEPT_TIMEOUT_MS env)
+const ACCEPT_TIMEOUT_MS = parseInt(
+  process.env.ACCEPT_TIMEOUT_MS ?? `${10 * 60 * 1000}`,
+  10,
+);
+const ACCEPT_REMINDER_HALFWAY_MS = Math.floor(ACCEPT_TIMEOUT_MS / 2);
+const ACCEPT_REMINDER_NEAR_END_MS = Math.floor(ACCEPT_TIMEOUT_MS * 0.9);
+
 export const matchAcceptTimeoutQueue = new Queue<MatchAcceptTimeoutJobData>(
   'match-accept-timeout',
   { connection: bullmqRedis },
@@ -185,7 +193,7 @@ async function handleDelayedMatch(
     return;
   }
 
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+  const expiresAt = new Date(Date.now() + ACCEPT_TIMEOUT_MS);
 
   await AppDataSource.transaction(async (manager) => {
     // 매칭 생성 (PENDING_ACCEPT)
@@ -233,16 +241,15 @@ async function handleDelayedMatch(
         opponentRequestId,
       },
       {
-        delay: 10 * 60 * 1000,
+        delay: ACCEPT_TIMEOUT_MS,
         jobId: `accept-timeout-${savedMatch.id}`,
       },
     );
 
-    // 매칭 수락 리마인더 job 등록 (5분전, 1분전)
-    // 수락 만료가 10분이므로 생성 후 5분, 9분에 발송
+    // 매칭 수락 리마인더 job 등록 — 중간 + 종료 직전 (ACCEPT_TIMEOUT_MS 비율 기반)
     const reminders = [
-      { delay: 5 * 60 * 1000, label: '5분' },
-      { delay: 9 * 60 * 1000, label: '1분' },
+      { delay: ACCEPT_REMINDER_HALFWAY_MS, label: '5분' },
+      { delay: ACCEPT_REMINDER_NEAR_END_MS, label: '1분' },
     ];
     for (const { delay, label } of reminders) {
       for (const userId of [requesterUserId, opponentUserId]) {

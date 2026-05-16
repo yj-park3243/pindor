@@ -298,11 +298,25 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> with WidgetsBindi
           if (type == 'MATCH_COMPLETED') {
             final matchId = data['data']?['matchId'] as String?;
             debugPrint('[Match] 매칭 완료 (MATCH_COMPLETED) — matchId=$matchId');
+            // 매칭 종료 → 해당 채팅방의 미읽음 배지를 즉시 0으로
+            // (매치 목록 invalidate 전에 캐시에서 chatRoomId 추출)
+            if (matchId != null) {
+              final cached = ref.read(matchListProvider(null)).valueOrNull;
+              if (cached != null) {
+                for (final m in cached) {
+                  if (m.id == matchId && m.chatRoomId.isNotEmpty) {
+                    clearUnread(ref, m.chatRoomId);
+                    break;
+                  }
+                }
+              }
+            }
             ref.read(matchListForceRefreshProvider.notifier).state = true;
             ref.invalidate(matchListProvider(null));
             ref.invalidate(matchRequestProvider);
             if (matchId != null) ref.invalidate(matchDetailProvider(matchId));
             ref.read(notificationListProvider.notifier).addNotification(data);
+            unawaited(refreshUnreadCounts(ref));
             AppToast.success('경기가 완료되었습니다!');
             // 다음 프레임에 이동 (Navigator dispose 잠금 충돌 방지: _debugLocked assertion)
             // bottom sheet/dialog가 자체적으로 pop 중일 때 즉시 go() 하면 NavigatorState
@@ -317,11 +331,25 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> with WidgetsBindi
           if (type == 'MATCH_CANCELLED' || type == 'MATCH_REJECTED' || type == 'MATCH_ACCEPT_TIMEOUT') {
             final matchId = data['data']?['matchId'] as String?;
             debugPrint('[Match] $type 수신 — matchId=$matchId');
+            // 매칭 종료 → 해당 채팅방의 미읽음 배지를 즉시 0으로
+            // (매치 목록 invalidate 전에 캐시에서 chatRoomId 추출)
+            if (matchId != null) {
+              final cached = ref.read(matchListProvider(null)).valueOrNull;
+              if (cached != null) {
+                for (final m in cached) {
+                  if (m.id == matchId && m.chatRoomId.isNotEmpty) {
+                    clearUnread(ref, m.chatRoomId);
+                    break;
+                  }
+                }
+              }
+            }
             ref.read(matchListForceRefreshProvider.notifier).state = true;
             ref.invalidate(matchListProvider(null));
             ref.invalidate(matchRequestProvider);
             if (matchId != null) ref.invalidate(matchDetailProvider(matchId));
             ref.read(notificationListProvider.notifier).addNotification(data);
+            unawaited(refreshUnreadCounts(ref));
             if (type == 'MATCH_ACCEPT_TIMEOUT') {
               AppToast.warning('매칭 수락 시간이 만료되었습니다');
             } else if (type == 'MATCH_REJECTED' && mounted) {
@@ -471,6 +499,22 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> with WidgetsBindi
                 if (mounted) context.go('/matches/$matchId');
               });
             }
+          }
+
+          // 매칭 종료(완료/취소/포기 등) → 채팅방 미읽음 배지 즉시 0
+          // 매치 캐시는 위에서 invalidate되었으므로 valueOrNull은 직전 값을 반환
+          if ((status == 'COMPLETED' || status == 'CANCELLED') &&
+              matchId != null) {
+            final cached = ref.read(matchListProvider(null)).valueOrNull;
+            if (cached != null) {
+              for (final m in cached) {
+                if (m.id == matchId && m.chatRoomId.isNotEmpty) {
+                  clearUnread(ref, m.chatRoomId);
+                  break;
+                }
+              }
+            }
+            unawaited(refreshUnreadCounts(ref));
           }
 
           if (status == 'COMPLETED' && matchId != null) {

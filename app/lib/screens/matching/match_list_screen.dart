@@ -308,6 +308,8 @@ class _MatchListScreenState extends ConsumerState<MatchListScreen> {
             onRefresh: () async {
               ref.invalidate(matchListProvider(null));
               ref.invalidate(matchRequestProvider);
+              // 매칭 카드의 unread 배지도 함께 갱신
+              await refreshUnreadCounts(ref);
             },
             child: ListView.builder(
               padding: const EdgeInsets.only(top: 4, bottom: 100),
@@ -1686,6 +1688,7 @@ class _MatchListTileState extends ConsumerState<_MatchListTile>
       // 읽지 않은 메시지 배지
       if (unreadCount > 0)
         Positioned(
+          key: ValueKey('match_unread_badge_${match.id}'),
           top: 0,
           right: 8,
           child: Container(
