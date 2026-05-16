@@ -3,12 +3,14 @@ import { AppDataSource } from '../../config/database.js';
 import { ChatRoom } from '../../entities/chat-room.entity.js';
 import { Match } from '../../entities/match.entity.js';
 import { Message } from '../../entities/message.entity.js';
+import { User } from '../../entities/user.entity.js';
 import { AppError, ErrorCode } from '../../shared/errors/app-error.js';
 
 export class ChatService {
   private chatRoomRepo = AppDataSource.getRepository(ChatRoom);
   private matchRepo = AppDataSource.getRepository(Match);
   private messageRepo = AppDataSource.getRepository(Message);
+  private userRepo = AppDataSource.getRepository(User);
 
   // ─────────────────────────────────────
   // 채팅방 목록 조회
@@ -206,6 +208,147 @@ export class ChatService {
     await this.chatRoomRepo.update(roomId, { lastMessageAt: saved.createdAt });
 
     return withSender!;
+  }
+
+  // ─────────────────────────────────────
+  // 랜덤 숫자 뽑기 (1~100)
+  // 양측에 SYSTEM 메시지로 결과 발송 — 서버에서 뽑아 변조 차단.
+  // ─────────────────────────────────────
+
+  async drawRandomNumber(
+    userId: string,
+    roomId: string,
+  ): Promise<{ id: string; value: number; nickname: string; createdAt: Date }> {
+    await this.validateRoomParticipant(userId, roomId);
+
+    const user = await this.userRepo.findOne({
+      where: { id: userId },
+      select: { id: true, nickname: true, profileImageUrl: true } as any,
+    });
+    if (!user) {
+      throw AppError.notFound(ErrorCode.USER_NOT_FOUND);
+    }
+
+    const value = Math.floor(Math.random() * 100) + 1; // 1~100
+    const nickname = user.nickname;
+    const content = `${nickname}님이 1~100 중 ${value}을(를) 뽑았습니다.`;
+
+    const message = this.messageRepo.create({
+      chatRoomId: roomId,
+      senderId: userId,
+      messageType: 'SYSTEM' as any,
+      content,
+      extraData: {
+        type: 'RANDOM_NUMBER',
+        value,
+        drawnByUserId: userId,
+        drawnByNickname: nickname,
+      },
+    });
+    const saved = await this.messageRepo.save(message);
+    await this.chatRoomRepo.update(roomId, { lastMessageAt: saved.createdAt });
+
+    // 채팅방 모든 소켓에 NEW_MESSAGE 브로드캐스트 (chat.gateway 와 동일 페이로드).
+    const msgData = {
+      id: saved.id,
+      roomId,
+      senderId: userId,
+      sender: {
+        id: user.id,
+        nickname: user.nickname,
+        profileImageUrl: (user as any).profileImageUrl ?? null,
+      },
+      content,
+      messageType: 'SYSTEM',
+      extraData: saved.extraData,
+      readAt: null,
+      createdAt: saved.createdAt,
+    };
+    try {
+      const io = (global as any).__io;
+      if (io) {
+        io.to(`room:${roomId}`).emit('NEW_MESSAGE', msgData);
+      }
+    } catch (err) {
+      console.warn('[ChatService] random-number broadcast 실패:', err);
+    }
+
+    return {
+      id: saved.id,
+      value,
+      nickname,
+      createdAt: saved.createdAt,
+    };
+  }
+
+  // ─────────────────────────────────────
+  // 동전 던지기 (앞/뒤) — 서버 결정, 양측 SYSTEM 메시지 발송
+  // ─────────────────────────────────────
+
+  async flipCoin(
+    userId: string,
+    roomId: string,
+  ): Promise<{ id: string; result: 'HEADS' | 'TAILS'; nickname: string; createdAt: Date }> {
+    await this.validateRoomParticipant(userId, roomId);
+
+    const user = await this.userRepo.findOne({
+      where: { id: userId },
+      select: { id: true, nickname: true, profileImageUrl: true } as any,
+    });
+    if (!user) {
+      throw AppError.notFound(ErrorCode.USER_NOT_FOUND);
+    }
+
+    const result: 'HEADS' | 'TAILS' = Math.random() < 0.5 ? 'HEADS' : 'TAILS';
+    const label = result === 'HEADS' ? '앞면' : '뒷면';
+    const nickname = user.nickname;
+    const content = `${nickname}님이 동전을 던져 ${label}이 나왔습니다.`;
+
+    const message = this.messageRepo.create({
+      chatRoomId: roomId,
+      senderId: userId,
+      messageType: 'SYSTEM' as any,
+      content,
+      extraData: {
+        type: 'COIN_FLIP',
+        result,
+        drawnByUserId: userId,
+        drawnByNickname: nickname,
+      },
+    });
+    const saved = await this.messageRepo.save(message);
+    await this.chatRoomRepo.update(roomId, { lastMessageAt: saved.createdAt });
+
+    const msgData = {
+      id: saved.id,
+      roomId,
+      senderId: userId,
+      sender: {
+        id: user.id,
+        nickname: user.nickname,
+        profileImageUrl: (user as any).profileImageUrl ?? null,
+      },
+      content,
+      messageType: 'SYSTEM',
+      extraData: saved.extraData,
+      readAt: null,
+      createdAt: saved.createdAt,
+    };
+    try {
+      const io = (global as any).__io;
+      if (io) {
+        io.to(`room:${roomId}`).emit('NEW_MESSAGE', msgData);
+      }
+    } catch (err) {
+      console.warn('[ChatService] coin-flip broadcast 실패:', err);
+    }
+
+    return {
+      id: saved.id,
+      result,
+      nickname,
+      createdAt: saved.createdAt,
+    };
   }
 
   // ─────────────────────────────────────

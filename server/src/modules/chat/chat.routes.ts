@@ -107,6 +107,60 @@ export async function chatRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
+  // ─── POST /chat-rooms/:id/random-number (1~100 서버 뽑기 → 양측 SYSTEM 메시지) ───
+  fastify.post(
+    '/chat-rooms/:id/random-number',
+    {
+      onRequest: [fastify.authenticate, requireVerified],
+      schema: {
+        tags: ['Chat'],
+        summary: '랜덤 숫자 뽑기 (1~100)',
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: 'object',
+          properties: { id: { type: 'string', format: 'uuid' } },
+        },
+      },
+    },
+    async (
+      request: FastifyRequest<{ Params: { id: string } }>,
+      reply: FastifyReply,
+    ) => {
+      const data = await chatService.drawRandomNumber(
+        request.user.userId,
+        request.params.id,
+      );
+      return reply.send({ success: true, data });
+    },
+  );
+
+  // ─── POST /chat-rooms/:id/coin-flip (앞/뒤 → 양측 SYSTEM 메시지) ───
+  fastify.post(
+    '/chat-rooms/:id/coin-flip',
+    {
+      onRequest: [fastify.authenticate, requireVerified],
+      schema: {
+        tags: ['Chat'],
+        summary: '동전 던지기 (앞/뒤)',
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: 'object',
+          properties: { id: { type: 'string', format: 'uuid' } },
+        },
+      },
+    },
+    async (
+      request: FastifyRequest<{ Params: { id: string } }>,
+      reply: FastifyReply,
+    ) => {
+      const data = await chatService.flipCoin(
+        request.user.userId,
+        request.params.id,
+      );
+      return reply.send({ success: true, data });
+    },
+  );
+
   // ─── POST /chat-rooms/:id/messages (HTTP Fallback) ───
   fastify.post(
     '/chat-rooms/:id/messages',

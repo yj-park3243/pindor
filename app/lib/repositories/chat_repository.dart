@@ -134,6 +134,21 @@ class ChatRepository {
     await _api.patch('/chat-rooms/$roomId/read', body: {});
   }
 
+  /// 1~100 랜덤 숫자 뽑기 — 서버에서 뽑아 양측에 SYSTEM 메시지 발송.
+  /// 클라이언트는 응답 후 별도 처리 없이 소켓 NEW_MESSAGE 로 메시지 수신.
+  Future<int> drawRandomNumber(String roomId) async {
+    final response = await _api.post('/chat-rooms/$roomId/random-number', body: {});
+    final data = response['data'] as Map<String, dynamic>;
+    return data['value'] as int;
+  }
+
+  /// 동전 던지기 — 서버가 결정 후 양측에 SYSTEM 메시지 발송. result: HEADS|TAILS
+  Future<String> flipCoin(String roomId) async {
+    final response = await _api.post('/chat-rooms/$roomId/coin-flip', body: {});
+    final data = response['data'] as Map<String, dynamic>;
+    return data['result'] as String;
+  }
+
   /// HTTP 폴백 메시지 전송
   Future<Message> sendMessage(
     String roomId, {

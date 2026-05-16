@@ -219,6 +219,26 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                     _sendLocation();
                   },
                 ),
+                // 랜덤 숫자 뽑기 (1~100)
+                _AttachmentOption(
+                  icon: Icons.casino_rounded,
+                  label: '숫자 뽑기',
+                  color: AppTheme.secondaryColor,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _drawRandomNumber();
+                  },
+                ),
+                // 동전 던지기 (앞/뒤)
+                _AttachmentOption(
+                  icon: Icons.monetization_on_rounded,
+                  label: '동전 던지기',
+                  color: const Color(0xFFFFC107),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _flipCoin();
+                  },
+                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -255,6 +275,31 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     } catch (e) {
       if (mounted) {
         AppToast.error(extractErrorMessage(e, '위치 전송 실패. 네트워크를 확인해주세요.'));
+      }
+    }
+  }
+
+  /// 1~100 랜덤 숫자 뽑기. 서버에서 뽑아 양측에 SYSTEM 메시지 발송.
+  /// 결과 메시지는 소켓 NEW_MESSAGE 로 자동 도착 — 클라이언트는 호출만.
+  Future<void> _drawRandomNumber() async {
+    try {
+      final repo = ref.read(chatRepositoryProvider);
+      await repo.drawRandomNumber(widget.roomId);
+    } catch (e) {
+      if (mounted) {
+        AppToast.error(extractErrorMessage(e, '숫자 뽑기 실패. 잠시 후 다시 시도해주세요.'));
+      }
+    }
+  }
+
+  /// 동전 던지기. 서버에서 결정 후 양측에 SYSTEM 메시지 발송.
+  Future<void> _flipCoin() async {
+    try {
+      final repo = ref.read(chatRepositoryProvider);
+      await repo.flipCoin(widget.roomId);
+    } catch (e) {
+      if (mounted) {
+        AppToast.error(extractErrorMessage(e, '동전 던지기 실패. 잠시 후 다시 시도해주세요.'));
       }
     }
   }

@@ -25,6 +25,12 @@ class MessageBubble extends StatelessWidget {
       if (message.extraData?['type'] == 'GAME_RESULT') {
         return _GameResultSystemBubble(message: message);
       }
+      if (message.extraData?['type'] == 'RANDOM_NUMBER') {
+        return _RandomNumberBubble(message: message);
+      }
+      if (message.extraData?['type'] == 'COIN_FLIP') {
+        return _CoinFlipBubble(message: message);
+      }
       return _SystemMessageBubble(content: message.content);
     }
 
@@ -278,6 +284,147 @@ class _SystemMessageBubble extends StatelessWidget {
             fontSize: 12,
             color: AppTheme.textSecondary,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 랜덤 숫자 뽑기 결과 (1~100) — 가운데 정렬, 큰 숫자 강조
+class _RandomNumberBubble extends StatelessWidget {
+  final Message message;
+  const _RandomNumberBubble({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    final extra = message.extraData ?? const {};
+    final value = extra['value'];
+    final nickname = (extra['drawnByNickname'] as String?) ?? '상대';
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              AppTheme.secondaryColor.withValues(alpha: 0.18),
+              const Color(0xFF1E1E1E),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: AppTheme.secondaryColor.withValues(alpha: 0.6),
+            width: 1,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.casino_rounded,
+                    size: 16, color: AppTheme.secondaryColor),
+                const SizedBox(width: 6),
+                Text(
+                  '$nickname 님의 숫자 뽑기',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppTheme.textSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '$value',
+              style: const TextStyle(
+                fontSize: 34,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+                height: 1.1,
+              ),
+            ),
+            const SizedBox(height: 2),
+            const Text(
+              '1 ~ 100',
+              style: TextStyle(
+                fontSize: 10,
+                color: AppTheme.textDisabled,
+                letterSpacing: 0.6,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 동전 던지기 결과 (앞/뒤)
+class _CoinFlipBubble extends StatelessWidget {
+  final Message message;
+  const _CoinFlipBubble({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    final extra = message.extraData ?? const {};
+    final result = extra['result'] as String?;
+    final isHeads = result == 'HEADS';
+    final label = isHeads ? '앞면' : '뒷면';
+    final emoji = isHeads ? '🪙' : '🌑';
+    final nickname = (extra['drawnByNickname'] as String?) ?? '상대';
+    const gold = Color(0xFFFFC107);
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              gold.withValues(alpha: 0.18),
+              const Color(0xFF1E1E1E),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: gold.withValues(alpha: 0.6), width: 1),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.monetization_on_rounded, size: 16, color: gold),
+                const SizedBox(width: 6),
+                Text(
+                  '$nickname 님의 동전 던지기',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppTheme.textSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(emoji, style: const TextStyle(fontSize: 32, height: 1.1)),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+                letterSpacing: 1.2,
+              ),
+            ),
+          ],
         ),
       ),
     );
