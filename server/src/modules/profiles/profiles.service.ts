@@ -66,10 +66,14 @@ export class ProfilesService {
       dto.skillScore,
       dto.gHandicap,
     );
-    // MMR 허용 범위 제한 (400 ~ 1800)
-    initialScore = Math.max(400, Math.min(1800, initialScore));
+    // MMR 허용 범위 제한 (800 ~ 1200) — 신규 가입 시 양극단 점수 방지
+    initialScore = Math.max(800, Math.min(1200, initialScore));
 
-    const tier: Tier = calculateTier(initialScore);
+    // 신규 프로필은 배치 단계(isPlacement=true) 진입 — 5게임 미만 동안 tier 는
+    // 강제 IRON. 사용자 자가보고만으로 최상위 티어(GRANDMASTER 등)에 진입하는
+    // 어뷰징을 차단. 배치 종료 후 게임 결과로 ranking_entries 가 갱신되면서
+    // recalculateAllTiers / calculateTier 가 정상 tier 를 부여함.
+    const tier: Tier = Tier.IRON;
 
     const scoreHistoryRepo = this.dataSource.getRepository(ScoreHistory);
 
