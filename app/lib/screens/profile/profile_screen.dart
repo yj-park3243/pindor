@@ -1248,6 +1248,7 @@ class _PinMapSelectionPageState extends ConsumerState<_PinMapSelectionPage> {
                     ),
                     mapType: NMapType.basic,
                     locationButtonEnable: true,
+                    rotationGesturesEnable: false,
                   ),
                   onMapReady: (controller) async {
                     _mapController = controller;

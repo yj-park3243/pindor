@@ -399,6 +399,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               mapType: NMapType.navi,
               nightModeEnable: true,
               locationButtonEnable: true,
+              rotationGesturesEnable: false,
             ),
             onMapReady: (controller) async {
               _mapController = controller;

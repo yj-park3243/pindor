@@ -113,6 +113,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
               nightModeEnable: true,
               locationButtonEnable: false,
               consumeSymbolTapEvents: false,
+              rotationGesturesEnable: false,
             ),
             onMapReady: (controller) {
               _mapController = controller;

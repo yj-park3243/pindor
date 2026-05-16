@@ -269,6 +269,7 @@ class _LocationSetupScreenState extends ConsumerState<LocationSetupScreen> {
                       ),
                       mapType: NMapType.basic,
                       locationButtonEnable: true,
+                      rotationGesturesEnable: false,
                     ),
                     onMapReady: (controller) async {
                       _mapController = controller;

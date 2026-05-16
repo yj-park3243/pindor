@@ -99,6 +99,7 @@ class _LocationViewScreenState extends State<LocationViewScreen> {
               locationButtonEnable: false,
               zoomGesturesEnable: true,
               scrollGesturesEnable: true,
+              rotationGesturesEnable: false,
             ),
             onMapReady: (controller) {
               _mapController = controller;

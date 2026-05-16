@@ -313,6 +313,7 @@ class _PinSportSetupScreenState extends ConsumerState<PinSportSetupScreen> {
                       ),
                       mapType: NMapType.basic,
                       locationButtonEnable: true,
+                      rotationGesturesEnable: false,
                     ),
                     onMapReady: (controller) async {
                       _mapController = controller;
