@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../core/dev/last_sync_stats.dart';
 import '../core/network/api_client.dart';
 import '../data/local/daos/matches_dao.dart';
 import '../data/local/cache_ttl_helper.dart';
@@ -69,6 +70,7 @@ class MatchingRepository {
     final matches = data.map((e) => Match.fromJson(e as Map<String, dynamic>)).toList();
     await _dao.upsertMatches(matches);
     await _cache.update(_cacheKey);
+    LastSyncStats.mark('matches');
     return matches;
   }
 

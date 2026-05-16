@@ -32,10 +32,15 @@ echo "  PINDOR 배포 v$VERSION_NAME+$NEW_BUILD_NUMBER"
 echo "=============================="
 
 # ─── iOS ───
+# 빌드 시각 (개발자 메뉴 노출용)
+BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
 if [ "$PLATFORM" = "ios" ] || [ "$PLATFORM" = "all" ]; then
   echo ""
   echo ">>> [iOS] Flutter IPA 빌드 중..."
-  flutter build ipa --release --dart-define=ENVIRONMENT=production
+  flutter build ipa --release \
+    --dart-define=ENVIRONMENT=production \
+    --dart-define=BUILD_TIME="$BUILD_TIME"
 
   IPA_PATH=$(find build/ios/ipa -name "*.ipa" | head -1)
   if [ -z "$IPA_PATH" ]; then
@@ -57,7 +62,9 @@ fi
 if [ "$PLATFORM" = "android" ] || [ "$PLATFORM" = "all" ]; then
   echo ""
   echo ">>> [Android] AAB 빌드 중..."
-  flutter build appbundle --release --dart-define=ENVIRONMENT=production
+  flutter build appbundle --release \
+    --dart-define=ENVIRONMENT=production \
+    --dart-define=BUILD_TIME="$BUILD_TIME"
 
   AAB_PATH="build/app/outputs/bundle/release/app-release.aab"
   if [ ! -f "$AAB_PATH" ]; then
@@ -65,12 +72,13 @@ if [ "$PLATFORM" = "android" ] || [ "$PLATFORM" = "all" ]; then
     exit 1
   fi
 
-  echo ">>> [Android] Google Play 업로드 중..."
+  PLAY_TRACK="${PLAY_TRACK:-alpha}"
+  echo ">>> [Android] Google Play 업로드 중 (track=$PLAY_TRACK)..."
   fastlane supply \
     --aab "$AAB_PATH" \
     --json_key "$PLAY_KEY" \
     --package_name "kr.pins.spots" \
-    --track "alpha" \
+    --track "$PLAY_TRACK" \
     --release_status completed \
     --skip_upload_metadata \
     --skip_upload_images \

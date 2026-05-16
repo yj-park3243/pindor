@@ -105,6 +105,14 @@ class ChatDao extends DatabaseAccessor<AppDatabase> with _$ChatDaoMixin {
     return result.read(count) ?? 0;
   }
 
+  /// 로컬에 저장된 전체 메시지 개수 (개발자 메뉴용)
+  Future<int> getTotalMessageCount() async {
+    final count = countAll();
+    final query = selectOnly(db.messages)..addColumns([count]);
+    final result = await query.getSingle();
+    return result.read(count) ?? 0;
+  }
+
   /// 방의 가장 최신 메시지 createdAt (증분 fetch용)
   Future<DateTime?> getLatestMessageTime(String roomId) async {
     final query = select(db.messages)

@@ -16,6 +16,7 @@ import 'widgets/common/ambient_glow_background.dart';
 import 'providers/font_scale_provider.dart';
 import 'core/network/api_client.dart';
 import 'providers/matching_provider.dart';
+import 'core/dev/debug_log_buffer.dart';
 import 'core/error/error_reporter.dart';
 import 'core/push/local_notification_service.dart';
 import 'core/push/push_notification_service.dart';
@@ -41,6 +42,10 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 Future<void> main() async {
+  // 개발자 메뉴 "로그" 탭에 보여줄 ring buffer 활성화 — debugPrint 가 자동 캡처됨.
+  // 실서비스 영향: 메모리 최대 500줄, debugPrint 호출에 함수 한 단계 추가만.
+  DebugLogBuffer.instance.attach();
+
   // runZonedGuarded: Zone 내 비동기 에러 캐치
   await runZonedGuarded(
     () async {

@@ -26,6 +26,12 @@ class VersionCheckService {
   /// default true — 서버 응답 받기 전엔 안전하게 인증 강제
   static bool requirePhoneVerification = true;
 
+  // 개발자 메뉴 노출용 — 서버에서 받은 마지막 버전 체크 응답 그대로 저장
+  static String? lastMinVersion;
+  static String? lastLatestVersion;
+  static bool lastForceUpdate = false;
+  static DateTime? lastCheckedAt;
+
   /// `check()` 완료(성공/실패 무관) 시그널. 로그인 분기에서 await로 사용.
   static final Completer<void> _loadedCompleter = Completer<void>();
   static bool _checkStarted = false;
@@ -109,6 +115,10 @@ class VersionCheckService {
       final updateMessage = data['updateMessage'] as String?;
       final storeUrl = data['storeUrl'] as String?;
       showAd = data['showAd'] as bool? ?? false;
+      lastMinVersion = minVersion;
+      lastLatestVersion = latestVersion;
+      lastForceUpdate = forceUpdate;
+      lastCheckedAt = DateTime.now();
       // 서버 응답에 필드가 없으면(옛 서버) 안전하게 true(인증 강제)로 유지.
       requirePhoneVerification = data['requirePhoneVerification'] as bool? ?? true;
       if (!_loadedCompleter.isCompleted) _loadedCompleter.complete();

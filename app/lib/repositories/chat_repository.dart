@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../core/dev/last_sync_stats.dart';
 import '../core/network/api_client.dart';
 import '../data/local/daos/chat_dao.dart';
 import '../data/local/cache_ttl_helper.dart';
@@ -38,6 +39,7 @@ class ChatRepository {
     final rooms = data.map((e) => ChatRoom.fromJson(e as Map<String, dynamic>)).toList();
     await _dao.upsertChatRooms(rooms);
     await _cache.update(_roomsCacheKey);
+    LastSyncStats.mark('chatRooms');
     return rooms;
   }
 
