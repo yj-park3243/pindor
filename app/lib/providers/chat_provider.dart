@@ -273,9 +273,13 @@ class ChatMessagesNotifier
           createdAt: message.createdAt,
         );
 
-        // 새 메시지 수신 시 읽음 처리 전송 (내가 현재 채팅방에 있으므로)
+        // 자동 읽음 처리: 사용자가 현재 이 채팅방 화면을 보고 있을 때만.
+        // (keepAlive 30분으로 인해 화면을 떠난 후에도 notifier 가 살아있어
+        //  화면 밖에서 새 메시지 도착 시 잘못 markRead 되던 버그 차단)
         final currentUser = ref.read(currentUserProvider);
-        if (message.senderId != currentUser?.id) {
+        final isActiveScreen =
+            SocketService.instance.activeRoomId == roomId;
+        if (message.senderId != currentUser?.id && isActiveScreen) {
           _markAsRead(roomId);
         }
       }

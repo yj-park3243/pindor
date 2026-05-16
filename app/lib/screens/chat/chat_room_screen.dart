@@ -45,6 +45,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   StreamSubscription<Map<String, dynamic>>? _statusSub;
   bool _didInitialScroll = false;
   int _lastMessageCount = 0;
+  double _lastViewInsetsBottom = 0;
 
   @override
   void initState() {
@@ -87,6 +88,11 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     _statusSub?.cancel();
     _typingThrottle?.cancel();
     _scrollController.dispose();
+    // 채팅방 화면을 떠나면 활성 룸 표시 즉시 해제 → 화면 밖에서 새 메시지
+    // 도착 시 자동 markRead 가 트리거되지 않도록 차단.
+    // (ChatMessagesNotifier 는 keepAlive 30분으로 살아있을 수 있으므로 화면
+    //  레벨에서 별도 leaveRoom 을 호출한다.)
+    SocketService.instance.leaveRoom(widget.roomId);
     super.dispose();
   }
 
@@ -259,6 +265,21 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     final currentUser = ref.watch(currentUserProvider);
     final isOpponentTyping = ref.watch(socketTypingProvider(widget.roomId));
 
+    // 키보드 열림/닫힘 감지 → 사용자가 바닥 근처면 최신 메시지로 자동 스크롤.
+    // 키보드가 올라오면 viewport 가 줄어 maxScrollExtent 가 증가하므로,
+    // 가만히 두면 최신 메시지가 키보드 위로 가려져 안 보이는 문제 차단.
+    final viewInsetsBottom = MediaQuery.viewInsetsOf(context).bottom;
+    if (viewInsetsBottom != _lastViewInsetsBottom) {
+      final wasAtBottom = _isNearBottom();
+      _lastViewInsetsBottom = viewInsetsBottom;
+      if (wasAtBottom) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !_scrollController.hasClients) return;
+          _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+        });
+      }
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
@@ -391,6 +412,12 @@ class _GameResultButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // 키보드가 올라와 있으면 결과 버튼을 숨긴다 — 키보드 따라 같이 올라오면서
+    // 채팅 메시지를 가리는 불편 차단. 키보드 닫히면 다시 표시.
+    if (MediaQuery.viewInsetsOf(context).bottom > 0) {
+      return const SizedBox.shrink();
+    }
+
     // matchId 조회 (채팅방 목록 → 매칭 목록 fallback)
     String? matchId;
     final chatRooms = ref.watch(chatRoomListProvider).valueOrNull;
@@ -403,7 +430,6 @@ class _GameResultButton extends ConsumerWidget {
       matchId = match?.id;
     }
 
-    // 이미 결과 제출했거나 매칭 완료 시 버튼 숨김
     bool bothMet = false;
     bool resultSubmitted = false;
     if (matchId != null && matchId.isNotEmpty) {
@@ -420,7 +446,11 @@ class _GameResultButton extends ConsumerWidget {
       resultSubmitted = match?.myResultSubmitted ?? false;
     }
 
-    final disabled = !bothMet || resultSubmitted;
+    // 만남 확인 전엔 상단 _MetConfirmBanner 가 별도 안내하므로 이 영역은 숨김.
+    // 또한 이미 결과 제출한 경우도 숨김 (위에서 처리).
+    if (!bothMet || resultSubmitted) {
+      return const SizedBox.shrink();
+    }
 
     return Container(
       width: double.infinity,
@@ -429,22 +459,15 @@ class _GameResultButton extends ConsumerWidget {
       child: SizedBox(
         height: 42,
         child: ElevatedButton.icon(
-          onPressed: disabled ? null : () => _onGameResult(context, ref),
-          icon: Icon(
-            disabled ? Icons.lock_outline_rounded : Icons.emoji_events_rounded,
-            size: 18,
-          ),
-          label: Text(
-            !bothMet ? '만남 확인 후 결과 입력 가능' : '승부 결과',
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+          onPressed: () => _onGameResult(context, ref),
+          icon: const Icon(Icons.emoji_events_rounded, size: 18),
+          label: const Text(
+            '승부 결과',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
           ),
           style: ElevatedButton.styleFrom(
-            backgroundColor:
-                disabled ? AppTheme.borderColor : AppTheme.secondaryColor,
-            foregroundColor:
-                disabled ? AppTheme.textSecondary : Colors.white,
-            disabledBackgroundColor: AppTheme.borderColor,
-            disabledForegroundColor: AppTheme.textSecondary,
+            backgroundColor: AppTheme.secondaryColor,
+            foregroundColor: Colors.white,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             elevation: 0,
           ),
