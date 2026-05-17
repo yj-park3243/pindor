@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../config/router.dart';
 import '../../config/theme.dart';
@@ -21,6 +22,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   // 앱 버전 20번 탭 시 광고 테스트 페이지로 이동 (개발자용 hidden)
   int _versionTapCount = 0;
   DateTime _lastVersionTap = DateTime.fromMillisecondsSinceEpoch(0);
+
+  // pubspec.yaml 의 version: x.y.z+build 를 런타임에 동적 로드
+  String? _versionLabel;       // "1.3.6"
+  String? _versionWithBuild;   // "1.3.6 (134)"
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    try {
+      final pkg = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      setState(() {
+        _versionLabel = pkg.version;
+        _versionWithBuild = '${pkg.version} (${pkg.buildNumber})';
+      });
+    } catch (_) {}
+  }
 
   void _onVersionTap() {
     final now = DateTime.now();
@@ -147,9 +169,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   color: const Color(0xFF2A2A2A),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Text(
-                  '1.0.0',
-                  style: TextStyle(
+                child: Text(
+                  _versionWithBuild ?? '...',
+                  style: const TextStyle(
                     color: AppTheme.textSecondary,
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -187,10 +209,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: 40),
 
           // 앱 정보 (하단)
-          const Center(
+          Center(
             child: Text(
-              '핀돌 v1.0.0',
-              style: TextStyle(
+              _versionLabel != null ? '핀돌 v$_versionLabel' : '핀돌',
+              style: const TextStyle(
                 fontSize: 12,
                 color: AppTheme.textDisabled,
               ),
