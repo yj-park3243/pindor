@@ -506,6 +506,7 @@ export class MatchingService {
       maxOpponentScore: dto.maxOpponentScore,
       requesterScore: sportsProfile.currentScore,
       requesterRd: (sportsProfile as any).glickoRd ?? 350,
+      requesterIsPlacement: (sportsProfile as any).isPlacement ?? false,
       requesterUserId: userId,
       requesterGender: (user as any).gender,
       requesterBirthDate: (user as any).birthDate,
@@ -591,6 +592,7 @@ export class MatchingService {
       maxOpponentScore: number;
       requesterScore: number;
       requesterRd?: number;
+      requesterIsPlacement?: boolean;
       requesterUserId: string;
       requesterGender: string | null;
       requesterBirthDate: Date | null;
@@ -616,6 +618,7 @@ export class MatchingService {
         genderPreference: string;
         minAge: number | null;
         maxAge: number | null;
+        isPlacement: boolean;
       }>
     >(
       `SELECT
@@ -623,6 +626,7 @@ export class MatchingService {
         sp.user_id AS "userId",
         sp.current_score AS "currentScore",
         sp.id AS "sportsProfileId",
+        sp.is_placement AS "isPlacement",
         u.gender,
         u.birth_date AS "birthDate",
         u.nickname,
@@ -730,13 +734,21 @@ export class MatchingService {
     // 4) 점수 범위 정책 — 워커보다 약간 관대 (즉시 매칭 우선)
     //    BASE 150 + RD multiplier, 하드캡 250 (워커는 BASE 50으로 더 엄격)
     //    이유: API 즉시 매칭은 큐가 비어있는 첫 매칭자이므로 워커 진입 전 폭넓은 매칭 허용
+    //    단, 한쪽이라도 배치 단계(isPlacement=true)면 PLACEMENT_CAP=100 적용 — 점수가
+    //    아직 안정화 안 된 유저끼리 과한 점수차로 매칭되는 것 차단.
     const BASE_RANGE = 150;
     const HARD_CAP = 250;
+    const PLACEMENT_CAP = 100;
     const requesterRd = opts.requesterRd ?? 350;
     const rdMultiplier = 1.0 + Math.max(0, (requesterRd - 50)) / 350;
-    const effectiveRange = Math.min(BASE_RANGE * rdMultiplier, HARD_CAP);
+    let effectiveRange = Math.min(BASE_RANGE * rdMultiplier, HARD_CAP);
 
     const bestCandidate = candidatesWithDiff[0];
+    const anyPlacement =
+      (opts.requesterIsPlacement ?? false) || (bestCandidate.isPlacement ?? false);
+    if (anyPlacement) {
+      effectiveRange = Math.min(effectiveRange, PLACEMENT_CAP);
+    }
     if (bestCandidate.scoreDiff > effectiveRange) {
       // 점수 차이가 즉시 매칭 허용 범위를 초과 → 워커에 위임 (WAITING 유지)
       return 0;
@@ -1549,7 +1561,11 @@ export class MatchingService {
       let gameResult: string | null = null; // WIN | LOSS | DRAW | DISPUTED | NO_RESULT
       if (match.status === 'COMPLETED' && winnerProfileId) {
         gameResult = winnerProfileId === myProfileId ? 'WIN' : 'LOSS';
-      } else if (match.status === 'COMPLETED' && gameResultStatus === 'VERIFIED' && !winnerProfileId) {
+      } else if (
+        match.status === 'COMPLETED' &&
+        (gameResultStatus === 'VERIFIED' || gameResultStatus === 'DRAW_AUTO') &&
+        !winnerProfileId
+      ) {
         gameResult = 'DRAW';
       } else if (match.status === 'COMPLETED' && gameResultStatus === 'DISPUTED') {
         gameResult = 'DISPUTED';
@@ -1902,7 +1918,11 @@ export class MatchingService {
     let gameResult: string | null = null;
     if (match.status === 'COMPLETED' && game?.winnerProfileId) {
       gameResult = game.winnerProfileId === myProfileId ? 'WIN' : 'LOSS';
-    } else if (match.status === 'COMPLETED' && game?.resultStatus === 'VERIFIED' && !game?.winnerProfileId) {
+    } else if (
+      match.status === 'COMPLETED' &&
+      (game?.resultStatus === 'VERIFIED' || game?.resultStatus === 'DRAW_AUTO') &&
+      !game?.winnerProfileId
+    ) {
       gameResult = 'DRAW';
     } else if (match.status === 'COMPLETED' && game?.resultStatus === 'DISPUTED') {
       gameResult = 'DISPUTED';

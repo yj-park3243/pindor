@@ -239,12 +239,19 @@ function findOptimalPairs(
 
       const rangeA = getEffectiveRange(requests[i]);
       const rangeB = getEffectiveRange(requests[j]);
-      const effectiveRange = Math.max(rangeA, rangeB);
+      let effectiveRange = Math.max(rangeA, rangeB);
 
       const ratingDiff = Math.abs(adjustedRatingI - adjustedRatingJ);
 
-      // 하드캡: 250 포인트 초과 → 절대 매칭 불가
-      if (ratingDiff > 250) continue;
+      // 배치 단계 캡 (한쪽이라도 isPlacement=true): 100 포인트로 좁힘.
+      // 안정화 안 된 점수끼리 과한 차이로 매칭되는 것 차단.
+      const PLACEMENT_CAP = 100;
+      const anyPlacement = requests[i].isPlacement || requests[j].isPlacement;
+      const hardCap = anyPlacement ? PLACEMENT_CAP : 250;
+      if (ratingDiff > hardCap) continue;
+      if (anyPlacement) {
+        effectiveRange = Math.min(effectiveRange, PLACEMENT_CAP);
+      }
 
       // 소규모 풀(≤4명)이 아닌 경우에만 동적 범위 필터 적용
       if (!smallPool && ratingDiff > effectiveRange) continue;
