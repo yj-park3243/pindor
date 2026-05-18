@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../config/router.dart';
+import '../../core/version/version_check_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../repositories/matching_repository.dart';
 
@@ -54,12 +55,18 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     // 인증 상태 대기 + 스플래시 최소 표시 시간을 병렬 처리
     final minDelay = Future.delayed(const Duration(milliseconds: 1500));
 
+    // /app-version 토글(requirePhoneVerification 등) 로드 — router redirect 평가 전에
+    // 끝나야 platform별 본인인증 강제 여부가 정확히 반영된다.
+    final versionLoaded = VersionCheckService.ensureLoaded();
+
     // 인증 상태가 로딩 중이면 완료까지 대기
     var authState = ref.read(authStateProvider);
     if (authState.isLoading) {
       await ref.read(authStateProvider.future).catchError((_) => AuthState.unauthenticated);
       authState = ref.read(authStateProvider);
     }
+
+    await versionLoaded;
 
     // 인증됨 → 스플래시 대기 중 매칭 데이터 미리 로드
     final authValue = authState.valueOrNull;
@@ -86,6 +93,14 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     if (!mounted) return;
     final authState = ref.read(authStateProvider).valueOrNull;
     if (authState != null && authState.isAuthenticated) {
+      // 본인인증 미완료면 우선 phoneVerification 으로.
+      // (서버 토글 requirePhoneVerification=false 일 때만 우회 — VersionCheckService 가 그 정보 보유)
+      final mustVerify = VersionCheckService.requirePhoneVerification &&
+          !authState.isVerified;
+      if (mustVerify) {
+        context.go(AppRoutes.phoneVerification);
+        return;
+      }
       final user = authState.user;
       if (user != null && user.sportsProfiles.isEmpty) {
         context.go(AppRoutes.profileSetup);

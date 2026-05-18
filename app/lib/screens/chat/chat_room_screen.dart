@@ -357,6 +357,11 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           // 우리 만났어요 배너 (CHAT/CONFIRMED 상태에서만 표시)
           _MetConfirmBanner(roomId: widget.roomId),
 
+          // 승부 결과 입력 버튼 (양쪽 만남 확인 후 노출)
+          _GameResultButton(
+            roomId: widget.roomId,
+          ),
+
           // 메시지 목록
           Expanded(
             child: messagesAsync.when(
@@ -419,11 +424,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
               ),
             ),
 
-          // 승부 결과 입력 버튼
-          _GameResultButton(
-            roomId: widget.roomId,
-          ),
-
           // 입력바
           ChatInputBar(
             onSendText: (text) async {
@@ -449,7 +449,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
 
 }
 
-/// 승부 결과 버튼 (ChatInputBar 위)
+/// 승부 결과 버튼 (상단 _MetConfirmBanner 아래)
 class _GameResultButton extends ConsumerWidget {
   final String roomId;
 
@@ -457,12 +457,6 @@ class _GameResultButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 키보드가 올라와 있으면 결과 버튼을 숨긴다 — 키보드 따라 같이 올라오면서
-    // 채팅 메시지를 가리는 불편 차단. 키보드 닫히면 다시 표시.
-    if (MediaQuery.viewInsetsOf(context).bottom > 0) {
-      return const SizedBox.shrink();
-    }
-
     // matchId 조회 (채팅방 목록 → 매칭 목록 fallback)
     String? matchId;
     final chatRooms = ref.watch(chatRoomListProvider).valueOrNull;

@@ -72,7 +72,7 @@ if [ "$PLATFORM" = "android" ] || [ "$PLATFORM" = "all" ]; then
     exit 1
   fi
 
-  PLAY_TRACK="${PLAY_TRACK:-alpha}"
+  PLAY_TRACK="${PLAY_TRACK:-internal}"
   echo ">>> [Android] Google Play 업로드 중 (track=$PLAY_TRACK)..."
   fastlane supply \
     --aab "$AAB_PATH" \

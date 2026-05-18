@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemNavigator;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
@@ -41,6 +42,21 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> with WidgetsBindi
   Timer? _pendingMatchPoller;
   StreamSubscription<bool>? _socketStateSub;
   final Set<String> _autoNavigatedMatchIds = {};
+  DateTime? _lastBackPressed;
+
+  Future<bool> _handleAndroidBack() async {
+    // 자식 라우트가 푸시되어 있으면 그대로 pop (기본 동작)
+    if (GoRouter.of(context).canPop()) return false;
+    final now = DateTime.now();
+    if (_lastBackPressed == null ||
+        now.difference(_lastBackPressed!) > const Duration(seconds: 2)) {
+      _lastBackPressed = now;
+      AppToast.info('한 번 더 누르면 종료됩니다');
+      return true; // 백 이벤트 소비 — 앱 종료 안 됨
+    }
+    await SystemNavigator.pop();
+    return true;
+  }
   @override
   void initState() {
     super.initState();
@@ -207,7 +223,16 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> with WidgetsBindi
         next.whenData((data) {
           final type = data['type'] as String? ?? '';
           debugPrint('[MainTab] socket notification 수신 type=$type matchId=${data['data']?['matchId']}');
-          if (type == 'CHAT_MESSAGE' || type == 'CHAT_IMAGE') {
+          // 채팅방 안에서 발생하는 모든 메시지 알림
+          // (텍스트/사진/위치/시스템(숫자뽑기·동전던지기)/게임 결과 입력)
+          const chatNotifTypes = {
+            'CHAT_MESSAGE',
+            'CHAT_IMAGE',
+            'CHAT_LOCATION',
+            'CHAT_SYSTEM',
+            'GAME_RESULT_SUBMITTED',
+          };
+          if (chatNotifTypes.contains(type)) {
             // 서버에서 최신 unreadCount 조회
             refreshUnreadCounts(ref);
             // 현재 열린 채팅방이 아닐 때만 인앱 토스트 표시
@@ -219,7 +244,13 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> with WidgetsBindi
                 title: data['title'] as String? ?? '새 메시지',
                 body: data['body'] as String? ?? '',
                 onTap: () {
-                  if (roomId != null) context.push('/chats/$roomId');
+                  if (roomId != null) {
+                    context.push('/chats/$roomId');
+                  } else {
+                    // 게임 결과 알림 등 roomId 없으면 deepLink 사용
+                    final deepLink = data['data']?['deepLink'] as String?;
+                    if (deepLink != null) context.push(deepLink);
+                  }
                 },
               );
             }
@@ -551,7 +582,9 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> with WidgetsBindi
     final currentIndex = widget.navigationShell.currentIndex;
     final unreadCount = ref.watch(totalUnreadCountProvider);
 
-    return AdaptiveScaffold(
+    return BackButtonListener(
+      onBackButtonPressed: _handleAndroidBack,
+      child: AdaptiveScaffold(
       minimizeBehavior: TabBarMinimizeBehavior.never,
       body: widget.navigationShell,
       bottomNavigationBar: AdaptiveBottomNavigationBar(
@@ -610,6 +643,7 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> with WidgetsBindi
             ),
           ],
         ),
+      ),
       ),
     );
   }

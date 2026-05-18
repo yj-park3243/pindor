@@ -82,6 +82,7 @@ export const GAME_RESULT_STATUS_CONFIG = {
   PENDING: { label: '대기중', color: 'default' },
   PROOF_UPLOADED: { label: '증빙업로드', color: 'blue' },
   VERIFIED: { label: '인증완료', color: 'green' },
+  DRAW_AUTO: { label: '자동무승부', color: 'gold' },
   DISPUTED: { label: '이의신청', color: 'orange' },
   VOIDED: { label: '무효처리', color: 'red' },
 } as const;

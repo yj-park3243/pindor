@@ -166,6 +166,11 @@ class ChatMessagesNotifier
     _connStateSubscription?.cancel();
     _connStateSubscription =
         SocketService.instance.onConnectionState.listen((_) {
+      // 사용자가 채팅방 화면을 떠나면 leaveRoom 으로 activeRoomId 가 null 이 된다.
+      // keepAlive(30분) 동안 notifier 가 살아 있어도 화면 밖에서는 자동 재입장 금지.
+      // (화면 떠난 후 소켓 재연결 시 JOIN_ROOM 이 다시 emit 되어 서버 측 푸시 스킵/읽음 로직이
+      //  잘못 트리거되던 문제 방지)
+      if (SocketService.instance.activeRoomId != roomId) return;
       SocketService.instance.joinRoom(roomId);
     });
 

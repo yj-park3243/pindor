@@ -1,5 +1,6 @@
 import { IsNull, LessThan, MoreThan, Not } from 'typeorm';
 import { AppDataSource } from '../../config/database.js';
+import { redis } from '../../config/redis.js';
 import { ChatRoom } from '../../entities/chat-room.entity.js';
 import { Match } from '../../entities/match.entity.js';
 import { Message } from '../../entities/message.entity.js';
@@ -211,6 +212,67 @@ export class ChatService {
   }
 
   // ─────────────────────────────────────
+  // 채팅 메시지 알림 헬퍼 (상대방에게 notification + FCM 푸시)
+  // chat.gateway 의 SEND_MESSAGE 핸들러와 동일한 방식.
+  // SYSTEM 메시지(숫자뽑기/동전던지기/게임결과 등)도 일반 채팅과 같은 푸시/배지/토스트를 받도록 한다.
+  // ─────────────────────────────────────
+  private async _emitChatNotification(params: {
+    roomId: string;
+    senderId: string;
+    senderNickname: string;
+    notifType: string;
+    title: string;
+    body: string;
+  }): Promise<void> {
+    const { roomId, senderId, senderNickname, notifType, title, body } = params;
+
+    try {
+      const match = await this.matchRepo.findOne({
+        where: { chatRoomId: roomId },
+        relations: { requesterProfile: true, opponentProfile: true },
+      });
+      if (!match) return;
+
+      const opponentUserId =
+        match.requesterProfile.userId === senderId
+          ? match.opponentProfile.userId
+          : match.requesterProfile.userId;
+
+      const payload = {
+        type: notifType,
+        title,
+        body,
+        data: {
+          roomId,
+          senderId,
+          senderNickname,
+          deepLink: `/chats/${roomId}`,
+        },
+        createdAt: new Date().toISOString(),
+      };
+
+      const io = (global as any).__io;
+      if (io) {
+        io.to(`user:${opponentUserId}`).emit('notification', payload);
+      }
+
+      await redis.publish(
+        'push_notification',
+        JSON.stringify({
+          userId: opponentUserId,
+          type: notifType,
+          title,
+          body,
+          data: payload.data,
+          saveToDb: false,
+        }),
+      );
+    } catch (err) {
+      console.warn('[ChatService] _emitChatNotification 실패:', err);
+    }
+  }
+
+  // ─────────────────────────────────────
   // 랜덤 숫자 뽑기 (1~100)
   // 양측에 SYSTEM 메시지로 결과 발송 — 서버에서 뽑아 변조 차단.
   // ─────────────────────────────────────
@@ -272,6 +334,15 @@ export class ChatService {
     } catch (err) {
       console.warn('[ChatService] random-number broadcast 실패:', err);
     }
+
+    await this._emitChatNotification({
+      roomId,
+      senderId: userId,
+      senderNickname: nickname,
+      notifType: 'CHAT_SYSTEM',
+      title: `${nickname}님이 숫자를 뽑았습니다`,
+      body: `1~100 중 ${value}이(가) 나왔습니다.`,
+    });
 
     return {
       id: saved.id,
@@ -342,6 +413,15 @@ export class ChatService {
     } catch (err) {
       console.warn('[ChatService] coin-flip broadcast 실패:', err);
     }
+
+    await this._emitChatNotification({
+      roomId,
+      senderId: userId,
+      senderNickname: nickname,
+      notifType: 'CHAT_SYSTEM',
+      title: `${nickname}님이 동전을 던졌습니다`,
+      body: `${label}이 나왔습니다.`,
+    });
 
     return {
       id: saved.id,

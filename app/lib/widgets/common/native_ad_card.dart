@@ -112,7 +112,7 @@ class _NativeAdCardState extends State<NativeAdCard> {
       return Padding(
         padding: widget.padding,
         child: Container(
-          height: 320,
+          height: 360,
           decoration: BoxDecoration(
             color: const Color(0xFF141414),
             borderRadius: BorderRadius.circular(12),
@@ -124,7 +124,7 @@ class _NativeAdCardState extends State<NativeAdCard> {
     final adView = ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: SizedBox(
-        height: 320,
+        height: 360,
         child: AdWidget(ad: _ad!),
       ),
     );

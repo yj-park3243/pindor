@@ -29,4 +29,115 @@ platform :ios do
 
     UI.success("TestFlight 업로드 완료!")
   end
+
+  desc "ASC 의 현재 edit version 상태 + 빌드 진단"
+  lane :diagnose do
+    api_key = app_store_connect_api_key(
+      key_id: ENV["ASC_KEY_ID"],
+      issuer_id: ENV["ASC_ISSUER_ID"],
+      key_filepath: ENV["ASC_KEY_PATH"],
+    )
+    require 'spaceship'
+    app = Spaceship::ConnectAPI::App.find(ENV["APP_IDENTIFIER"] || "kr.pins")
+    UI.message("App: #{app.name} (#{app.id})")
+
+    edit = app.get_edit_app_store_version
+    if edit
+      UI.message("Edit version: #{edit.version_string} | state=#{edit.app_store_state}")
+      begin
+        b = edit.build
+        UI.message("Attached build: #{b ? b.version : 'NONE'}")
+      rescue => e
+        UI.message("Build 조회 실패: #{e.message}")
+      end
+    else
+      UI.message("Edit version 없음")
+    end
+
+    live = app.get_live_app_store_version
+    UI.message("Live version: #{live ? "#{live.version_string} | state=#{live.app_store_state}" : 'NONE'}")
+  end
+
+  desc "ASC 에 등록된 메타데이터(locale 포함) 다운로드 — 디버그용"
+  lane :check_metadata do
+    api_key = app_store_connect_api_key(
+      key_id: ENV["ASC_KEY_ID"],
+      issuer_id: ENV["ASC_ISSUER_ID"],
+      key_filepath: ENV["ASC_KEY_PATH"],
+    )
+    download_metadata_dir = File.join(File.dirname(__FILE__), "metadata_downloaded")
+    download_metadata(
+      api_key: api_key,
+      metadata_path: download_metadata_dir,
+    )
+    UI.success("메타데이터 다운로드 완료: #{download_metadata_dir}")
+  end
+
+  desc "App Store 심사 제출 (TestFlight 에 이미 업로드된 빌드 사용)"
+  lane :submit_review do
+    api_key_hash = {
+      key_id: ENV["ASC_KEY_ID"],
+      issuer_id: ENV["ASC_ISSUER_ID"],
+      key_filepath: ENV["ASC_KEY_PATH"],
+    }
+    api_key = app_store_connect_api_key(**api_key_hash)
+
+    # pubspec.yaml 에서 version + build 추출
+    pubspec = File.read(File.join(APP_DIR, "pubspec.yaml"))
+    ver_line = pubspec.match(/^version:\s*(\S+)/)
+    UI.user_error!("pubspec.yaml version 파싱 실패") unless ver_line
+    version_name, build_number = ver_line[1].split("+")
+
+    UI.message("심사 제출: v#{version_name} (build #{build_number})")
+
+    notes_ko = ENV["RELEASE_NOTES"] || "안정성 개선 및 버그 수정"
+    notes_en = ENV["RELEASE_NOTES_EN"] || "Stability improvements and bug fixes"
+
+    # Spaceship 으로 ASC 의 모든 locale 에 whatsNew 직접 설정 — fastlane deliver
+    # metadata 폴더 매칭에 의존하지 않고 ASC 등록 locale 그대로 사용.
+    # (app_store_connect_api_key 호출이 이미 Spaceship::ConnectAPI 토큰을 자동 설정한다)
+    require 'spaceship'
+    app = Spaceship::ConnectAPI::App.find(ENV["APP_IDENTIFIER"] || "kr.pins")
+    UI.user_error!("ASC 에서 앱 찾기 실패: #{ENV["APP_IDENTIFIER"]}") unless app
+
+    edit_version = app.get_edit_app_store_version
+    UI.user_error!("ASC 에 편집 가능한 버전이 없습니다") unless edit_version
+
+    # 이미 제출된 상태면 skip (재제출 시도가 build attach 충돌을 유발)
+    submitted_states = %w[WAITING_FOR_REVIEW IN_REVIEW PENDING_DEVELOPER_RELEASE
+                          PENDING_APPLE_RELEASE READY_FOR_SALE PROCESSING_FOR_APP_STORE]
+    if submitted_states.include?(edit_version.app_store_state)
+      attached = edit_version.build&.version rescue nil
+      UI.success("ASC 이미 #{edit_version.app_store_state} 상태 (build #{attached || '?'}). 추가 작업 불필요.")
+      next
+    end
+
+    locs = edit_version.get_app_store_version_localizations
+    UI.message("ASC 등록 locale 발견: #{locs.map(&:locale).join(', ')}")
+
+    locs.each do |loc|
+      text = loc.locale.to_s.start_with?("ko") ? notes_ko : notes_en
+      loc.update(attributes: { whatsNew: text })
+      UI.message("  ✓ #{loc.locale} whatsNew 갱신")
+    end
+
+    # 빌드 attach + 심사 제출 — fastlane 에 위임 (whatsNew 는 위에서 처리 완료)
+    # build_number / app_version 명시 안 함 → fastlane 이 최신 빌드 자동 선택.
+    upload_to_app_store(
+      api_key: api_key,
+      submit_for_review: true,
+      automatic_release: true,
+      force: true,
+      skip_binary_upload: true,
+      skip_screenshots: true,
+      skip_metadata: true,
+      precheck_include_in_app_purchases: false,
+      submission_information: {
+        add_id_info_uses_idfa: false,
+        export_compliance_uses_encryption: false,
+      },
+    )
+
+    UI.success("App Store 심사 제출 완료!")
+  end
 end

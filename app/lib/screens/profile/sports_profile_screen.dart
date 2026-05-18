@@ -90,10 +90,22 @@ class SportsProfileScreen extends ConsumerWidget {
             ),
             itemCount: profiles.length,
             itemBuilder: (context, index) {
+              final isFirst = index == 0;
+              final isLast = index == profiles.length - 1;
               return _SportProfileCard(
                 profile: profiles[index],
                 onEditMessage: () =>
                     _showEditMessageSheet(context, ref, profiles[index]),
+                onMoveUp: isFirst
+                    ? null
+                    : () => ref
+                        .read(sportsProfilesProvider.notifier)
+                        .moveUp(index),
+                onMoveDown: isLast
+                    ? null
+                    : () => ref
+                        .read(sportsProfilesProvider.notifier)
+                        .moveDown(index),
               );
             },
           );
@@ -349,10 +361,14 @@ class SportsProfileScreen extends ConsumerWidget {
 class _SportProfileCard extends StatelessWidget {
   final SportsProfile profile;
   final VoidCallback onEditMessage;
+  final VoidCallback? onMoveUp;
+  final VoidCallback? onMoveDown;
 
   const _SportProfileCard({
     required this.profile,
     required this.onEditMessage,
+    this.onMoveUp,
+    this.onMoveDown,
   });
 
   @override
@@ -398,11 +414,25 @@ class _SportProfileCard extends StatelessWidget {
                 ),
                 ScoreText(
                   score: profile.displayScore ?? profile.currentScore,
-                  isPlacement: profile.isPlacement,
-                  placementGamesRemaining: profile.placementGamesRemaining,
                   fontSize: 20,
                   fontWeight: FontWeight.w900,
                   color: AppTheme.primaryColor,
+                ),
+                const SizedBox(width: 4),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _ReorderButton(
+                      icon: Icons.keyboard_arrow_up_rounded,
+                      onTap: onMoveUp,
+                      tooltip: '위로',
+                    ),
+                    _ReorderButton(
+                      icon: Icons.keyboard_arrow_down_rounded,
+                      onTap: onMoveDown,
+                      tooltip: '아래로',
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -522,6 +552,38 @@ class _Stat extends StatelessWidget {
         Text(value, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: color ?? AppTheme.textPrimary)),
         Text(label, style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
       ],
+    );
+  }
+}
+
+class _ReorderButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback? onTap;
+  final String tooltip;
+
+  const _ReorderButton({
+    required this.icon,
+    required this.onTap,
+    required this.tooltip,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          child: Icon(
+            icon,
+            size: 20,
+            color: enabled ? AppTheme.textPrimary : AppTheme.textDisabled,
+          ),
+        ),
+      ),
     );
   }
 }

@@ -421,33 +421,10 @@ class _MyPinStatusCard extends ConsumerWidget {
 
                 const SizedBox(height: 14),
 
-                // 태그/버튼 행: 배치중 | 게시판
+                // 태그/버튼 행: 게시판
                 Row(
                   children: [
                     const Spacer(),
-
-                    // 배치중 태그
-                    if (profile != null && profile.isPlacement) ...[
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.orange.shade200),
-                        ),
-                        child: Text(
-                          '배치 중 (${5 - (profile.placementGamesRemaining ?? 5)}/5)',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.orange.shade700,
-                          ),
-                        ),
-                      ),
-                      const Spacer(),
-                    ] else
-                      const Spacer(),
 
                     // 게시판 버튼
                     GestureDetector(
@@ -839,8 +816,21 @@ class _ActiveMatchCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final statusLabel = match.isChat ? '채팅 중' : '경기 확정';
-    final accent = match.isChat ? const Color(0xFF34C759) : AppTheme.primaryColor;
+    final isChat = match.isChat;
+    final statusLabel = isChat ? '채팅 중' : '경기 확정';
+    final gradient = isChat
+        ? const LinearGradient(
+            colors: [Color(0xFF1FA85B), Color(0xFF0F6E3B)],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          )
+        : const LinearGradient(
+            colors: [AppTheme.primaryColor, AppTheme.primaryDark],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          );
+    final shadowColor =
+        isChat ? const Color(0xFF34C759) : AppTheme.primaryColor;
     final scheduled = match.scheduledDate != null
         ? '${match.scheduledDate}${match.scheduledTime != null ? ' ${match.scheduledTime}' : ''}'
         : null;
@@ -848,11 +838,17 @@ class _ActiveMatchCard extends StatelessWidget {
     return GestureDetector(
       onTap: () => context.go('/matches/${match.id}'),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
+          gradient: gradient,
           borderRadius: BorderRadius.circular(14),
-          border: Border(left: BorderSide(color: accent, width: 4)),
+          boxShadow: [
+            BoxShadow(
+              color: shadowColor.withOpacity(0.35),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Row(
           children: [
@@ -871,12 +867,12 @@ class _ActiveMatchCard extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: accent.withOpacity(0.18),
+                          color: Colors.white.withOpacity(0.22),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(statusLabel,
-                            style: TextStyle(
-                                color: accent,
+                            style: const TextStyle(
+                                color: Colors.white,
                                 fontSize: 10,
                                 fontWeight: FontWeight.w800)),
                       ),
@@ -886,8 +882,8 @@ class _ActiveMatchCard extends StatelessWidget {
                           match.opponent.nickname,
                           style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700),
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
@@ -901,14 +897,14 @@ class _ActiveMatchCard extends StatelessWidget {
                       if (scheduled != null) scheduled,
                     ].join(' · '),
                     style: const TextStyle(
-                        color: AppTheme.textSecondary, fontSize: 12),
+                        color: Colors.white70, fontSize: 12),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
             ),
             const Icon(Icons.arrow_forward_ios_rounded,
-                color: AppTheme.textDisabled, size: 14),
+                color: Colors.white70, size: 14),
           ],
         ),
       ),
@@ -932,23 +928,32 @@ class _WaitingRequestSummaryCard extends StatelessWidget {
     return GestureDetector(
       onTap: () => context.go(AppRoutes.matchList),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
+          gradient: LinearGradient(
+            colors: [Colors.amber.shade700, Colors.orange.shade900],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ),
           borderRadius: BorderRadius.circular(14),
-          border: Border(left: BorderSide(color: Colors.amber.shade600, width: 4)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.amber.shade700.withOpacity(0.35),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Row(
           children: [
             Container(
-              width: 40,
-              height: 40,
+              padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.amber.shade600.withOpacity(0.18),
+                color: Colors.white.withOpacity(0.2),
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.search_rounded,
-                  color: Colors.amber.shade600, size: 20),
+              child: const Icon(Icons.search_rounded,
+                  color: Colors.white, size: 22),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -960,12 +965,12 @@ class _WaitingRequestSummaryCard extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: Colors.amber.shade600.withOpacity(0.18),
+                          color: Colors.white.withOpacity(0.22),
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: Text('상대 찾는 중',
+                        child: const Text('상대 찾는 중',
                             style: TextStyle(
-                                color: Colors.amber.shade600,
+                                color: Colors.white,
                                 fontSize: 10,
                                 fontWeight: FontWeight.w800)),
                       ),
@@ -975,8 +980,8 @@ class _WaitingRequestSummaryCard extends StatelessWidget {
                           pinLabel,
                           style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700),
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
@@ -986,14 +991,14 @@ class _WaitingRequestSummaryCard extends StatelessWidget {
                   Text(
                     '$sport · $dateLabel · $timeSlot',
                     style: const TextStyle(
-                        color: AppTheme.textSecondary, fontSize: 12),
+                        color: Colors.white70, fontSize: 12),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
             ),
             const Icon(Icons.arrow_forward_ios_rounded,
-                color: AppTheme.textDisabled, size: 14),
+                color: Colors.white70, size: 14),
           ],
         ),
       ),
@@ -1478,17 +1483,15 @@ class _MatchHistoryTile extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        if (!match.opponent.isPlacement) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: tierColor.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(5),
-                            ),
-                            child: Text(match.opponent.tier, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: tierColor)),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: tierColor.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(5),
                           ),
-                        ],
+                          child: Text(match.opponent.tier, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: tierColor)),
+                        ),
                         const Spacer(),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),

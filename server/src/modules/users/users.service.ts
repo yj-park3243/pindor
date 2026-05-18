@@ -105,7 +105,9 @@ export class UsersService {
       realName: user.realName ?? null,
       phoneNumber: user.phoneNumber ?? null,
       status: user.status,
-      isVerified: (user as any).isVerified ?? false,
+      // DI(중복식별자) 없으면 KCP 본인인증 미통과 — is_verified 컬럼이 잘못 true 라도 false 로 응답.
+      // (DB 정합성 사고로 di=null && is_verified=true 인 user 가 본인인증 화면을 건너뛰는 것 방지)
+      isVerified: ((user as any).isVerified ?? false) && !!user.di,
       createdAt: user.createdAt,
       lastLoginAt: user.lastLoginAt,
       preferredSportType: user.preferredSportType,

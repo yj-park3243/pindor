@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../config/router.dart';
@@ -20,7 +21,8 @@ class PhoneVerificationScreen extends ConsumerStatefulWidget {
 }
 
 class _PhoneVerificationScreenState
-    extends ConsumerState<PhoneVerificationScreen> {
+    extends ConsumerState<PhoneVerificationScreen>
+    with WidgetsBindingObserver {
   WebViewController? _controller;
   bool _isLoading = true;
   bool _isVerifying = false;
@@ -34,13 +36,39 @@ class _PhoneVerificationScreenState
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadKcpForm();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _timeoutTimer?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // PASS / 통신사 인증 앱으로 빠졌다가 돌아오는 시간은 타임아웃에서 제외.
+    // 사용자가 우리 앱 WebView에 떠 있는 시간만 카운트한다.
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+        _timeoutTimer?.cancel();
+        break;
+      case AppLifecycleState.resumed:
+        if (mounted &&
+            _controller != null &&
+            !_isVerifying &&
+            _errorMessage == null) {
+          _startTimeout();
+        }
+        break;
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.detached:
+        break;
+    }
   }
 
   void _startTimeout() {
@@ -66,11 +94,12 @@ class _PhoneVerificationScreenState
       await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
       await controller.setNavigationDelegate(
         NavigationDelegate(
-          onNavigationRequest: (request) {
+          onNavigationRequest: (request) async {
             final uri = Uri.tryParse(request.url);
-            if (uri != null &&
-                uri.scheme == _kcpReturnScheme &&
-                uri.host == _kcpReturnHost) {
+            if (uri == null) return NavigationDecision.prevent;
+
+            // 우리 앱 콜백 deep link
+            if (uri.scheme == _kcpReturnScheme && uri.host == _kcpReturnHost) {
               // spots://kcp-cert?status=success&accessToken=...&nextRoute=...
               final status = uri.queryParameters['status'];
               if (status == 'success') {
@@ -81,7 +110,22 @@ class _PhoneVerificationScreenState
               }
               return NavigationDecision.prevent;
             }
-            return NavigationDecision.navigate;
+
+            // WebView 내부에서 로드해도 안전한 표준 scheme
+            const webSchemes = {'http', 'https', 'about', 'data', 'blob', 'file'};
+            if (webSchemes.contains(uri.scheme)) {
+              return NavigationDecision.navigate;
+            }
+
+            // 그 외 (intent://, ktauthexternalcall://, kpn-auth://, ipcollect:// 등
+            //  통신사 PASS 본인인증 앱 또는 PG/카드사 앱 스킴) — WebView 가 처리 불가하므로
+            // 외부 앱으로 실행. 실패 시 무시 — 사용자에게는 다시 시도 안내.
+            try {
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+            } catch (e) {
+              debugPrint('[KCP] external launch failed for ${uri.scheme}: $e');
+            }
+            return NavigationDecision.prevent;
           },
           onPageFinished: (url) {
             setState(() => _isLoading = false);

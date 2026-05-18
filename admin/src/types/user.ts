@@ -8,11 +8,18 @@ export interface User {
   email: string | null;
   nickname: string;
   profileImageUrl: string | null;
-  phone: string | null;
   status: UserStatus;
   createdAt: string;
   updatedAt: string;
   lastLoginAt: string | null;
+  // KCP 본인인증
+  phoneNumber: string | null;
+  realName: string | null;
+  carrier: string | null;
+  isVerified: boolean;
+  verifiedAt: string | null;
+  // 디바이스 플랫폼 (X-Platform 헤더로 마지막 인증 요청 시점 기록)
+  devicePlatform: 'IOS' | 'ANDROID' | null;
   sportsProfiles?: SportsProfile[];
   socialAccounts?: SocialAccount[];
 }

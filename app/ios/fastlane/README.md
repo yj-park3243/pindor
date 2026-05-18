@@ -23,6 +23,30 @@ For _fastlane_ installation instructions, see [Installing _fastlane_](https://do
 
 TestFlight 배포
 
+### ios diagnose
+
+```sh
+[bundle exec] fastlane ios diagnose
+```
+
+ASC 의 현재 edit version 상태 + 빌드 진단
+
+### ios check_metadata
+
+```sh
+[bundle exec] fastlane ios check_metadata
+```
+
+ASC 에 등록된 메타데이터(locale 포함) 다운로드 — 디버그용
+
+### ios submit_review
+
+```sh
+[bundle exec] fastlane ios submit_review
+```
+
+App Store 심사 제출 (TestFlight 에 이미 업로드된 빌드 사용)
+
 ----
 
 This README.md is auto-generated and will be re-generated every time [_fastlane_](https://fastlane.tools) is run.

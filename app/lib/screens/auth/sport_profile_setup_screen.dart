@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../config/router.dart';
 import '../../config/sports.dart';
 import '../../config/theme.dart';
+import '../../providers/sport_preference_provider.dart';
 import '../../repositories/profile_repository.dart';
 import '../../widgets/common/app_toast.dart';
 import '../../widgets/common/sport_badge.dart';
@@ -93,6 +94,10 @@ class _SportProfileSetupScreenState
         gHandicap: _selectedSport == 'GOLF' ? skillScore : null,
         skillScore: skillScore,
       );
+
+      // users.preferred_sport_type 와 로컬 SharedPreferences를 함께 갱신.
+      // 누락 시 홈/매칭/랭킹이 디폴트 'GOLF'로 폴백되어 선택값이 사라진 것처럼 보임.
+      await ref.read(sportPreferenceProvider.notifier).select(_selectedSport);
 
       if (mounted) context.go(AppRoutes.locationSetup);
     } catch (e) {

@@ -83,6 +83,41 @@ async function start(): Promise<void> {
     `ALTER TABLE pins ADD COLUMN IF NOT EXISTS search_keywords TEXT[] NOT NULL DEFAULT '{}';`
   ).catch((e: any) => console.warn('[Server] ALTER TABLE pins (search_keywords):', e.message));
 
+  // pins.updated_at + 메타 변경 트리거 (핀 캐시 버전 계산용)
+  // user_count는 랭킹 워커가 빈번히 갱신하므로 updated_at 갱신에서 제외
+  await AppDataSource.query(
+    `ALTER TABLE pins ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;
+     UPDATE pins SET updated_at = COALESCE(updated_at, created_at);
+     ALTER TABLE pins ALTER COLUMN updated_at SET NOT NULL;
+     ALTER TABLE pins ALTER COLUMN updated_at SET DEFAULT NOW();`
+  ).catch((e: any) => console.warn('[Server] ALTER TABLE pins (updated_at):', e.message));
+
+  await AppDataSource.query(
+    `CREATE OR REPLACE FUNCTION pins_bump_updated_at() RETURNS TRIGGER AS $$
+     BEGIN
+       IF (
+         NEW.name IS DISTINCT FROM OLD.name OR
+         NEW.slug IS DISTINCT FROM OLD.slug OR
+         NEW.center IS DISTINCT FROM OLD.center OR
+         NEW.boundary IS DISTINCT FROM OLD.boundary OR
+         NEW.level IS DISTINCT FROM OLD.level OR
+         NEW.parent_pin_id IS DISTINCT FROM OLD.parent_pin_id OR
+         NEW.region_code IS DISTINCT FROM OLD.region_code OR
+         NEW.is_active IS DISTINCT FROM OLD.is_active OR
+         NEW.metadata IS DISTINCT FROM OLD.metadata OR
+         NEW.search_keywords IS DISTINCT FROM OLD.search_keywords
+       ) THEN
+         NEW.updated_at = NOW();
+       END IF;
+       RETURN NEW;
+     END;
+     $$ LANGUAGE plpgsql;
+     DROP TRIGGER IF EXISTS pins_bump_updated_at_trigger ON pins;
+     CREATE TRIGGER pins_bump_updated_at_trigger
+       BEFORE UPDATE ON pins
+       FOR EACH ROW EXECUTE FUNCTION pins_bump_updated_at();`
+  ).catch((e: any) => console.warn('[Server] CREATE TRIGGER pins_bump_updated_at:', e.message));
+
   // users: 디바이스 플랫폼(IOS/ANDROID) 기록 컬럼 추가 (없으면)
   // - X-Platform 헤더로 인증된 요청에서 set. NULL이면 옛 빌드 사용자 → iOS로 간주
   await AppDataSource.query(

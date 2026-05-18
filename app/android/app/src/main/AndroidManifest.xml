@@ -6,9 +6,6 @@
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
@@ -86,5 +83,22 @@
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="https"/>
         </intent>
+        <!-- KCP 본인인증 — 통신사 PASS 앱 / 카드사 ISP / 안드로이드 intent scheme -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="intent"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="market"/>
+        </intent>
+        <!-- 통신사 본인인증 PASS 앱 패키지 -->
+        <package android:name="com.kt.ktauth"/>
+        <package android:name="com.lguplus.smartotp"/>
+        <package android:name="com.sktelecom.tauth"/>
+        <package android:name="kt.ktauth"/>
+        <package android:name="com.ktshow.cs"/>
+        <!-- PASS 통합 인증 -->
+        <package android:name="com.lumensoft.touchenappfree"/>
     </queries>
 </manifest>

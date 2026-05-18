@@ -585,8 +585,8 @@ class MatchDetailScreen extends ConsumerWidget {
                       isDestructive: true,
                       onTap: () => showReportBottomSheet(
                         context,
-                        targetType: 'MATCH',
-                        targetId: matchId,
+                        targetType: 'USER',
+                        targetId: match.opponent.id,
                         insetForBottomNav: true,
                       ),
                     ),
@@ -672,7 +672,8 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
     final match = widget.match;
     final isResultSubmitted = match.myResultSubmitted || _resultSubmitted;
 
-    return Column(
+    return SingleChildScrollView(
+      child: Column(
         children: [
           const SizedBox(height: 8),
 
@@ -837,6 +838,7 @@ class _MatchDetailContentState extends ConsumerState<_MatchDetailContent> {
 
           SizedBox(height: MediaQuery.of(context).padding.bottom + 100),
         ],
+      ),
     );
   }
 
@@ -1234,7 +1236,7 @@ class _MatchupCard extends ConsumerWidget {
                         );
                       }),
                       _buildResultTag(match.gameResult, true),
-                      if (mySportProfile != null && !mySportProfile.isPlacement) ...[
+                      if (mySportProfile != null) ...[
                         const SizedBox(height: 6),
                         Text(
                           mySportProfile.tier,
@@ -1355,17 +1357,15 @@ class _MatchupCard extends ConsumerWidget {
                         ),
                       ],
                       _buildResultTag(match.gameResult, false),
-                      if (!opponent.isPlacement) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          opponent.tier,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: tierColor,
-                          ),
+                      const SizedBox(height: 6),
+                      Text(
+                        opponent.tier,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: tierColor,
                         ),
-                      ],
+                      ),
                     ],
                   ),
                 ),

@@ -17,8 +17,6 @@ class ScoreResultScreen extends StatefulWidget {
   final int? previousRank;
   final int? newRank;
   final bool isCasual;
-  final bool isPlacement;               // 배치 게임 진행 중 여부
-  final int? placementGamesRemaining;   // 배치 완료 후 남은 횟수
 
   const ScoreResultScreen({
     super.key,
@@ -30,8 +28,6 @@ class ScoreResultScreen extends StatefulWidget {
     this.previousRank,
     this.newRank,
     this.isCasual = false,
-    this.isPlacement = false,
-    this.placementGamesRemaining,
   });
 
   @override
@@ -193,7 +189,7 @@ class _ScoreResultScreenState extends State<ScoreResultScreen>
 
               const SizedBox(height: 40),
 
-              // ─── 점수 변동 (친선: 안내 문구 / 배치 중: 배치 안내 / 랭크: 애니메이션) ───
+              // ─── 점수 변동 (친선: 안내 문구 / 랭크: 애니메이션) ───
               if (widget.isCasual)
                 Container(
                   width: double.infinity,
@@ -227,10 +223,6 @@ class _ScoreResultScreenState extends State<ScoreResultScreen>
                       ),
                     ],
                   ),
-                )
-              else if (widget.isPlacement)
-                _PlacementProgressCard(
-                  placementGamesRemaining: widget.placementGamesRemaining,
                 )
               else
                 AnimatedScoreCounter(
@@ -308,75 +300,6 @@ class _ScoreResultScreenState extends State<ScoreResultScreen>
   }
 }
 
-
-/// 배치 게임 진행 상황 카드 (점수 결과 화면에서 배치 중일 때 표시)
-class _PlacementProgressCard extends StatelessWidget {
-  final int? placementGamesRemaining;
-
-  const _PlacementProgressCard({this.placementGamesRemaining});
-
-  @override
-  Widget build(BuildContext context) {
-    final played = 5 - (placementGamesRemaining ?? 5);
-    final remaining = placementGamesRemaining ?? 0;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.orange.shade50,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.orange.shade200),
-      ),
-      child: Column(
-        children: [
-          Icon(Icons.hourglass_top_rounded,
-              size: 36, color: Colors.orange.shade600),
-          const SizedBox(height: 10),
-          Text(
-            '배치 게임 진행 중',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: Colors.orange.shade700,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '$played / 5 완료',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              color: Colors.orange.shade600,
-            ),
-          ),
-          const SizedBox(height: 8),
-          // 진행 바
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: played / 5,
-              minHeight: 8,
-              backgroundColor: Colors.orange.shade100,
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.orange.shade500),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            remaining > 0
-                ? '${remaining}경기 후 점수가 공개됩니다'
-                : '배치가 완료되었습니다! 점수가 곧 공개됩니다',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.orange.shade600,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _RankChangeCard extends StatelessWidget {
   final int previousRank;

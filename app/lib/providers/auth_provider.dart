@@ -24,7 +24,7 @@ class AuthState {
     required this.isAuthenticated,
     this.user,
     this.isNewUser = false,
-    this.isVerified = true, // 기존 유저는 기본값 true
+    this.isVerified = false, // 안전 기본값 — 명시 안 한 경로에서 본인인증 강제 흐름 유지
   });
 
   static const unauthenticated = AuthState(isAuthenticated: false);
@@ -59,6 +59,7 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
   Future<AuthState> _checkAutoLogin() async {
     try {
       final hasToken = await _storage.hasValidToken();
+      debugPrint('[AuthAutoLogin] hasToken=$hasToken');
       if (!hasToken) return AuthState.unauthenticated;
 
       // FCM 토큰 재등록 (인증 토큰 확보된 상태)
@@ -86,13 +87,15 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
         await _storage.clearTokens();
         return AuthState.unauthenticated;
       }
-      // 그 외 에러 (네트워크 등) = 토큰 유지, 인증 상태 유지
-      return AuthState(isAuthenticated: true);
+      // 그 외 에러 (네트워크 등) = 토큰 유지, 인증 상태 유지.
+      // 단 isVerified는 false로 — user info 못 받았으면 본인인증 화면으로 강제해
+      // 인증 도중 종료 → 재시작 시 이어지도록 한다.
+      return AuthState(isAuthenticated: true, isVerified: false);
     } catch (e) {
-      // 네트워크 에러 등 — 토큰이 있으면 인증 유지
+      // 네트워크 에러 등 — 토큰이 있으면 인증 유지 (isVerified=false)
       final hasToken = await _storage.hasValidToken();
       if (hasToken) {
-        return AuthState(isAuthenticated: true);
+        return AuthState(isAuthenticated: true, isVerified: false);
       }
       return AuthState.unauthenticated;
     }

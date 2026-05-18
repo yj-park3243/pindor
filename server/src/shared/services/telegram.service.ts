@@ -11,6 +11,7 @@ import { env } from '../../config/env.js';
 const TG_API_BASE = 'https://api.telegram.org';
 
 function isConfigured(): boolean {
+  if (!env.TELEGRAM_ENABLED) return false;
   return Boolean(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_ADMIN_CHAT_ID);
 }
 

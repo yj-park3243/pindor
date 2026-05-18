@@ -62,6 +62,10 @@ export class Pin {
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 
+  // DB 트리거(pins_bump_updated_at)가 메타 변경 시에만 갱신 — ORM 자동 갱신 비사용
+  @Column({ name: 'updated_at', type: 'timestamptz', default: () => 'NOW()' })
+  updatedAt!: Date;
+
   // Self-referencing relations
   @ManyToOne('Pin', 'childPins', { nullable: true })
   @JoinColumn({ name: 'parent_pin_id' })

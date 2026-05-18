@@ -25,20 +25,21 @@ export class PinsService {
   // ─────────────────────────────────────
 
   // 스키마 변경 시 이 값을 올려서 클라이언트 캐시를 강제 무효화
-  // (v2: searchKeywords 필드 추가)
-  private static readonly SCHEMA_VERSION = 'v2';
+  // (v3: 버전 산식을 updated_at + count 기반으로 변경 — is_active 토글/메타 변경 감지)
+  private static readonly SCHEMA_VERSION = 'v3';
 
   async getPinVersion(): Promise<string> {
-    // 핀 테이블의 최신 created_at + 스키마 버전을 버전으로 사용
-    const result = await AppDataSource.query<Array<{ version: string }>>(
+    // 활성 DONG 핀의 MAX(updated_at) + COUNT(*) 조합 — 메타 변경/활성 토글 모두 반영
+    const result = await AppDataSource.query<Array<{ version: string; count: string }>>(
       `SELECT COALESCE(
-        TO_CHAR(MAX(created_at), 'YYYYMMDDHH24MISS'),
+        TO_CHAR(MAX(updated_at), 'YYYYMMDDHH24MISSMS'),
         '0'
-       ) AS version
+       ) AS version,
+       COUNT(*)::text AS count
        FROM pins
        WHERE is_active = TRUE AND level = 'DONG'`
     );
-    return `${result[0]?.version ?? '0'}-${PinsService.SCHEMA_VERSION}`;
+    return `${result[0]?.version ?? '0'}-${result[0]?.count ?? '0'}-${PinsService.SCHEMA_VERSION}`;
   }
 
   // ─────────────────────────────────────

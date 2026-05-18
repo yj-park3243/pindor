@@ -93,6 +93,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 decoration: const InputDecoration(
                   hintText: '메시지를 입력하세요...',
                   border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  disabledBorder: InputBorder.none,
+                  errorBorder: InputBorder.none,
+                  focusedErrorBorder: InputBorder.none,
                   contentPadding:
                       EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   counterText: '',

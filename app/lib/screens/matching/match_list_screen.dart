@@ -42,7 +42,7 @@ class _MatchListScreenState extends ConsumerState<MatchListScreen> {
   final Set<String> _redirectedAcceptIds = {};
 
   // 검색 필터
-  bool _showFilters = false;
+  bool _showFilters = true;
   String? _filterSport; // null = 전체
   String? _filterPin; // null = 전체
   String _filterPeriod = 'ALL'; // ALL, TODAY, WEEK, MONTH
@@ -1122,7 +1122,7 @@ class _PendingMatchCardState extends ConsumerState<_PendingMatchCard> {
                       Row(
                         children: [
                           Text(
-                            opponent.isPlacement ? '배치' : '${opponent.displayScore ?? opponent.currentScore ?? 1000}점',
+                            '${opponent.displayScore ?? opponent.currentScore ?? 1000}점',
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w700,
@@ -1616,21 +1616,20 @@ class _MatchListTileState extends ConsumerState<_MatchListTile>
                         ),
 
                       // 2행: 티어
-                      if (!match.opponent.isPlacement)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: tierColor.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              match.opponent.tier,
-                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: tierColor),
-                            ),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: tierColor.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            match.opponent.tier,
+                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: tierColor),
                           ),
                         ),
+                      ),
 
                       // 3행: 종목 / 날짜 / 핀
                       Row(

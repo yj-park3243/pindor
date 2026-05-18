@@ -46,6 +46,11 @@ const envSchema = z.object({
   // Telegram 관리자 알림 (선택) — 토큰/Chat ID 둘 다 있어야 동작
   TELEGRAM_BOT_TOKEN: z.string().default(''),
   TELEGRAM_ADMIN_CHAT_ID: z.string().default(''),
+  // staging 환경 노이즈 차단용 — false 면 sendAdminAlert no-op
+  TELEGRAM_ENABLED: z
+    .union([z.literal('true'), z.literal('false')])
+    .default('true')
+    .transform((v) => v === 'true'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

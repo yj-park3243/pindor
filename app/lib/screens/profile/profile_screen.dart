@@ -277,8 +277,6 @@ class _ProfileHeaderState extends ConsumerState<_ProfileHeader>
   @override
   Widget build(BuildContext context) {
     final profile = widget.profile;
-    final isPlacement = profile?.isPlacement ?? false;
-    final placementGamesRemaining = profile?.placementGamesRemaining;
 
     // 핀 + 랭킹
     final selectedPin = ref.watch(selectedPinProvider);
@@ -485,12 +483,7 @@ class _ProfileHeaderState extends ConsumerState<_ProfileHeader>
                                           const Text('종목을 추가해주세요', style: TextStyle(fontSize: 14, color: Colors.white38))
                                         else if (selectedPin == null)
                                           const Text('핀을 설정해주세요', style: TextStyle(fontSize: 14, color: Colors.white38))
-                                        else if (isPlacement)
-                                            Text(
-                                              '배치 중 (${5 - (placementGamesRemaining ?? 0)}/5)',
-                                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: tierColor),
-                                            )
-                                          else if (myRank != null && myRank.rank > 0) ...[
+                                        else if (myRank != null && myRank.rank > 0) ...[
                                               // 해당 핀에서 플레이 기록 있음 → 핀별 점수
                                               Text('${myRank.score}점', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Colors.white, height: 1)),
                                               const SizedBox(height: 4),

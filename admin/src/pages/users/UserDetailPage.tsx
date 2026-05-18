@@ -155,10 +155,16 @@ export function UserDetailPage() {
                 {user.email || <Text type="secondary">소셜 로그인</Text>}
               </Descriptions.Item>
               <Descriptions.Item label="전화번호">
-                {user.phone || <Text type="secondary">없음</Text>}
+                {user.phoneNumber || <Text type="secondary">없음</Text>}
+              </Descriptions.Item>
+              <Descriptions.Item label="실명">
+                {user.realName || <Text type="secondary">없음</Text>}
+              </Descriptions.Item>
+              <Descriptions.Item label="통신사">
+                {user.carrier || <Text type="secondary">없음</Text>}
               </Descriptions.Item>
               <Descriptions.Item label="휴대폰 인증">
-                <Space>
+                <Space wrap>
                   {user.isVerified ? (
                     <Tag color="green">인증됨</Tag>
                   ) : (
@@ -174,6 +180,20 @@ export function UserDetailPage() {
                     {user.isVerified ? '인증 해제' : '인증 처리'}
                   </Button>
                 </Space>
+              </Descriptions.Item>
+              <Descriptions.Item label="인증 일시">
+                {user.verifiedAt
+                  ? dayjs(user.verifiedAt).format('YYYY-MM-DD HH:mm')
+                  : <Text type="secondary">없음</Text>}
+              </Descriptions.Item>
+              <Descriptions.Item label="디바이스">
+                {user.devicePlatform ? (
+                  <Tag color={user.devicePlatform === 'IOS' ? 'blue' : 'green'}>
+                    {user.devicePlatform}
+                  </Tag>
+                ) : (
+                  <Tag color="default">미수집(옛 빌드 — iOS로 간주)</Tag>
+                )}
               </Descriptions.Item>
               <Descriptions.Item label="가입일">
                 {dayjs(user.createdAt).format('YYYY-MM-DD')}

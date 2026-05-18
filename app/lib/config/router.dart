@@ -84,7 +84,6 @@ class AppRoutes {
   static const String fontSizeSetup = '/setup/font-size';
   static const String sportProfileSetup = '/setup/sport-profile';
   static const String locationSetup = '/setup/location';
-  static const String pinSportSetup = '/setup/pin-sport';
 
   // 메인 탭
   static const String home = '/home';
@@ -157,9 +156,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isNewUser = authState.valueOrNull?.isNewUser ?? false;
       // 서버 원격 토글(platform별)이 false면 KCP 본인인증 강제하지 않음 → isVerified=true로 간주.
       // DB: UPDATE app_versions SET require_phone_verification = false WHERE platform = 'ANDROID';
+      // 본인인증 정보가 아직 없으면(앱 재시작 직후 user info 미수신) 미인증으로 간주.
+      // 그래야 인증 도중 종료 → 재시작 시 본인인증 화면으로 이어진다.
       final isVerified = !VersionCheckService.requirePhoneVerification
           ? true
-          : (authState.valueOrNull?.isVerified ?? true);
+          : (authState.valueOrNull?.isVerified ?? false);
       final isLoading = authState.isLoading;
       final location = state.matchedLocation;
 

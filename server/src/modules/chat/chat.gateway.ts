@@ -214,8 +214,9 @@ export function setupSocketGateway(io: Server, redis: Redis): void {
 
         socket.emit('ROOM_JOINED', { roomId: data.roomId });
 
-        // 입장 시 자동으로 읽음 처리
-        await _markReadAndNotify(data.roomId, userId, io, chatService);
+        // 읽음 처리는 클라이언트의 명시적 MARK_READ 이벤트로만 수행한다.
+        // (JOIN_ROOM 은 소켓 룸 구독일 뿐 화면 가시성을 보장하지 않으므로,
+        //  소켓 재연결 시 자동 재입장만으로 미열람 메시지가 읽음 처리되는 버그를 방지)
       } catch (err) {
         console.error('[WS] JOIN_ROOM error:', err);
         socket.emit('ERROR', { code: 'INTERNAL_ERROR', message: '오류가 발생했습니다.' });

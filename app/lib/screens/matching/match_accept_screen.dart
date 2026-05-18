@@ -265,6 +265,17 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
     } else {
       final error = ref.read(matchAcceptProvider(widget.matchId)).error ?? '';
       debugPrint('[Match] 수락 실패 — matchId=${widget.matchId} error=$error');
+      // 이미 응답한 매칭 — 상세 화면에 머무를 이유가 없으므로 목록으로 이동
+      if (error.contains('MATCH_011') || error.contains('이미 응답한 매칭')) {
+        if (_isNavigating) return;
+        _isNavigating = true;
+        _redirectedMatchIds.add(widget.matchId);
+        ref.invalidate(matchListProvider(null));
+        ref.invalidate(matchDetailProvider(widget.matchId));
+        debugPrint('[MatchAccept] _onAccept MATCH_011 → go matchList');
+        context.go(AppRoutes.matchList);
+        return;
+      }
       _showToast('오류: $error');
     }
   }
@@ -612,19 +623,17 @@ class _MatchAcceptScreenState extends ConsumerState<MatchAcceptScreen> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                if (!match.opponent.isPlacement) ...[
-                                  Text(
-                                    match.opponent.tier,
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w800,
-                                      color: AppTheme.tierColor(match.opponent.tier),
-                                    ),
-                                  ),
-                                  const Text(' · ', style: TextStyle(color: AppTheme.textDisabled)),
-                                ],
                                 Text(
-                                  match.opponent.isPlacement ? '배치 중' : '${match.opponent.displayScore ?? match.opponent.currentScore ?? 1000}점',
+                                  match.opponent.tier,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppTheme.tierColor(match.opponent.tier),
+                                  ),
+                                ),
+                                const Text(' · ', style: TextStyle(color: AppTheme.textDisabled)),
+                                Text(
+                                  '${match.opponent.displayScore ?? match.opponent.currentScore ?? 1000}점',
                                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.primaryColor),
                                 ),
                                 if (match.opponent.gamesPlayed > 0) ...[
@@ -819,11 +828,8 @@ class _OpponentCard extends StatelessWidget {
     this.encounterCount = 0,
   });
 
-  /// 배치 중 여부에 따라 랭킹 텍스트 반환
-  String get _rankText {
-    if (opponent.isPlacement) return '배치';
-    return '${opponent.displayScore ?? opponent.currentScore ?? 1000}점';
-  }
+  String get _rankText =>
+      '${opponent.displayScore ?? opponent.currentScore ?? 1000}점';
 
   @override
   Widget build(BuildContext context) {
@@ -910,9 +916,7 @@ class _OpponentCard extends StatelessWidget {
               _InfoItem(
                 label: '점수',
                 value: _rankText,
-                valueColor: opponent.isPlacement
-                    ? AppTheme.textSecondary
-                    : AppTheme.primaryColor,
+                valueColor: AppTheme.primaryColor,
               ),
               if (opponent.gamesPlayed > 0)
                 _InfoItem(

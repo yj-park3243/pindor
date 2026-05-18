@@ -123,6 +123,11 @@ Future<void> main() async {
       PaintingBinding.instance.imageCache.maximumSizeBytes = 200 * 1024 * 1024;
       PaintingBinding.instance.imageCache.maximumSize = 500;
 
+      // 모바일 앱 — 외부 키보드의 directional focus traversal 비활성화.
+      // (에뮬레이터/외부 키보드에서 화살표/Tab 키 누를 때 미 layout 위젯에
+      //  RenderTransform.applyPaintTransform 가 호출되어 "RenderBox was not laid out" 크래시 발생하는 것을 차단)
+      FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTouch;
+
       runApp(
         const ProviderScope(
           child: PindorApp(),

@@ -38,7 +38,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await VersionCheckService.ensureLoaded();
       final effectiveVerified =
           !VersionCheckService.requirePhoneVerification || result.isVerified;
-      if (result.isNewUser && !effectiveVerified) {
+      // 본인인증 미완료면 신규/기존 무관하게 phoneVerification 으로 (기존 user 가
+      //  본인인증 안 한 상태로 로그인 시 home 직행 버그 차단).
+      if (!effectiveVerified) {
         context.go(AppRoutes.phoneVerification);
       } else if (result.isNewUser) {
         context.go(AppRoutes.profileSetup);
@@ -63,7 +65,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         await VersionCheckService.ensureLoaded();
         final effectiveVerified = !VersionCheckService.requirePhoneVerification ||
             authState?.isVerified == true;
-        if (authState?.isNewUser == true && !effectiveVerified) {
+        // 본인인증 미완료면 신규/기존 무관하게 phoneVerification 으로.
+        if (!effectiveVerified) {
           context.go(AppRoutes.phoneVerification);
         } else if (authState?.isNewUser == true) {
           context.go(AppRoutes.profileSetup);

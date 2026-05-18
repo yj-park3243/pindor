@@ -4,6 +4,7 @@ export type GameResultStatus =
   | 'PENDING'
   | 'PROOF_UPLOADED'
   | 'VERIFIED'
+  | 'DRAW_AUTO'
   | 'DISPUTED'
   | 'VOIDED';
 

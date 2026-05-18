@@ -1,14 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../config/theme.dart';
 
-/// 배치 게임 여부에 따라 점수 또는 "배치 중 (N/5)" 뱃지를 표시하는 위젯.
-///
-/// - [isPlacement] == true  → 오렌지 뱃지로 "배치 중 (N/5)" 표시
-/// - [isPlacement] == false → "${score}점" 텍스트 표시
+/// 점수 텍스트 표시 위젯.
 class ScoreText extends StatelessWidget {
   final int score;
-  final bool isPlacement;
-  final int? placementGamesRemaining;
   final double fontSize;
   final FontWeight fontWeight;
   final Color? color;
@@ -16,8 +11,6 @@ class ScoreText extends StatelessWidget {
   const ScoreText({
     super.key,
     required this.score,
-    this.isPlacement = false,
-    this.placementGamesRemaining,
     this.fontSize = 16,
     this.fontWeight = FontWeight.w700,
     this.color,
@@ -25,25 +18,6 @@ class ScoreText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (isPlacement) {
-      final played = 5 - (placementGamesRemaining ?? 5);
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: Colors.orange.shade50,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.orange.shade200),
-        ),
-        child: Text(
-          '배치 중 ($played/5)',
-          style: TextStyle(
-            fontSize: fontSize * 0.85,
-            fontWeight: fontWeight,
-            color: Colors.orange.shade700,
-          ),
-        ),
-      );
-    }
     return Text(
       '$score점',
       style: TextStyle(
